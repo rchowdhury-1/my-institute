@@ -1,0 +1,85 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #faf7f2;
+  --foreground: #1c1917;
+  --emerald: #065f46;
+  --gold: #d97706;
+}
+
+/* Islamic geometric pattern background — CSS only, very low opacity */
+.pattern-bg {
+  background-color: #faf7f2;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 20px,
+      rgba(6, 95, 70, 0.03) 20px,
+      rgba(6, 95, 70, 0.03) 21px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 20px,
+      rgba(6, 95, 70, 0.03) 20px,
+      rgba(6, 95, 70, 0.03) 21px
+    );
+}
+
+/* Subtle star/geometric pattern for hero sections */
+.pattern-hero {
+  background-color: #064e3b;
+  background-image:
+    radial-gradient(circle at 25% 25%, rgba(217, 119, 6, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 75% 75%, rgba(217, 119, 6, 0.05) 0%, transparent 50%),
+    repeating-linear-gradient(
+      60deg,
+      transparent,
+      transparent 30px,
+      rgba(255, 255, 255, 0.015) 30px,
+      rgba(255, 255, 255, 0.015) 31px
+    ),
+    repeating-linear-gradient(
+      -60deg,
+      transparent,
+      transparent 30px,
+      rgba(255, 255, 255, 0.015) 30px,
+      rgba(255, 255, 255, 0.015) 31px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 30px,
+      rgba(255, 255, 255, 0.015) 30px,
+      rgba(255, 255, 255, 0.015) 31px
+    );
+}
+
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-cream text-charcoal font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .section-padding {
+    @apply py-16 md:py-24;
+  }
+}
