@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
 
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth, requireRole('admin', 'supervisor'));
 
 // GET /admin/students
 router.get('/students', async (req, res) => {
@@ -96,6 +96,30 @@ router.patch('/scholarships/:id', async (req, res) => {
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     res.json({ scholarship: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /admin/sessions — all sessions with student + teacher names
+router.get('/sessions', async (req, res) => {
+  try {
+    const { status } = req.query;
+    let query = `SELECT s.*,
+                        st.display_name AS student_name,
+                        t.display_name  AS teacher_name
+                 FROM sessions s
+                 JOIN users st ON st.id = s.student_id
+                 JOIN users t  ON t.id  = s.teacher_id`;
+    const params = [];
+    if (status) {
+      query += ` WHERE s.status = $1`;
+      params.push(status);
+    }
+    query += ` ORDER BY s.scheduled_at DESC`;
+    const result = await pool.query(query, params);
+    res.json({ sessions: result.rows });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

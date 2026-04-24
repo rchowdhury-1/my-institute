@@ -8,8 +8,10 @@ const pool = new Pool({
 });
 
 async function initDb() {
-  const sql = fs.readFileSync(path.join(__dirname, '../migrations/001_init.sql'), 'utf8');
-  await pool.query(sql);
+  const sql1 = fs.readFileSync(path.join(__dirname, '../migrations/001_init.sql'), 'utf8');
+  await pool.query(sql1);
+  const sql2 = fs.readFileSync(path.join(__dirname, '../migrations/002_phase2.sql'), 'utf8');
+  await pool.query(sql2);
   console.log('Database initialised');
 }
 

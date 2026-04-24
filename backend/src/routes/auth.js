@@ -31,7 +31,7 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
 
   let role = 'student';
-  if (requestedRole === 'teacher' || requestedRole === 'admin') {
+  if (requestedRole === 'teacher' || requestedRole === 'admin' || requestedRole === 'supervisor') {
     const header = req.headers.authorization;
     if (!header?.startsWith('Bearer '))
       return res.status(403).json({ error: 'Only admins can create teacher or admin accounts' });
