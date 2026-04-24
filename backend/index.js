@@ -32,6 +32,11 @@ app.use('/sessions', require('./src/routes/sessions'));
 app.use('/homework', require('./src/routes/homework'));
 app.use('/messages', require('./src/routes/messages'));
 app.use('/notifications', require('./src/routes/notifications'));
+app.use('/exams', require('./src/routes/exams'));
+app.use('/payments', require('./src/routes/payments'));
+app.use('/scholarships', require('./src/routes/scholarships'));
+app.use('/courses', require('./src/routes/courses'));
+app.use('/cms', require('./src/routes/cms'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 

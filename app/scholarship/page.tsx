@@ -3,6 +3,7 @@ import Section from "@/components/shared/Section";
 import AnimatedSection from "@/components/shared/AnimatedSection";
 import Badge from "@/components/shared/Badge";
 import ScholarshipForm from "@/components/forms/ScholarshipForm";
+import ScholarshipApplicants from "@/components/forms/ScholarshipApplicants";
 
 export const metadata: Metadata = {
   title: "Free Scholarship",
@@ -82,6 +83,9 @@ export default function ScholarshipPage() {
           </div>
         </div>
       </Section>
+
+      {/* Sponsor a student section — dynamically loaded */}
+      <ScholarshipApplicants />
     </>
   );
 }

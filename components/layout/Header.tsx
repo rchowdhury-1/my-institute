@@ -47,9 +47,9 @@ export default function Header() {
               <Image
                 src="/images/logo.png"
                 alt="Logo"
-                height={60}
+                height={72}
                 width={160}
-                style={{ height: "60px", width: "auto", objectFit: "contain", filter: scrolled ? "none" : "invert(1)" }}
+                style={{ height: "72px", width: "auto", objectFit: "contain", filter: scrolled ? "none" : "invert(1)" }}
                 priority
               />
             </Link>

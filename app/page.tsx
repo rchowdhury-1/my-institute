@@ -5,6 +5,7 @@ import WhyChooseUs from "@/components/home/WhyChooseUs";
 import Pricing from "@/components/home/Pricing";
 import Testimonials from "@/components/home/Testimonials";
 import CTA from "@/components/home/CTA";
+import CmsSections from "@/components/home/CmsSections";
 
 export const metadata: Metadata = {
   title: "Online Quran, Arabic & Islamic Studies",
@@ -20,6 +21,7 @@ export default function HomePage() {
       <WhyChooseUs />
       <Pricing />
       <Testimonials />
+      <CmsSections />
       <CTA />
     </>
   );
