@@ -28,6 +28,10 @@ app.use('/auth', require('./src/routes/auth'));
 app.use('/students', require('./src/routes/students'));
 app.use('/teachers', require('./src/routes/teachers'));
 app.use('/admin', require('./src/routes/admin'));
+app.use('/sessions', require('./src/routes/sessions'));
+app.use('/homework', require('./src/routes/homework'));
+app.use('/messages', require('./src/routes/messages'));
+app.use('/notifications', require('./src/routes/notifications'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 

@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useState, useEffect } from "react";
 import { Menu } from "lucide-react";
 import MobileMenu from "./MobileMenu";
+import NotificationBell from "./NotificationBell";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -86,6 +87,7 @@ export default function Header() {
 
             {/* CTA + Mobile Toggle */}
             <div className="flex items-center gap-3">
+              <NotificationBell />
               <Link
                 href="/free-trial"
                 className="hidden sm:inline-flex items-center px-4 py-2 rounded-full bg-gold text-white text-sm font-semibold hover:bg-gold-dark transition-colors shadow-sm"

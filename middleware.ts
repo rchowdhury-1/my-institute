@@ -17,10 +17,13 @@ export function middleware(request: NextRequest) {
   if (pathname.startsWith("/teacher") && role && role !== "teacher" && role !== "admin") {
     return NextResponse.redirect(new URL("/login", request.url));
   }
+  if (pathname.startsWith("/supervisor") && role && role !== "supervisor" && role !== "admin") {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/student/:path*", "/teacher/:path*"],
+  matcher: ["/student/:path*", "/teacher/:path*", "/supervisor/:path*"],
 };
