@@ -23,14 +23,20 @@ const app = express();
 
 const allowedOrigins = [
   process.env.CLIENT_URL,
+  process.env.FRONTEND_URL,
   'http://localhost:3000',
   'http://localhost:3001',
 ].filter(Boolean);
+
+console.log('CORS — allowedOrigins:', JSON.stringify(allowedOrigins));
 
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
+    console.log('CORS REJECT — origin:', JSON.stringify(origin));
+    console.log('CORS REJECT — expected:', JSON.stringify(process.env.CLIENT_URL));
+    console.log('CORS REJECT — also expected:', JSON.stringify(process.env.FRONTEND_URL));
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
