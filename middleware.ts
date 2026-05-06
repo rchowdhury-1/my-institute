@@ -53,12 +53,14 @@ export function middleware(request: NextRequest) {
   const isDashboard = dashboardPaths.some((p) => pathname.startsWith(p));
 
   if (isDashboard) {
-    const refreshToken = request.cookies.get("refreshToken");
-    if (!refreshToken) {
+    // refreshToken is httpOnly and set by the Render backend domain — Next.js
+    // middleware on the Vercel domain cannot read cross-domain cookies.
+    // userRole is set by frontend JS after login (same domain) and is the
+    // correct signal to use here. Every page also verifies the JWT itself.
+    const role = request.cookies.get("userRole")?.value;
+    if (!role) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
-
-    const role = request.cookies.get("userRole")?.value;
 
     if (pathname.startsWith("/student") && role && role !== "student") {
       return NextResponse.redirect(new URL("/login", request.url));
