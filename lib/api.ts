@@ -59,7 +59,11 @@ api.interceptors.response.use(
       processQueue(refreshError, null);
       localStorage.clear();
       document.cookie = "userRole=; path=/; max-age=0";
-      window.location.href = "/login";
+      // Only redirect if not already on the login page to prevent a reload loop
+      // when NotificationBell fires with a stale token while the user is on /login.
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;
