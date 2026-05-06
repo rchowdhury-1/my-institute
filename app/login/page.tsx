@@ -29,7 +29,9 @@ export default function LoginPage() {
       // Set a non-httpOnly cookie so middleware can read the role
       document.cookie = `userRole=${user.role}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
 
-      if (user.role === "teacher" || user.role === "admin") {
+      if (user.role === "admin" || user.role === "supervisor") {
+        router.push("/supervisor");
+      } else if (user.role === "teacher") {
         router.push("/teacher/dashboard");
       } else {
         router.push("/student/dashboard");

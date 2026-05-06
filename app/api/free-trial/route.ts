@@ -1,7 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { freeTrialSchema } from "@/lib/validators";
+import { checkRateLimit } from "@/lib/rateLimit";
+
+// 5 submissions per IP per hour
+const RATE_LIMIT = 5;
+const WINDOW_MS = 60 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const { allowed, retryAfter } = checkRateLimit(ip, RATE_LIMIT, WINDOW_MS);
+
+  if (!allowed) {
+    return NextResponse.json(
+      {
+        error:
+          "Too many requests. Please wait a while before submitting again.",
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(retryAfter ?? 3600) },
+      }
+    );
+  }
+
   try {
     const body = await req.json();
     const result = freeTrialSchema.safeParse(body);
@@ -36,7 +58,6 @@ Message:    ${data.message || "—"}
         text: emailBody,
       });
     } else {
-      // Log to console if RESEND_API_KEY is not configured
       console.log("[Free Trial Submission]", emailBody);
     }
 

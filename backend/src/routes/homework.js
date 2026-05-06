@@ -1,17 +1,11 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { notify } = require('../lib/notify');
 const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
 router.use(requireAuth);
-
-async function notify(userId, type, title, message, link = null) {
-  await pool.query(
-    'INSERT INTO notifications (id, user_id, type, title, message, link) VALUES ($1,$2,$3,$4,$5,$6)',
-    [uuidv4(), userId, type, title, message, link]
-  );
-}
 
 // POST /homework  (teacher / admin)
 router.post('/', requireRole('teacher', 'admin'), async (req, res) => {

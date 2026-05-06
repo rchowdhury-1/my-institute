@@ -69,7 +69,7 @@ export default function TeacherHomeworkPage() {
 
     Promise.all([
       api.get("/homework", { headers }),
-      api.get("/admin/students", { headers }).catch(() => ({ data: { students: [] } })),
+      api.get("/teachers/students", { headers }).catch(() => ({ data: { students: [] } })),
     ])
       .then(([hwRes, studentsRes]) => {
         setHomework(hwRes.data.homework);

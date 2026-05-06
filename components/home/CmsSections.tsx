@@ -1,8 +1,3 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import api from "@/lib/api";
-
 interface CmsItem {
   id: string;
   title?: string;
@@ -12,33 +7,24 @@ interface CmsItem {
 }
 
 async function fetchSection(type: string): Promise<CmsItem[]> {
+  const base = process.env.NEXT_PUBLIC_API_URL ?? "";
   try {
-    const res = await api.get(`/cms/${type}`);
-    return res.data.items;
+    const res = await fetch(`${base}/cms/${type}`, { next: { revalidate: 300 } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.items ?? [];
   } catch {
     return [];
   }
 }
 
-export default function CmsSections() {
-  const [ads, setAds] = useState<CmsItem[]>([]);
-  const [islamInfo, setIslamInfo] = useState<CmsItem[]>([]);
-  const [honorList, setHonorList] = useState<CmsItem[]>([]);
-  const [quotes, setQuotes] = useState<CmsItem[]>([]);
-
-  useEffect(() => {
-    Promise.all([
-      fetchSection("advertisements"),
-      fetchSection("islam_info"),
-      fetchSection("honor_list"),
-      fetchSection("quotes"),
-    ]).then(([a, i, h, q]) => {
-      setAds(a);
-      setIslamInfo(i);
-      setHonorList(h);
-      setQuotes(q);
-    });
-  }, []);
+export default async function CmsSections() {
+  const [ads, islamInfo, honorList, quotes] = await Promise.all([
+    fetchSection("advertisements"),
+    fetchSection("islam_info"),
+    fetchSection("honor_list"),
+    fetchSection("quotes"),
+  ]);
 
   return (
     <>

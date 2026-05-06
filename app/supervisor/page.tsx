@@ -45,7 +45,7 @@ export default function SupervisorPage() {
 
   // create session form
   const [showSessionForm, setShowSessionForm] = useState(false);
-  const [sessionForm, setSessionForm] = useState({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "30" });
+  const [sessionForm, setSessionForm] = useState({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "30", subject: "quran", zoom_link: "" });
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -84,6 +84,8 @@ export default function SupervisorPage() {
           teacher_id: sessionForm.teacher_id,
           scheduled_at: new Date(sessionForm.scheduled_at).toISOString(),
           duration_minutes: parseInt(sessionForm.duration_minutes) || 30,
+          subject: sessionForm.subject,
+          zoom_link: sessionForm.zoom_link || undefined,
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -94,7 +96,7 @@ export default function SupervisorPage() {
         student_name: student?.display_name ?? "",
         teacher_name: teacher?.display_name ?? "",
       }, ...prev]);
-      setSessionForm({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "30" });
+      setSessionForm({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "30", subject: "quran", zoom_link: "" });
       setShowSessionForm(false);
     } catch {
       alert("Failed to create session.");
@@ -235,6 +237,22 @@ export default function SupervisorPage() {
                     onChange={(e) => setSessionForm((p) => ({ ...p, duration_minutes: e.target.value }))}
                     placeholder="Duration (minutes)"
                     className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                  />
+                  <select
+                    value={sessionForm.subject}
+                    onChange={(e) => setSessionForm((p) => ({ ...p, subject: e.target.value }))}
+                    className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                  >
+                    <option value="quran">Quran</option>
+                    <option value="arabic">Arabic</option>
+                    <option value="islamic_studies">Islamic Studies</option>
+                  </select>
+                  <input
+                    type="url"
+                    value={sessionForm.zoom_link}
+                    onChange={(e) => setSessionForm((p) => ({ ...p, zoom_link: e.target.value }))}
+                    placeholder="Zoom link (optional)"
+                    className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
                   />
                 </div>
                 <div className="flex gap-2 mt-3">

@@ -1,26 +1,11 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { notify, notifyAdmins } = require('../lib/notify');
 const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
 router.use(requireAuth);
-
-async function notify(userId, type, title, message, link = null) {
-  await pool.query(
-    'INSERT INTO notifications (id, user_id, type, title, message, link) VALUES ($1,$2,$3,$4,$5,$6)',
-    [uuidv4(), userId, type, title, message, link]
-  );
-}
-
-async function notifyAdmins(type, title, message, link = null) {
-  const admins = await pool.query(
-    `SELECT id FROM users WHERE role IN ('admin', 'supervisor')`
-  );
-  for (const row of admins.rows) {
-    await notify(row.id, type, title, message, link);
-  }
-}
 
 // GET /sessions
 router.get('/', async (req, res) => {
@@ -63,16 +48,19 @@ router.get('/', async (req, res) => {
 
 // POST /sessions  (admin / supervisor only)
 router.post('/', requireRole('admin', 'supervisor'), async (req, res) => {
-  const { student_id, teacher_id, scheduled_at, duration_minutes } = req.body;
+  const { student_id, teacher_id, scheduled_at, duration_minutes, subject, zoom_link } = req.body;
   if (!student_id || !teacher_id || !scheduled_at)
     return res.status(400).json({ error: 'student_id, teacher_id and scheduled_at are required' });
+
+  const validSubjects = ['quran', 'arabic', 'islamic_studies'];
+  const sessionSubject = validSubjects.includes(subject) ? subject : 'quran';
 
   try {
     const id = uuidv4();
     const result = await pool.query(
-      `INSERT INTO sessions (id, student_id, teacher_id, scheduled_at, duration_minutes)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [id, student_id, teacher_id, scheduled_at, duration_minutes || 30]
+      `INSERT INTO sessions (id, student_id, teacher_id, scheduled_at, duration_minutes, subject, zoom_link)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [id, student_id, teacher_id, scheduled_at, duration_minutes || 30, sessionSubject, zoom_link || null]
     );
     const session = result.rows[0];
     const dt = new Date(scheduled_at).toLocaleString('en-GB');
@@ -83,6 +71,28 @@ router.post('/', requireRole('admin', 'supervisor'), async (req, res) => {
       `A session has been scheduled for ${dt}`, '/teacher/dashboard');
 
     res.status(201).json({ session });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PATCH /sessions/:id — update zoom link (admin / supervisor / teacher)
+router.patch('/:id', requireRole('admin', 'supervisor', 'teacher'), async (req, res) => {
+  const { zoom_link } = req.body;
+  const { id } = req.params;
+  try {
+    const existing = await pool.query('SELECT * FROM sessions WHERE id=$1', [id]);
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Session not found' });
+
+    if (req.userRole === 'teacher' && existing.rows[0].teacher_id !== req.userId)
+      return res.status(403).json({ error: 'Forbidden' });
+
+    const result = await pool.query(
+      `UPDATE sessions SET zoom_link = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [zoom_link || null, id]
+    );
+    res.json({ session: result.rows[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -168,9 +178,10 @@ router.patch('/:id/reschedule', requireRole('student', 'admin', 'supervisor'), a
 
     const newId = uuidv4();
     const result = await pool.query(
-      `INSERT INTO sessions (id, student_id, teacher_id, scheduled_at, duration_minutes, rescheduled_from)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [newId, session.student_id, session.teacher_id, scheduled_at, session.duration_minutes, id]
+      `INSERT INTO sessions (id, student_id, teacher_id, scheduled_at, duration_minutes, subject, rescheduled_from)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [newId, session.student_id, session.teacher_id, scheduled_at,
+       session.duration_minutes, session.subject || 'quran', id]
     );
 
     const newDt = new Date(scheduled_at).toLocaleString('en-GB');
@@ -213,7 +224,7 @@ router.patch('/:id/complete', requireRole('teacher', 'admin'), async (req, res) 
         await pool.query(`UPDATE packages SET renewal_reminder_sent=true WHERE id=$1`, [pkg.rows[0].id]);
         await notify(session.student_id, 'renewal_reminder', 'Renew Your Package',
           `You have ${remaining} session${remaining !== 1 ? 's' : ''} remaining. Contact us to renew.`,
-          '/packages');
+          '/student/sessions');
         await notifyAdmins('renewal_reminder', 'Student Package Renewal',
           `A student has ${remaining} sessions remaining and needs renewal.`, '/supervisor');
       }

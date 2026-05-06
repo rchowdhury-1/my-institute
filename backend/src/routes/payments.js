@@ -6,10 +6,10 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 router.get('/', requireAuth, async (req, res) => {
   try {
     let result;
-    if (req.user.role === 'teacher') {
+    if (req.userRole === 'teacher') {
       result = await pool.query(
         `SELECT * FROM teacher_payments WHERE teacher_id = $1 ORDER BY year DESC, created_at DESC`,
-        [req.user.id]
+        [req.userId]
       );
     } else {
       result = await pool.query(

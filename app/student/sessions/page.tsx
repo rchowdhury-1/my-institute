@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Calendar, Clock, User, X, RefreshCw, AlertTriangle } from "lucide-react";
+import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink } from "lucide-react";
 
 interface Session {
   id: string;
@@ -12,13 +12,30 @@ interface Session {
   duration_minutes: number;
   status: "scheduled" | "completed" | "cancelled" | "rescheduled";
   cancellation_reason?: string;
+  zoom_link?: string;
+  subject?: string;
 }
 
 interface Pkg {
   package_name: string;
   sessions_remaining: number | null;
   total_lessons: number;
+  expires_at?: string;
   renewal_reminder_sent: boolean;
+}
+
+interface Payment {
+  id: string;
+  amount: string;
+  currency: string;
+  payment_method?: string;
+  notes?: string;
+  created_at: string;
+}
+
+function subjectLabel(s?: string) {
+  if (!s) return "";
+  return s === "quran" ? "Quran" : s === "arabic" ? "Arabic" : "Islamic Studies";
 }
 
 function formatDate(iso: string) {
@@ -41,6 +58,7 @@ export default function StudentSessionsPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [pkg, setPkg] = useState<Pkg | null>(null);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -62,10 +80,12 @@ export default function StudentSessionsPage() {
     Promise.all([
       api.get("/sessions", { headers }),
       api.get("/students/me", { headers }),
+      api.get("/students/payments", { headers }),
     ])
-      .then(([sRes, meRes]) => {
+      .then(([sRes, meRes, payRes]) => {
         setSessions(sRes.data.sessions);
         setPkg(meRes.data.package ?? null);
+        setPayments(payRes.data.payments ?? []);
       })
       .catch(() => setError("Failed to load sessions."))
       .finally(() => setLoading(false));
@@ -167,6 +187,11 @@ export default function StudentSessionsPage() {
               ) : (
                 <p className="text-white/80 text-sm">{pkg.total_lessons} lessons in package</p>
               )}
+              {pkg.expires_at && (
+                <p className={`text-xs mt-1 ${pkg.sessions_remaining !== null && pkg.sessions_remaining <= 2 ? "text-amber-600" : "text-white/60"}`}>
+                  Renewal date: {formatDate(pkg.expires_at)}
+                </p>
+              )}
             </div>
             {pkg.sessions_remaining !== null && pkg.sessions_remaining <= 2 && (
               <AlertTriangle className="text-amber-500 shrink-0" size={24} />
@@ -193,6 +218,9 @@ export default function StudentSessionsPage() {
                       <div className="flex items-center gap-2 text-charcoal">
                         <User size={14} className="text-charcoal/40" />
                         <span className="font-semibold text-sm">{s.teacher_name}</span>
+                        {s.subject && (
+                          <span className="text-xs text-charcoal/40">· {subjectLabel(s.subject)}</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 text-charcoal/55 text-sm">
                         <Calendar size={14} />
@@ -205,6 +233,20 @@ export default function StudentSessionsPage() {
                       Scheduled
                     </span>
                   </div>
+
+                  {/* Join Class button */}
+                  {s.zoom_link && (
+                    <a
+                      href={s.zoom_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mb-3 flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors w-fit"
+                    >
+                      <Video size={14} />
+                      Join Class
+                      <ExternalLink size={12} />
+                    </a>
+                  )}
 
                   {/* Actions */}
                   {cancelId === s.id ? (
@@ -279,7 +321,7 @@ export default function StudentSessionsPage() {
         </section>
 
         {/* History */}
-        <section>
+        <section className="mb-10">
           <h2 className="font-display text-xl font-bold text-charcoal mb-4">Session History</h2>
           {past.length === 0 ? (
             <div className="bg-white rounded-2xl border border-black/5 p-6 text-charcoal/40 text-sm">
@@ -290,7 +332,9 @@ export default function StudentSessionsPage() {
               {past.map((s) => (
                 <div key={s.id} className="bg-white rounded-2xl border border-black/5 p-5 flex items-center justify-between gap-4">
                   <div>
-                    <p className="font-semibold text-charcoal text-sm">{s.teacher_name}</p>
+                    <p className="font-semibold text-charcoal text-sm">{s.teacher_name}
+                      {s.subject && <span className="text-charcoal/40 font-normal"> · {subjectLabel(s.subject)}</span>}
+                    </p>
                     <p className="text-charcoal/50 text-xs mt-0.5">
                       {formatDate(s.scheduled_at)} · {formatTime(s.scheduled_at)}
                     </p>
@@ -306,6 +350,29 @@ export default function StudentSessionsPage() {
             </div>
           )}
         </section>
+
+        {/* Payment History */}
+        {payments.length > 0 && (
+          <section>
+            <h2 className="font-display text-xl font-bold text-charcoal mb-4">Payment History</h2>
+            <div className="space-y-2">
+              {payments.map((p) => (
+                <div key={p.id} className="bg-white rounded-2xl border border-black/5 p-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="font-semibold text-charcoal text-sm">
+                      {p.currency}{parseFloat(p.amount).toFixed(2)}
+                      {p.payment_method && <span className="text-charcoal/40 font-normal"> · {p.payment_method}</span>}
+                    </p>
+                    {p.notes && <p className="text-charcoal/50 text-xs mt-0.5">{p.notes}</p>}
+                  </div>
+                  <p className="text-charcoal/40 text-xs shrink-0">
+                    {new Date(p.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );

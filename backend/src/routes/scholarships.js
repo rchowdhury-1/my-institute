@@ -1,13 +1,16 @@
 const router = require('express').Router();
 const { pool } = require('../db');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 const ADMIN_WHATSAPP = '201067827621';
 
-// GET /scholarships/applicants — public
-router.get('/applicants', async (req, res) => {
+// GET /scholarships/applicants — admin/supervisor only
+router.get('/applicants', requireAuth, requireRole('admin', 'supervisor'), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT sa.id, sa.name, sa.email, sa.created_at,
+      `SELECT sa.id,
+              sa.first_name || ' ' || sa.last_name AS name,
+              sa.email, sa.created_at,
               COALESCE(json_agg(
                 json_build_object(
                   'id', ss.id,
@@ -19,7 +22,7 @@ router.get('/applicants', async (req, res) => {
               ) FILTER (WHERE ss.id IS NOT NULL), '[]') as sponsors
        FROM scholarship_applications sa
        LEFT JOIN scholarship_sponsors ss ON ss.applicant_id = sa.id
-       GROUP BY sa.id, sa.name, sa.email, sa.created_at
+       GROUP BY sa.id, sa.first_name, sa.last_name, sa.email, sa.created_at
        ORDER BY sa.created_at DESC`
     );
     res.json({ applicants: result.rows });
@@ -40,7 +43,7 @@ router.post('/sponsor', async (req, res) => {
       [sponsor_name, sponsor_email || null, applicant_id, parseInt(months_sponsored) || 1, amount ? parseFloat(amount) : null]
     );
     const applicantRes = await pool.query(
-      `SELECT name FROM scholarship_applications WHERE id = $1`,
+      `SELECT first_name || ' ' || last_name AS name FROM scholarship_applications WHERE id = $1`,
       [applicant_id]
     );
     const applicantName = applicantRes.rows[0]?.name ?? 'a student';

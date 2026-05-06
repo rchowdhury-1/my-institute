@@ -8,12 +8,17 @@ const pool = new Pool({
 });
 
 async function initDb() {
-  const sql1 = fs.readFileSync(path.join(__dirname, '../migrations/001_init.sql'), 'utf8');
-  await pool.query(sql1);
-  const sql2 = fs.readFileSync(path.join(__dirname, '../migrations/002_phase2.sql'), 'utf8');
-  await pool.query(sql2);
-  const sql3 = fs.readFileSync(path.join(__dirname, '../migrations/003_phase2b.sql'), 'utf8');
-  await pool.query(sql3);
+  const migrationsDir = path.join(__dirname, '../migrations');
+  const files = [
+    '001_init.sql',
+    '002_phase2.sql',
+    '003_phase2b.sql',
+    '004_zoom_and_indexes.sql',
+  ];
+  for (const file of files) {
+    const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+    await pool.query(sql);
+  }
   console.log('Database initialised');
 }
 

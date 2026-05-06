@@ -11,7 +11,7 @@ router.post('/', requireAuth, requireRole('teacher', 'admin', 'supervisor'), asy
     const examRes = await client.query(
       `INSERT INTO exams (teacher_id, title, description, time_limit_minutes)
        VALUES ($1, $2, $3, $4) RETURNING *`,
-      [req.user.id, title, description || null, time_limit_minutes || null]
+      [req.userId, title, description || null, time_limit_minutes || null]
     );
     const exam = examRes.rows[0];
     if (Array.isArray(questions) && questions.length > 0) {
@@ -38,7 +38,7 @@ router.post('/', requireAuth, requireRole('teacher', 'admin', 'supervisor'), asy
 router.get('/', requireAuth, async (req, res) => {
   try {
     let result;
-    if (req.user.role === 'student') {
+    if (req.userRole === 'student') {
       result = await pool.query(
         `SELECT ea.id, ea.exam_id, ea.status, ea.score, ea.started_at, ea.completed_at, ea.assigned_at,
                 e.title, e.description, e.time_limit_minutes,
@@ -50,9 +50,9 @@ router.get('/', requireAuth, async (req, res) => {
          JOIN users u ON e.teacher_id = u.id
          WHERE ea.student_id = $1
          ORDER BY ea.assigned_at DESC`,
-        [req.user.id]
+        [req.userId]
       );
-    } else if (req.user.role === 'teacher') {
+    } else if (req.userRole === 'teacher') {
       result = await pool.query(
         `SELECT e.*,
                 (SELECT COUNT(*) FROM exam_questions WHERE exam_id = e.id) as question_count,
@@ -61,7 +61,7 @@ router.get('/', requireAuth, async (req, res) => {
          FROM exams e
          WHERE e.teacher_id = $1
          ORDER BY e.created_at DESC`,
-        [req.user.id]
+        [req.userId]
       );
     } else {
       result = await pool.query(
@@ -112,13 +112,12 @@ router.post('/:id/start', requireAuth, requireRole('student'), async (req, res) 
        SET status = 'in_progress', started_at = NOW()
        WHERE exam_id = $1 AND student_id = $2 AND status = 'assigned'
        RETURNING *`,
-      [req.params.id, req.user.id]
+      [req.params.id, req.userId]
     );
     if (result.rowCount === 0) {
-      // Check if already in progress
       const existing = await pool.query(
         `SELECT * FROM exam_assignments WHERE exam_id = $1 AND student_id = $2`,
-        [req.params.id, req.user.id]
+        [req.params.id, req.userId]
       );
       if (existing.rowCount === 0) return res.status(404).json({ error: 'Assignment not found' });
       if (existing.rows[0].status === 'completed') return res.status(400).json({ error: 'Exam already completed' });
@@ -136,13 +135,13 @@ router.post('/:id/start', requireAuth, requireRole('student'), async (req, res) 
 
 // POST /exams/:id/submit — student submits answers, auto-grade
 router.post('/:id/submit', requireAuth, requireRole('student'), async (req, res) => {
-  const { answers } = req.body; // [{ question_id, answer }]
+  const { answers } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const assignRes = await client.query(
       `SELECT * FROM exam_assignments WHERE exam_id = $1 AND student_id = $2`,
-      [req.params.id, req.user.id]
+      [req.params.id, req.userId]
     );
     if (assignRes.rowCount === 0) return res.status(404).json({ error: 'Assignment not found' });
     const assignment = assignRes.rows[0];
@@ -190,7 +189,7 @@ router.post('/:id/submit', requireAuth, requireRole('student'), async (req, res)
 // GET /exams/:id/results
 router.get('/:id/results', requireAuth, async (req, res) => {
   try {
-    if (req.user.role === 'student') {
+    if (req.userRole === 'student') {
       const result = await pool.query(
         `SELECT eq.id as question_id, eq.question, eq.options, eq.correct_answer, eq.points,
                 exa.answer, exa.is_correct,
@@ -201,7 +200,7 @@ router.get('/:id/results', requireAuth, async (req, res) => {
          LEFT JOIN exam_answers exa ON exa.assignment_id = ea.id AND exa.question_id = eq.id
          WHERE ea.exam_id = $1 AND ea.student_id = $2
          ORDER BY eq.id`,
-        [req.params.id, req.user.id]
+        [req.params.id, req.userId]
       );
       res.json({ results: result.rows });
     } else {
