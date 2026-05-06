@@ -4,6 +4,8 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('../db');
 const { sendVerificationEmail } = require('../email');
+const { requireAuth } = require('../middleware/auth');
+const { hashPassword } = require('../utils/password');
 
 const router = express.Router();
 
@@ -85,6 +87,9 @@ router.post('/login', async (req, res) => {
     if (!user.email_verified)
       return res.status(403).json({ error: 'Please verify your email before logging in.' });
 
+    if (user.is_active === false)
+      return res.status(401).json({ error: 'Your account has been turned off. Please contact the institute.' });
+
     const accessToken = signAccess(user.id, user.role);
     const refreshToken = signRefresh(user.id);
     const refreshId = uuidv4();
@@ -99,7 +104,10 @@ router.post('/login', async (req, res) => {
     res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS);
     res.json({
       accessToken,
-      user: { id: user.id, display_name: user.display_name, email: user.email, role: user.role },
+      user: {
+        id: user.id, display_name: user.display_name, email: user.email, role: user.role,
+        must_change_password: user.must_change_password || false,
+      },
     });
   } catch (err) {
     console.error(err);
@@ -161,6 +169,25 @@ router.post('/logout', async (req, res) => {
   }
   res.clearCookie('refreshToken', COOKIE_OPTIONS);
   res.json({ message: 'Logged out' });
+});
+
+// POST /auth/change-password — requires valid JWT; flips must_change_password to false
+router.post('/change-password', requireAuth, async (req, res) => {
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 8)
+    return res.status(400).json({ error: 'New password must be at least 8 characters' });
+
+  try {
+    const hash = await hashPassword(newPassword);
+    await pool.query(
+      'UPDATE users SET password_hash=$1, must_change_password=false WHERE id=$2',
+      [hash, req.userId]
+    );
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // GET /auth/me

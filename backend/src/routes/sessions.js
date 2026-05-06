@@ -55,12 +55,25 @@ router.post('/', requireRole('admin', 'supervisor'), async (req, res) => {
   const validSubjects = ['quran', 'arabic', 'islamic_studies'];
   const sessionSubject = validSubjects.includes(subject) ? subject : 'quran';
 
+  const dur = parseInt(duration_minutes) || 60;
+  if (dur % 30 !== 0 || dur < 30)
+    return res.status(400).json({ error: 'Duration must be 30, 60, 90, or 120 minutes' });
+
   try {
+    // Snapshot the student's current rate at session creation time
+    const studentResult = await pool.query(
+      "SELECT hourly_rate, currency FROM users WHERE id=$1 AND role='student'",
+      [student_id]
+    );
+    const { hourly_rate = null, currency = null } = studentResult.rows[0] || {};
+
     const id = uuidv4();
     const result = await pool.query(
-      `INSERT INTO sessions (id, student_id, teacher_id, scheduled_at, duration_minutes, subject, zoom_link)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [id, student_id, teacher_id, scheduled_at, duration_minutes || 30, sessionSubject, zoom_link || null]
+      `INSERT INTO sessions
+         (id, student_id, teacher_id, scheduled_at, duration_minutes, subject, zoom_link,
+          rate_at_creation, currency_at_creation)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [id, student_id, teacher_id, scheduled_at, dur, sessionSubject, zoom_link || null, hourly_rate, currency]
     );
     const session = result.rows[0];
     const dt = new Date(scheduled_at).toLocaleString('en-GB');

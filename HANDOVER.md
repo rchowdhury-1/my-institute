@@ -10,12 +10,14 @@ Plain-English guide for running and maintaining the platform.
 2. [Logging In as Admin](#2-logging-in-as-admin)
 3. [Rotating the Admin Password](#3-rotating-the-admin-password)
 4. [Environment Variables](#4-environment-variables)
-5. [How to Add a Teacher](#5-how-to-add-a-teacher)
-6. [How to Log a Student Payment](#6-how-to-log-a-student-payment)
-7. [How to Add a Session with a Zoom Link](#7-how-to-add-a-session-with-a-zoom-link)
-8. [If WhatsApp Notifications Stop Working](#8-if-whatsapp-notifications-stop-working)
-9. [Enabling Phase 2B Features](#9-enabling-phase-2b-features)
-10. [Who Built What](#10-who-built-what)
+5. [How to Add a Teacher or Student](#5-how-to-add-a-teacher-or-student)
+6. [First Login Experience](#6-first-login-experience)
+7. [How to Log a Student Payment](#7-how-to-log-a-student-payment)
+8. [How to Add a Session with a Zoom Link](#8-how-to-add-a-session-with-a-zoom-link)
+9. [If WhatsApp Notifications Stop Working](#9-if-whatsapp-notifications-stop-working)
+10. [Enabling Phase 2B Features](#10-enabling-phase-2b-features)
+11. [Known Limitations](#11-known-limitations)
+12. [Who Built What](#12-who-built-what)
 
 ---
 
@@ -107,7 +109,7 @@ Go to **Render → Service → Environment**.
 | `DATABASE_URL` | Neon PostgreSQL connection string |
 | `JWT_SECRET` | Signs access tokens (keep secret, 64+ chars) |
 | `JWT_REFRESH_SECRET` | Signs refresh tokens (keep secret, 64+ chars) |
-| `RESEND_API_KEY` | Email sending |
+| `RESEND_API_KEY` | Email sending (welcome emails to new teachers/students). Leave blank to disable — credentials are still shown on screen so you can share them manually. |
 | `CONTACT_EMAIL` | Admin notification email |
 | `CLIENT_URL` | Exact URL of the Vercel frontend (CORS) |
 | `NODE_ENV` | Set to `production` |
@@ -120,34 +122,50 @@ Go to **Render → Service → Environment**.
 
 ---
 
-## 5. How to Add a Teacher
+## 5. How to Add a Teacher or Student
 
-Teachers need a user account. There is no self-registration for teachers — an admin creates the account.
+Use the admin dashboard — no developer or Render shell access needed.
 
-1. Go to **Render → Service → Shell** (or connect via the Render console).
-2. Run:
+### Adding a teacher
 
-```bash
-node -e "
-const bcrypt = require('bcryptjs');
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-bcrypt.hash('temporaryPassword123', 12).then(hash => {
-  pool.query(
-    'INSERT INTO users (email, password_hash, display_name, role) VALUES (\$1, \$2, \$3, \$4)',
-    ['teacher@example.com', hash, 'Teacher Name', 'teacher']
-  ).then(() => { console.log('Teacher created'); pool.end(); });
-});
-"
-```
+1. Log in as admin and go to **Manage Teachers** (link in the Supervisor Dashboard → People tab, or go directly to `/admin/teachers`).
+2. Click **Add Teacher**.
+3. Fill in: full name (required), email address (required), phone number, subject/specialisation, short bio.
+4. Either enter a password or click **Generate for me** — a secure random password will be created.
+5. Make sure **"Email login details to this teacher"** is checked if you want them to receive their credentials by email.
+6. Click **Add Teacher**.
 
-3. Share the email and temporary password with the teacher. Ask them to change their password on first login.
+A green banner will appear showing the temporary password — **copy it before navigating away**. The teacher will be asked to set a new password when they first log in.
 
-**Or** — a developer can add a route to the admin dashboard in a future update to handle this through the UI.
+### Adding a student
+
+1. Go to **Manage Students** (link in the Supervisor Dashboard → People tab, or go directly to `/admin/students`).
+2. Click **Add Student**.
+3. Fill in: full name, email address, hourly rate (required), and any other optional details.
+4. If the student has paid a prepaid bundle upfront, expand **"+ Add a prepaid bundle"** and fill in the bundle label, number of lessons, and expiry date.
+5. Click **Add Student**.
+
+### If welcome emails are not being received
+
+Welcome emails require the `RESEND_API_KEY` to be set in Render. If it is not configured, emails are silently skipped — but the temporary password is still shown on screen in the green banner. You can share it manually via WhatsApp or any other method.
+
+To activate emails: add your Resend API key to **Render → Service → Environment → `RESEND_API_KEY`**, then redeploy.
 
 ---
 
-## 6. How to Log a Student Payment
+## 6. First Login Experience
+
+When a teacher or student logs in for the first time after being added by an admin, they will be taken to a **Set Your Password** page instead of their dashboard. They must enter a new password (at least 8 characters) before they can access anything else.
+
+After setting their password, they are taken straight to their dashboard.
+
+If a teacher or student forgets their temporary password before logging in for the first time, an admin can generate a new one from their card on the Manage Teachers or Manage Students page — click **Reset password**.
+
+> **Note for the admin:** Each teacher/student card shows an amber "Awaiting first login" badge until they complete their first login. This badge disappears once they set their password.
+
+---
+
+## 7. How to Log a Student Payment
 
 Payments are recorded manually in the admin dashboard.
 
@@ -161,7 +179,7 @@ The student will see this in their **Sessions** page under **Payment History**.
 
 ---
 
-## 7. How to Add a Session with a Zoom Link
+## 8. How to Add a Session with a Zoom Link
 
 1. Log in as admin/supervisor.
 2. Go to the **Supervisor Dashboard**.
@@ -183,7 +201,7 @@ PATCH /sessions/:id
 
 ---
 
-## 8. If WhatsApp Notifications Stop Working
+## 9. If WhatsApp Notifications Stop Working
 
 The platform does **not** send automatic WhatsApp messages. Instead, it builds a pre-filled WhatsApp link that staff or students click to open a chat. No API key or webhook is involved.
 
@@ -194,7 +212,7 @@ The platform does **not** send automatic WhatsApp messages. Instead, it builds a
 
 ---
 
-## 9. Enabling Phase 2B Features
+## 10. Enabling Phase 2B Features
 
 The following features are built and tested but disabled in production. They are gated by environment variables so no code needs to change — just flip the flag.
 
@@ -220,7 +238,14 @@ When a flag is `false`:
 
 ---
 
-## 10. Who Built What
+## 11. Known Limitations
+
+**Password reset does not immediately log out other devices.**
+When an admin resets a teacher or student's password, any existing login sessions for that person remain valid until their access tokens expire naturally (within 15 minutes). There is no forced logout across all devices on password reset. This is a known limitation — strict session invalidation on password reset is a future improvement.
+
+---
+
+## 12. Who Built What
 
 The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 
