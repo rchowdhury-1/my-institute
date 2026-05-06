@@ -1,43 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import Button from "@/components/shared/Button";
 
-export default function LoginPage() {
+export default function ChangePasswordPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (!token) {
+      router.push("/login");
+    } else {
+      setAuthChecked(true);
+    }
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStatus("loading");
     setErrorMessage("");
 
+    if (newPassword.length < 8) {
+      setStatus("error");
+      setErrorMessage("Password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setStatus("error");
+      setErrorMessage("Passwords do not match.");
+      return;
+    }
+
+    setStatus("loading");
+
     try {
-      const res = await api.post("/auth/login", { email, password });
-      const { accessToken, user } = res.data;
+      const token = localStorage.getItem("accessToken");
+      await api.post(
+        "/auth/change-password",
+        { newPassword },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("userRole", user.role);
-      localStorage.setItem("userId", user.id);
-      localStorage.setItem("displayName", user.display_name);
-
-      // Set a non-httpOnly cookie so middleware can read the role
-      document.cookie = `userRole=${user.role}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
-
-      // Admin-provisioned accounts must set a new password on first login
-      if (user.must_change_password) {
-        router.push("/change-password");
-        return;
-      }
-
-      if (user.role === "admin" || user.role === "supervisor") {
+      const role = localStorage.getItem("userRole");
+      if (role === "admin" || role === "supervisor") {
         router.push("/supervisor");
-      } else if (user.role === "teacher") {
+      } else if (role === "teacher") {
         router.push("/teacher/dashboard");
       } else {
         router.push("/student/dashboard");
@@ -45,11 +58,15 @@ export default function LoginPage() {
     } catch (err: unknown) {
       setStatus("error");
       const message =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        "Invalid email or password.";
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || "Something went wrong. Please try again.";
       setErrorMessage(message);
     }
   };
+
+  // Don't render anything until the auth check completes —
+  // avoids a flash of the form before the redirect fires.
+  if (!authChecked) return null;
 
   const inputClass =
     "w-full px-4 py-3 rounded-xl border border-black/10 bg-white text-charcoal placeholder:text-charcoal/35 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 focus:border-emerald-primary transition-all text-sm";
@@ -58,21 +75,28 @@ export default function LoginPage() {
     <main className="min-h-screen bg-cream flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="font-display text-3xl font-bold text-charcoal mb-2">Welcome back</h1>
-          <p className="text-charcoal/60 text-sm">Sign in to your My Institute account</p>
+          <h1 className="font-display text-3xl font-bold text-charcoal mb-2">
+            Set your password
+          </h1>
+          <p className="text-charcoal/60 text-sm">
+            Choose a new password to secure your account.
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-black/5 p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">
-                Email Address
+                New password
               </label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                type="password"
+                value={newPassword}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  setStatus("idle");
+                }}
+                placeholder="••••••••"
                 required
                 className={inputClass}
               />
@@ -80,12 +104,15 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">
-                Password
+                Confirm new password
               </label>
               <input
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setStatus("idle");
+                }}
                 placeholder="••••••••"
                 required
                 className={inputClass}
@@ -104,17 +131,10 @@ export default function LoginPage() {
               disabled={status === "loading"}
               className="w-full py-4"
             >
-              {status === "loading" ? "Signing in…" : "Sign In"}
+              {status === "loading" ? "Saving…" : "Set password"}
             </Button>
           </form>
         </div>
-
-        <p className="text-center mt-6 text-sm text-charcoal/50">
-          Don&apos;t have an account?{" "}
-          <a href="/free-trial" className="text-emerald-primary font-medium hover:underline">
-            Book a free trial
-          </a>
-        </p>
       </div>
     </main>
   );

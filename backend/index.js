@@ -89,6 +89,8 @@ const PORT = process.env.PORT || 5000;
 
 initDb()
   .then(() => {
+    const resendKey = process.env.RESEND_API_KEY;
+    console.log(`RESEND_API_KEY: ${resendKey ? resendKey.slice(0, 6) + '...' : 'NOT SET — welcome emails disabled'}`);
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
   .catch((err) => {
