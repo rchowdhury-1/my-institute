@@ -4,12 +4,13 @@ import { Mail, Phone } from "lucide-react";
 import { BRAND } from "@/lib/content";
 
 const QUICK_LINKS = [
-  { href: "/", label: "Home" },
   { href: "/about", label: "About" },
   { href: "/packages", label: "Packages" },
-  { href: "/free-trial", label: "Free Trial" },
+  { href: "/learn-about-islam", label: "Learn About Islam" },
+  { href: "/community", label: "Community" },
   { href: "/scholarship", label: "Scholarship" },
   { href: "/donate", label: "Donate" },
+  { href: "/login", label: "Login" },
 ];
 
 // Social media SVG icons

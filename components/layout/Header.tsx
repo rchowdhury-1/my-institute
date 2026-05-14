@@ -8,17 +8,10 @@ import MobileMenu from "./MobileMenu";
 import NotificationBell from "./NotificationBell";
 
 const NAV_LINKS = [
-  { href: "/", label: "Home" },
   { href: "/about", label: "About" },
   { href: "/packages", label: "Packages" },
-  { href: "/free-trial", label: "Free Trial" },
-  { href: "/recorded-courses", label: "Recorded Courses" },
-  { href: "/donate", label: "Donate" },
-];
-
-const LOGIN_LINKS = [
-  { href: "/login?role=student", label: "Student Login" },
-  { href: "/login?role=teacher", label: "Teacher Login" },
+  { href: "/learn-about-islam", label: "Learn About Islam" },
+  { href: "/community", label: "Community" },
 ];
 
 export default function Header() {
@@ -69,25 +62,21 @@ export default function Header() {
                   {link.label}
                 </Link>
               ))}
-              <div className={`w-px h-4 ${scrolled ? "bg-black/10" : "bg-white/30"}`} />
-              {LOGIN_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`text-sm font-medium transition-colors ${
-                    scrolled
-                      ? "text-charcoal/60 hover:text-emerald-primary"
-                      : "text-cream/70 hover:text-white"
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              ))}
             </nav>
 
             {/* CTA + Mobile Toggle */}
             <div className="flex items-center gap-3">
               <NotificationBell />
+              <Link
+                href="/login"
+                className={`hidden lg:inline-flex text-sm font-medium transition-colors ${
+                  scrolled
+                    ? "text-charcoal hover:text-emerald-primary"
+                    : "text-cream hover:text-white"
+                }`}
+              >
+                Login
+              </Link>
               <Link
                 href="/free-trial"
                 className="hidden sm:inline-flex items-center px-4 py-2 rounded-full bg-gold text-white text-sm font-semibold hover:bg-gold-dark transition-colors shadow-sm"
@@ -113,7 +102,7 @@ export default function Header() {
       <MobileMenu
         isOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
-        links={[...NAV_LINKS, ...LOGIN_LINKS]}
+        links={NAV_LINKS}
       />
     </>
   );

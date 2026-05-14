@@ -58,6 +58,23 @@ export default function MobileMenu({ isOpen, onClose, links }: MobileMenuProps) 
               {link.label}
             </Link>
           ))}
+
+          <div className="mx-6 my-3 border-t border-gray-100" />
+
+          <Link
+            href="/login"
+            onClick={onClose}
+            className="block px-6 py-3 text-charcoal font-medium hover:bg-emerald-primary/5 hover:text-emerald-primary transition-colors"
+          >
+            Login
+          </Link>
+          <Link
+            href="/donate"
+            onClick={onClose}
+            className="block px-6 py-3 text-charcoal/60 font-medium hover:bg-emerald-primary/5 hover:text-emerald-primary transition-colors"
+          >
+            Donate
+          </Link>
         </nav>
 
         <div className="p-5 border-t border-gray-100">

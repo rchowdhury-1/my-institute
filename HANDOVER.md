@@ -10,14 +10,19 @@ Plain-English guide for running and maintaining the platform.
 2. [Logging In as Admin](#2-logging-in-as-admin)
 3. [Rotating the Admin Password](#3-rotating-the-admin-password)
 4. [Environment Variables](#4-environment-variables)
-5. [How to Add a Teacher or Student](#5-how-to-add-a-teacher-or-student)
+5. [How to Add a Teacher](#5-how-to-add-a-teacher)
 6. [First Login Experience](#6-first-login-experience)
+6.5. [How to Add a Student](#65-how-to-add-a-student)
 7. [How to Log a Student Payment](#7-how-to-log-a-student-payment)
 8. [How to Add a Session with a Zoom Link](#8-how-to-add-a-session-with-a-zoom-link)
 9. [If WhatsApp Notifications Stop Working](#9-if-whatsapp-notifications-stop-working)
 10. [Enabling Phase 2B Features](#10-enabling-phase-2b-features)
-11. [Known Limitations](#11-known-limitations)
-12. [Who Built What](#12-who-built-what)
+11. [Resetting a User's Password](#11-resetting-a-users-password)
+12. [How to Add a Community Post](#12-how-to-add-a-community-post)
+13. [How to Manage Homepage Entries](#13-how-to-manage-homepage-entries)
+14. [How to Handle Revert Application Inquiries](#14-how-to-handle-revert-application-inquiries)
+15. [Known Limitations](#15-known-limitations)
+16. [Who Built What](#16-who-built-what)
 
 ---
 
@@ -47,7 +52,7 @@ After logging in you will be taken to the Supervisor Dashboard at `/supervisor`.
 
 **Do this before going live.** The default password is `changeme123`.
 
-**Option A — via the Neon console (recommended)**
+**Via the Neon console (recommended)**
 
 1. Log into [Neon](https://console.neon.tech) and open the MY Institute project.
 2. Click **SQL Editor** in the left menu.
@@ -59,23 +64,7 @@ SET password_hash = crypt('YOUR_NEW_PASSWORD', gen_salt('bf', 12))
 WHERE email = 'razwanul712@gmail.com';
 ```
 
-> If `crypt` is not available, ask a developer to run `node seed-admin.js` after updating the password in that file, **then remove the password from the file immediately**.
-
-**Option B — via the backend (developer step)**
-
-SSH into the Render service or open a Render shell, then run:
-
-```bash
-node -e "
-const bcrypt = require('bcryptjs');
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-bcrypt.hash('YOUR_NEW_PASSWORD', 12).then(hash => {
-  pool.query('UPDATE users SET password_hash = \$1 WHERE email = \$2', [hash, 'razwanul712@gmail.com'])
-    .then(() => { console.log('Done'); pool.end(); });
-});
-"
-```
+> If `crypt` is not available, ask a developer to enable the `pgcrypto` extension: `CREATE EXTENSION IF NOT EXISTS pgcrypto;`
 
 ---
 
@@ -109,7 +98,7 @@ Go to **Render → Service → Environment**.
 | `DATABASE_URL` | Neon PostgreSQL connection string |
 | `JWT_SECRET` | Signs access tokens (keep secret, 64+ chars) |
 | `JWT_REFRESH_SECRET` | Signs refresh tokens (keep secret, 64+ chars) |
-| `RESEND_API_KEY` | Email sending (welcome emails to new teachers/students). Leave blank to disable — credentials are still shown on screen so you can share them manually. |
+| `RESEND_API_KEY` | Required for sending welcome and password-reset emails to teachers and students. If absent, account creation still succeeds and the temp password is shown on screen — share it manually. |
 | `CONTACT_EMAIL` | Admin notification email |
 | `CLIENT_URL` | Exact URL of the Vercel frontend (CORS) |
 | `NODE_ENV` | Set to `production` |
@@ -122,34 +111,17 @@ Go to **Render → Service → Environment**.
 
 ---
 
-## 5. How to Add a Teacher or Student
+## 5. How to Add a Teacher
 
-Use the admin dashboard — no developer or Render shell access needed.
-
-### Adding a teacher
-
-1. Log in as admin and go to **Manage Teachers** (link in the Supervisor Dashboard → People tab, or go directly to `/admin/teachers`).
-2. Click **Add Teacher**.
-3. Fill in: full name (required), email address (required), phone number, subject/specialisation, short bio.
-4. Either enter a password or click **Generate for me** — a secure random password will be created.
-5. Make sure **"Email login details to this teacher"** is checked if you want them to receive their credentials by email.
-6. Click **Add Teacher**.
-
-A green banner will appear showing the temporary password — **copy it before navigating away**. The teacher will be asked to set a new password when they first log in.
-
-### Adding a student
-
-1. Go to **Manage Students** (link in the Supervisor Dashboard → People tab, or go directly to `/admin/students`).
-2. Click **Add Student**.
-3. Fill in: full name, email address, hourly rate (required), and any other optional details.
-4. If the student has paid a prepaid bundle upfront, expand **"+ Add a prepaid bundle"** and fill in the bundle label, number of lessons, and expiry date.
-5. Click **Add Student**.
-
-### If welcome emails are not being received
-
-Welcome emails require the `RESEND_API_KEY` to be set in Render. If it is not configured, emails are silently skipped — but the temporary password is still shown on screen in the green banner. You can share it manually via WhatsApp or any other method.
-
-To activate emails: add your Resend API key to **Render → Service → Environment → `RESEND_API_KEY`**, then redeploy.
+1. Log in as admin.
+2. Click **Manage Teachers** in the People tab on the supervisor dashboard, or navigate directly to `/admin/teachers`.
+3. Click **Add Teacher** (top right).
+4. Fill in name and email (required). Phone, specialisation, and bio are optional and can be skipped.
+5. Either type a temporary password or click **Generate for me**.
+6. Tick **"Email login details to this teacher"** if you want them to receive the password by email automatically.
+7. Click **Add Teacher**.
+8. The temporary password is shown once in the green banner — **copy it now** if you will need to share it manually.
+9. The teacher will be asked to change their password on first login.
 
 ---
 
@@ -159,9 +131,24 @@ When a teacher or student logs in for the first time after being added by an adm
 
 After setting their password, they are taken straight to their dashboard.
 
-If a teacher or student forgets their temporary password before logging in for the first time, an admin can generate a new one from their card on the Manage Teachers or Manage Students page — click **Reset password**.
+If a teacher or student forgets their temporary password before logging in for the first time, an admin can generate a new one from their card on the Manage Teachers or Manage Students page — see [Section 11](#11-resetting-a-users-password).
 
 > **Note for the admin:** Each teacher/student card shows an amber "Awaiting first login" badge until they complete their first login. This badge disappears once they set their password.
+
+---
+
+## 6.5. How to Add a Student
+
+1. Log in as admin.
+2. Click **Manage Students** in the People tab on the supervisor dashboard, or navigate directly to `/admin/students`.
+3. Click **Add Student** (top right).
+4. Fill in name, email, and hourly rate (defaults to £10). Currency defaults to GBP.
+5. Tick **"This student is on a legacy (grandfathered) rate"** if they were agreed at a different rate before October 2025.
+6. Optionally: assign a teacher from the dropdown, add a guardian/parent name, or add a prepaid lesson bundle (bundle label, total lessons, and expiry date — all three must be filled in together).
+7. Either type a temporary password or click **Generate for me**.
+8. Click **Add Student**.
+9. The temporary password is shown once in the green banner — **copy it now** if you will need to share it manually.
+10. The student will be asked to change their password on first login.
 
 ---
 
@@ -184,7 +171,7 @@ The student will see this in their **Sessions** page under **Payment History**.
 1. Log in as admin/supervisor.
 2. Go to the **Supervisor Dashboard**.
 3. Under the **Sessions** tab, click **Add Session**.
-4. Fill in: student, teacher, date/time, duration, subject.
+4. Fill in: student, teacher, date/time, duration (30 / 60 / 90 / 120 min), subject.
 5. Paste the Zoom meeting URL into the **Zoom link** field.
 6. Click **Create Session**.
 
@@ -230,7 +217,7 @@ The following features are built and tested but disabled in production. They are
 | **Teacher salary tracking** | `NEXT_PUBLIC_FEATURE_TEACHER_SALARY` | `FEATURE_TEACHER_SALARY` | Admin generates monthly salary statements per teacher based on completed sessions. Teacher can view their own payment history. Pages: `/teacher/payments`, admin Payments → Teacher tab. |
 | **Messaging** | `NEXT_PUBLIC_FEATURE_MESSAGING` | `FEATURE_MESSAGING` | In-app messaging between students, teachers, and supervisors. Pages: `/student/messages`, `/teacher/messages`. |
 | **Recorded courses** | `NEXT_PUBLIC_FEATURE_RECORDED_COURSES` | `FEATURE_RECORDED_COURSES` | Public course catalogue with video lessons. Admin can manage courses. Pages: `/recorded-courses`, `/admin/courses`. |
-| **Scholarship & donations** | `NEXT_PUBLIC_FEATURE_SCHOLARSHIP_SPONSORSHIP` | `FEATURE_SCHOLARSHIP_SPONSORSHIP` | Public scholarship application form, donor/sponsor flow, admin applicant management. Pages: `/scholarship`, `/donate`, `/admin/scholarships`. |
+| **Scholarship sponsorship** | `NEXT_PUBLIC_FEATURE_SCHOLARSHIP_SPONSORSHIP` | `FEATURE_SCHOLARSHIP_SPONSORSHIP` | Admin scholarship applicant management and sponsorship flow. Page: `/admin/scholarships`. Note: the public `/scholarship`, `/donate`, and `/community` pages are always on and not behind this flag. |
 
 When a flag is `false`:
 - **Frontend**: navigating to those URLs redirects to the homepage.
@@ -238,14 +225,74 @@ When a flag is `false`:
 
 ---
 
-## 11. Known Limitations
+## 11. Resetting a User's Password
 
-**Password reset does not immediately log out other devices.**
-When an admin resets a teacher or student's password, any existing login sessions for that person remain valid until their access tokens expire naturally (within 15 minutes). There is no forced logout across all devices on password reset. This is a known limitation — strict session invalidation on password reset is a future improvement.
+1. Go to `/admin/teachers` or `/admin/students`.
+2. Find the user's card and click **Reset password**.
+3. Click **Yes** to confirm.
+4. The new temporary password is shown once in the banner — **copy it now**.
+5. Tick **"Also email this user"** if you want them to receive it by email.
+6. Share the password with the user — they will be asked to change it on next login.
 
 ---
 
-## 12. Who Built What
+## 12. How to Add a Community Post
+
+1. Log in as admin or supervisor.
+2. Navigate to **Manage Community** from the People tab, or go to `/admin/newsfeed`.
+3. Click **Add Post**.
+4. Choose a type: Quote of the Month, Honour List, or General Update.
+5. Fill in the title and body (required). Optionally paste a public image URL (e.g. from imgur.com).
+6. Tick **Show on homepage** if you want this post to appear in the "From Our Community" section on the homepage (max 3 shown, newest first).
+7. Click **Publish post**.
+8. To edit or delete a post later, use the Edit/Delete buttons on each post card.
+
+**Public page:** All posts are visible at `/community` (linked from the header as "Community").
+
+---
+
+## 13. How to Manage Homepage Entries
+
+The homepage "From Our Community" section is automatic:
+- It shows the 3 most recent posts with **Show on homepage** ticked.
+- If fewer than 3 are ticked, it shows whatever exists (1 or 2).
+- If none are ticked, the section is hidden entirely.
+
+To add/remove posts from the homepage:
+1. Go to `/admin/newsfeed`.
+2. Click **Edit** on a post.
+3. Tick or untick **Show on homepage**.
+4. Click **Save**.
+
+---
+
+## 14. How to Handle Revert Application Inquiries
+
+When a new Muslim fills in the form at `/learn-about-islam`:
+1. Their application is saved to the database.
+2. A WhatsApp message is sent to Mohammad's phone (+20 106 782 7621) with the applicant's details.
+3. The applicant sees a success message on the page.
+
+To view and manage applications:
+1. Go to `/admin/revert-applications` (accessible from the supervisor dashboard → People tab → **Revert Applications**).
+2. Each application shows the person's name, email, phone, country, and story.
+3. Use the status dropdown to track progress: **New → Contacted → Enrolled → Archived**.
+
+---
+
+## 15. Known Limitations
+
+- **Password reset does not immediately log out other devices.** When an admin resets a teacher or student's password, any existing login sessions for that person remain valid until their access tokens expire naturally (within 15 minutes). There is no forced logout across all devices on password reset. Strict session invalidation is a future improvement.
+
+- **Welcome email rendering tested in Gmail only.** Outlook and iCloud rendering should be verified before adding teachers or students who use those providers.
+
+- **Lesson durations are limited to 30, 60, 90, or 120 minutes.** If longer or custom durations are needed in future, the dropdown in the session creation form can be extended.
+
+- **The `seed-admin.js` script is preserved for emergency recovery only.** Use the admin UI (`/admin/teachers`, `/admin/students`) for all normal account creation — do not run seed scripts in production unless recovering from data loss.
+
+---
+
+## 16. Who Built What
 
 The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 
@@ -254,6 +301,7 @@ The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 - Student dashboard — sessions, homework, package tracking
 - Teacher dashboard — lesson schedule, homework assignment and grading
 - Supervisor/admin dashboard — session management, people directory, student payments
+- Admin management pages — `/admin/teachers` and `/admin/students` with full CRUD
 - Authentication — email/password, JWT refresh tokens, role-based access
 - Transactional email via Resend
 - Database on Neon (PostgreSQL), backend on Render, frontend on Vercel
