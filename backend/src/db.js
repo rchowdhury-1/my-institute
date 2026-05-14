@@ -14,6 +14,10 @@ async function initDb() {
     '002_phase2.sql',
     '003_phase2b.sql',
     '004_zoom_and_indexes.sql',
+    '005_user_profiles.sql',
+    '006_scholarship_fields.sql',
+    '007_newsfeed.sql',
+    '008_revert_applications.sql',
   ];
   for (const file of files) {
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');

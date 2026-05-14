@@ -53,6 +53,9 @@ app.use('/sessions',      require('./src/routes/sessions'));
 app.use('/homework',      require('./src/routes/homework'));
 app.use('/notifications', require('./src/routes/notifications'));
 app.use('/cms',           require('./src/routes/cms'));
+app.use('/scholarship-apply', require('./src/routes/scholarship-apply'));
+app.use('/newsfeed',          require('./src/routes/newsfeed'));
+app.use('/revert-apply',      require('./src/routes/revert-apply'));
 
 // ─── Phase 2B — feature-flagged routes ───────────────────────────────────────
 app.use('/exams',        featureFlag('FEATURE_EXAMS'),                  require('./src/routes/exams'));
