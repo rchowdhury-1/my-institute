@@ -6,7 +6,7 @@ import { BRAND } from "@/lib/content";
 const QUICK_LINKS = [
   { href: "/about", label: "About" },
   { href: "/packages", label: "Packages" },
-  { href: "/learn-about-islam", label: "Learn About Islam" },
+  { href: "/learn-about-islam", label: "Reverts" },
   { href: "/community", label: "Community" },
   { href: "/scholarship", label: "Scholarship" },
   { href: "/donate", label: "Donate" },

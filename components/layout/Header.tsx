@@ -10,7 +10,7 @@ import NotificationBell from "./NotificationBell";
 const NAV_LINKS = [
   { href: "/about", label: "About" },
   { href: "/packages", label: "Packages" },
-  { href: "/learn-about-islam", label: "Learn About Islam" },
+  { href: "/learn-about-islam", label: "Reverts" },
   { href: "/community", label: "Community" },
 ];
 
@@ -35,34 +35,35 @@ export default function Header() {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 md:h-20">
-            {/* Logo */}
-            <Link href="/" className="flex items-center">
-              <Image
-                src="/images/logo.png"
-                alt="Logo"
-                height={72}
-                width={160}
-                style={{ height: "72px", width: "auto", objectFit: "contain", filter: scrolled ? "none" : "invert(1)" }}
-                priority
-              />
-            </Link>
+            {/* Logo + Nav cluster */}
+            <div className="flex items-center gap-9">
+              <Link href="/" className="flex items-center">
+                <Image
+                  src="/images/logo.png"
+                  alt="Logo"
+                  height={72}
+                  width={160}
+                  style={{ height: "72px", width: "auto", objectFit: "contain", filter: scrolled ? "none" : "invert(1)" }}
+                  priority
+                />
+              </Link>
 
-            {/* Desktop Nav */}
-            <nav className="hidden lg:flex items-center gap-6">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`text-sm font-medium transition-colors ${
-                    scrolled
-                      ? "text-charcoal hover:text-emerald-primary"
-                      : "text-cream hover:text-white"
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
+              <nav className="hidden lg:flex items-center gap-7">
+                {NAV_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`text-sm font-medium transition-colors ${
+                      scrolled
+                        ? "text-charcoal hover:text-emerald-primary"
+                        : "text-cream hover:text-white"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </nav>
+            </div>
 
             {/* CTA + Mobile Toggle */}
             <div className="flex items-center gap-3">

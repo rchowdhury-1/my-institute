@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import Button from "@/components/shared/Button";
 
@@ -12,6 +13,19 @@ export default function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: [0.21, 0.47, 0.32, 0.98] }}
         >
+          {/* Logo crown */}
+          <div className="flex justify-center mb-7">
+            <Image
+              src="/images/logo.png"
+              alt="My Institute"
+              width={160}
+              height={160}
+              className="h-[75px] sm:h-[95px] lg:h-[120px] w-auto"
+              style={{ filter: "brightness(0) invert(1)", objectFit: "contain" }}
+              priority
+            />
+          </div>
+
           {/* Decorative line */}
           <div className="flex items-center justify-center gap-3 mb-8">
             <div className="h-px w-12 bg-gold/60" />
