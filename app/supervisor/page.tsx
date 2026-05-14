@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Plus, Trash2, Calendar, Send } from "lucide-react";
+import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart } from "lucide-react";
+import Link from "next/link";
 
 interface Session {
   id: string;
@@ -45,7 +46,7 @@ export default function SupervisorPage() {
 
   // create session form
   const [showSessionForm, setShowSessionForm] = useState(false);
-  const [sessionForm, setSessionForm] = useState({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "30", subject: "quran", zoom_link: "" });
+  const [sessionForm, setSessionForm] = useState({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "60", subject: "quran", zoom_link: "" });
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -96,7 +97,7 @@ export default function SupervisorPage() {
         student_name: student?.display_name ?? "",
         teacher_name: teacher?.display_name ?? "",
       }, ...prev]);
-      setSessionForm({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "30", subject: "quran", zoom_link: "" });
+      setSessionForm({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "60", subject: "quran", zoom_link: "" });
       setShowSessionForm(false);
     } catch {
       alert("Failed to create session.");
@@ -212,6 +213,7 @@ export default function SupervisorPage() {
                   <select
                     value={sessionForm.student_id}
                     onChange={(e) => setSessionForm((p) => ({ ...p, student_id: e.target.value }))}
+                    data-testid="select-student"
                     className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
                   >
                     <option value="">Select student…</option>
@@ -220,6 +222,7 @@ export default function SupervisorPage() {
                   <select
                     value={sessionForm.teacher_id}
                     onChange={(e) => setSessionForm((p) => ({ ...p, teacher_id: e.target.value }))}
+                    data-testid="select-teacher"
                     className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
                   >
                     <option value="">Select teacher…</option>
@@ -231,13 +234,17 @@ export default function SupervisorPage() {
                     onChange={(e) => setSessionForm((p) => ({ ...p, scheduled_at: e.target.value }))}
                     className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
                   />
-                  <input
-                    type="number"
+                  <select
                     value={sessionForm.duration_minutes}
                     onChange={(e) => setSessionForm((p) => ({ ...p, duration_minutes: e.target.value }))}
-                    placeholder="Duration (minutes)"
+                    data-testid="select-duration"
                     className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
-                  />
+                  >
+                    <option value={30}>30 min</option>
+                    <option value={60}>60 min</option>
+                    <option value={90}>90 min</option>
+                    <option value={120}>120 min</option>
+                  </select>
                   <select
                     value={sessionForm.subject}
                     onChange={(e) => setSessionForm((p) => ({ ...p, subject: e.target.value }))}
@@ -313,6 +320,37 @@ export default function SupervisorPage() {
 
         {/* People tab */}
         {activeTab === "people" && (
+          <div>
+          <div className="flex flex-wrap gap-3 mb-6">
+            <Link
+              href="/admin/teachers"
+              data-testid="link-manage-teachers"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
+            >
+              <Users size={15} /> Manage Teachers →
+            </Link>
+            <Link
+              href="/admin/students"
+              data-testid="link-manage-students"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
+            >
+              <GraduationCap size={15} /> Manage Students →
+            </Link>
+            <Link
+              href="/admin/newsfeed"
+              data-testid="link-manage-newsfeed"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
+            >
+              <Newspaper size={15} /> Manage Community →
+            </Link>
+            <Link
+              href="/admin/revert-applications"
+              data-testid="link-manage-reverts"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
+            >
+              <Heart size={15} /> Revert Applications →
+            </Link>
+          </div>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <h2 className="font-display text-xl font-bold text-charcoal mb-4">
@@ -340,6 +378,7 @@ export default function SupervisorPage() {
                 ))}
               </div>
             </div>
+          </div>
           </div>
         )}
 

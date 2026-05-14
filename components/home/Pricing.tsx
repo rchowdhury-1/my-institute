@@ -32,10 +32,10 @@ export default function Pricing() {
               }`}
             >
               {pkg.featured && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                  <Badge variant="gold" className="shadow-md">
+                <div className="flex justify-center mb-4">
+                  <span className="inline-block bg-gold text-white text-xs font-bold uppercase tracking-widest px-6 py-2 rounded-full shadow-md">
                     Most Popular
-                  </Badge>
+                  </span>
                 </div>
               )}
 

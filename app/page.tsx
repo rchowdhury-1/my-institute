@@ -6,6 +6,8 @@ import Pricing from "@/components/home/Pricing";
 import Testimonials from "@/components/home/Testimonials";
 import CTA from "@/components/home/CTA";
 import CmsSections from "@/components/home/CmsSections";
+import CommunityPreview from "@/components/home/CommunityPreview";
+import RevertBanner from "@/components/home/RevertBanner";
 
 export const metadata: Metadata = {
   title: "Online Quran, Arabic & Islamic Studies",
@@ -22,6 +24,8 @@ export default function HomePage() {
       <Pricing />
       <Testimonials />
       <CmsSections />
+      <CommunityPreview />
+      <RevertBanner />
       <CTA />
     </>
   );
