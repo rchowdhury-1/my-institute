@@ -52,12 +52,11 @@ export interface FreeTrialFormData {
 }
 
 export interface ScholarshipFormData {
-  firstName: string;
-  lastName: string;
+  fullName: string;
   email: string;
   phone: string;
-  yearOfBirth: string;
-  howHeard: "Friends" | "Social Media" | "Other";
-  interests: ("Learn Quran" | "Learn Arabic" | "Learn Islamic Studies")[];
-  aboutYourself: string;
+  country?: string;
+  age?: string;
+  story?: string;
+  source?: string;
 }

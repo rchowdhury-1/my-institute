@@ -3,14 +3,14 @@ import type { BrandInfo, Service, Package, RecordedCourse, Testimonial } from "@
 export const BRAND: BrandInfo = {
   name: "My Institute",
   tagline: "Learn Quran, Arabic & Islam",
-  email: "myinstitute2026@gmail.com",
+  email: "my.institute@gmail.com",
   phone: "+201067827621",
   whatsapp: "+201067827621",
   social: {
     facebook: "https://www.facebook.com/share/17xu4XZuwg/",
     instagram: "https://www.instagram.com/myinstitute.offecial",
-    tiktok: "https://www.tiktok.com/@myinstitute.official",
-    youtube: "https://www.youtube.com/@myinstitute.official",
+    tiktok: "https://www.tiktok.com/@my.institute",
+    youtube: "https://www.youtube.com/@MY.Institute.Official",
   },
 };
 

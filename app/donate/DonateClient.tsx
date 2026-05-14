@@ -1,32 +1,19 @@
 "use client";
 
-// TODO: Integrate Stripe for payment processing
+// TODO: Integrate Paymob for payment processing (Phase 2)
 
-import { useState } from "react";
-import { Heart } from "lucide-react";
+import { Heart, BookOpen, Users, GraduationCap } from "lucide-react";
 import AnimatedSection from "@/components/shared/AnimatedSection";
 import Badge from "@/components/shared/Badge";
 import Section from "@/components/shared/Section";
-import { BRAND } from "@/lib/content";
 
-type Frequency = "One time" | "Weekly" | "Monthly" | "Yearly";
-const FREQUENCIES: Frequency[] = ["One time", "Weekly", "Monthly", "Yearly"];
-const PRESET_AMOUNTS = [5, 10, 20, 50, 100, 200];
+const whatsappUrl =
+  "https://wa.me/201067827621?text=" +
+  encodeURIComponent(
+    "Hi, I'd like to sponsor a student. Please let me know how to donate."
+  );
 
 export default function DonateClient() {
-  const [frequency, setFrequency] = useState<Frequency>("Monthly");
-  const [selectedAmount, setSelectedAmount] = useState<number | null>(20);
-  const [customAmount, setCustomAmount] = useState("");
-
-  const amount = customAmount ? parseFloat(customAmount) : selectedAmount;
-
-  const whatsappNumber = BRAND.whatsapp.replace(/\+/g, "");
-  const freqLabel = frequency === "One time" ? "one-time" : frequency.toLowerCase();
-  const message = encodeURIComponent(
-    `Assalamu Alaikum! I'd like to make a ${freqLabel} donation of £${amount || "?"} to help students obtain a free scholarship. Please let me know how to proceed.`
-  );
-  const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${message}`;
-
   return (
     <>
       {/* Hero */}
@@ -36,127 +23,106 @@ export default function DonateClient() {
             Donate
           </Badge>
           <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-            Make a Difference
+            Sponsor a Student &mdash; Give the Gift of Quran
           </h1>
           <p className="text-white/70 text-lg max-w-2xl mx-auto">
-            Change starts with people like you. Your donation helps make a real
-            impact, one action at a time. Together, we can do more.
+            Many students dream of learning Quran but cannot afford lessons.
+            Your donation makes that dream a reality.
           </p>
         </div>
       </section>
 
       <Section>
-        <div className="max-w-xl mx-auto">
+        <div className="max-w-2xl mx-auto">
+          {/* Why donate */}
           <AnimatedSection>
-            <div className="bg-white rounded-2xl p-8 border border-black/5 shadow-sm">
-              {/* Frequency selector */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-charcoal mb-3">
-                  Donation Frequency
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {FREQUENCIES.map((f) => (
-                    <button
-                      key={f}
-                      type="button"
-                      onClick={() => setFrequency(f)}
-                      className={`py-2.5 rounded-xl text-xs font-semibold border transition-all ${
-                        frequency === f
-                          ? "bg-emerald-primary text-white border-emerald-primary"
-                          : "bg-transparent text-charcoal/70 border-black/10 hover:border-emerald-primary/40"
-                      }`}
-                    >
-                      {f}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Amount selector */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-charcoal mb-3">
-                  Select Amount{" "}
-                  <span className="text-charcoal/40 font-normal text-xs">
-                    — Helping students obtain a free scholarship
-                  </span>
-                </label>
-                <div className="grid grid-cols-3 gap-3 mb-3">
-                  {PRESET_AMOUNTS.map((a) => (
-                    <button
-                      key={a}
-                      type="button"
-                      onClick={() => {
-                        setSelectedAmount(a);
-                        setCustomAmount("");
-                      }}
-                      className={`py-3 rounded-xl text-sm font-semibold border transition-all ${
-                        selectedAmount === a && !customAmount
-                          ? "bg-emerald-primary text-white border-emerald-primary"
-                          : "bg-transparent text-charcoal border-black/10 hover:border-emerald-primary/40"
-                      }`}
-                    >
-                      £{a}
-                    </button>
-                  ))}
-                </div>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/50 text-sm font-medium">
-                    £
-                  </span>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="Custom amount"
-                    value={customAmount}
-                    onChange={(e) => {
-                      setCustomAmount(e.target.value);
-                      setSelectedAmount(null);
-                    }}
-                    className="w-full pl-8 pr-4 py-3 rounded-xl border border-black/10 bg-white text-charcoal placeholder:text-charcoal/35 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 focus:border-emerald-primary transition-all text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Summary */}
-              {amount && amount > 0 && (
-                <div className="mb-6 p-4 bg-emerald-primary/5 rounded-xl border border-emerald-primary/15">
-                  <p className="text-sm text-charcoal/70">
-                    You are donating{" "}
-                    <strong className="text-charcoal">
-                      £{amount} {freqLabel}
-                    </strong>{" "}
-                    to help students obtain a free scholarship.
-                  </p>
-                </div>
-              )}
-
-              {/* Donate Button */}
-              <a
-                href={amount && amount > 0 ? whatsappUrl : "#"}
-                target={amount && amount > 0 ? "_blank" : undefined}
-                rel="noopener noreferrer"
-                className={`flex items-center justify-center gap-2 w-full py-4 rounded-full font-semibold text-sm transition-all ${
-                  amount && amount > 0
-                    ? "bg-gold text-white hover:bg-gold-dark shadow-sm hover:shadow-md"
-                    : "bg-charcoal/10 text-charcoal/40 cursor-not-allowed pointer-events-none"
-                }`}
-              >
-                <Heart size={16} />
-                {amount && amount > 0
-                  ? `Donate £${amount} via WhatsApp`
-                  : "Select an amount to donate"}
-              </a>
-
-              <p className="mt-4 text-center text-xs text-charcoal/40">
-                You will be redirected to WhatsApp to complete your donation.
+            <div className="text-center mb-12">
+              <h2 className="font-display text-2xl md:text-3xl font-bold text-charcoal mb-4">
+                Your Sadaqah, Their Education
+              </h2>
+              <p className="text-charcoal/65 text-sm md:text-base leading-relaxed max-w-xl mx-auto">
+                Every donation goes directly towards funding one-to-one Quran,
+                Arabic, and Islamic Studies lessons for students who cannot
+                afford them. 100% of your contribution covers teaching fees
+                &mdash; nothing is taken for admin or overheads.
               </p>
             </div>
           </AnimatedSection>
 
-          <AnimatedSection delay={0.15} className="mt-8 text-center">
+          {/* Impact cards */}
+          <AnimatedSection delay={0.1}>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
+              {[
+                {
+                  icon: BookOpen,
+                  title: "Fund a Lesson",
+                  text: "Cover the cost of a private Quran lesson for a student in need.",
+                },
+                {
+                  icon: Users,
+                  title: "Sponsor a Student",
+                  text: "Provide ongoing lessons so a student can complete their Quran journey.",
+                },
+                {
+                  icon: GraduationCap,
+                  title: "Ongoing Reward",
+                  text: "The Prophet \u2E17 said: \u201CThe best of you are those who learn the Quran and teach it.\u201D",
+                },
+              ].map((card) => (
+                <div
+                  key={card.title}
+                  className="bg-white rounded-2xl p-6 border border-black/5 shadow-sm text-center"
+                >
+                  <div className="w-10 h-10 rounded-full bg-emerald-primary/10 flex items-center justify-center mx-auto mb-3">
+                    <card.icon size={18} className="text-emerald-primary" />
+                  </div>
+                  <h3 className="font-display text-sm font-bold text-charcoal mb-1">
+                    {card.title}
+                  </h3>
+                  <p className="text-xs text-charcoal/60 leading-relaxed">
+                    {card.text}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </AnimatedSection>
+
+          {/* CTA card */}
+          <AnimatedSection delay={0.2}>
+            <div className="bg-white rounded-2xl p-8 border border-black/5 shadow-sm text-center">
+              <Heart
+                size={32}
+                className="text-gold mx-auto mb-4"
+              />
+              <h3 className="font-display text-xl font-bold text-charcoal mb-2">
+                Ready to Make a Difference?
+              </h3>
+              <p className="text-charcoal/60 text-sm mb-6 max-w-md mx-auto">
+                Get in touch with us on WhatsApp to arrange your donation.
+                Our team will guide you through the process.
+              </p>
+
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full bg-gold text-white font-semibold text-sm hover:bg-gold-dark shadow-sm hover:shadow-md transition-all"
+              >
+                <Heart size={16} />
+                Donate via WhatsApp
+              </a>
+
+              <p className="mt-4 text-xs text-charcoal/40">
+                Direct online donation coming soon.
+              </p>
+            </div>
+          </AnimatedSection>
+
+          <AnimatedSection delay={0.3} className="mt-8 text-center">
             <p className="text-charcoal/60 text-sm leading-relaxed max-w-md mx-auto">
-              All donations go directly towards funding scholarships for students who
-              cannot afford lessons. JazakAllah Khayran for your generosity.
+              JazakAllah Khayran for your generosity. Every contribution,
+              no matter how small, helps a student on their journey with
+              the Quran.
             </p>
           </AnimatedSection>
         </div>

@@ -25,7 +25,7 @@ const PHASE2B_GATES: Array<{ prefixes: string[]; flag: string }> = [
     flag: "NEXT_PUBLIC_FEATURE_MESSAGING",
   },
   {
-    prefixes: ["/scholarship", "/donate", "/admin/scholarships"],
+    prefixes: ["/admin/scholarships"],
     flag: "NEXT_PUBLIC_FEATURE_SCHOLARSHIP_SPONSORSHIP",
   },
 ];
@@ -96,9 +96,7 @@ export const config = {
     "/teacher/:path*",
     "/supervisor/:path*",
     "/admin/:path*",
-    // Phase 2B public routes (feature-gated)
+    // Phase 2B feature-gated routes
     "/recorded-courses/:path*",
-    "/scholarship/:path*",
-    "/donate/:path*",
   ],
 };

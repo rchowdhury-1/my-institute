@@ -40,15 +40,16 @@ export async function POST(req: NextRequest) {
     const emailBody = `
 New Scholarship Application
 ============================
-Name:          ${data.firstName} ${data.lastName}
-Email:         ${data.email}
-Phone:         ${data.phone}
-Year of Birth: ${data.yearOfBirth}
-How Heard:     ${data.howHeard}
-Interests:     ${data.interests.join(", ")}
+Name:    ${data.fullName}
+Email:   ${data.email}
+Phone:   ${data.phone}
+Country: ${data.country || "Not provided"}
+Age:     ${data.age || "Not provided"}
 
-About Themselves:
-${data.aboutYourself}
+Story:
+${data.story || "Not provided"}
+
+How they heard about us: ${data.source || "Not provided"}
     `.trim();
 
     if (process.env.RESEND_API_KEY) {
@@ -57,8 +58,8 @@ ${data.aboutYourself}
 
       await resend.emails.send({
         from: "My Institute <noreply@myinstitute.com>",
-        to: process.env.CONTACT_EMAIL || "myinstitute2026@gmail.com",
-        subject: `Scholarship Application — ${data.firstName} ${data.lastName}`,
+        to: process.env.CONTACT_EMAIL || "my.institute@gmail.com",
+        subject: `Scholarship Application — ${data.fullName}`,
         text: emailBody,
       });
     } else {
