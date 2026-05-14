@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "MY Institute — Backend API",
   "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
@@ -17,9 +20,6 @@
     "pg": "^8.11.3",
     "resend": "^2.1.0",
     "uuid": "^9.0.0"
-  },
-  "optionalDependencies": {
-    "@sentry/node": "^8.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
