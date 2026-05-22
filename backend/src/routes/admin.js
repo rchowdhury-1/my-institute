@@ -638,6 +638,56 @@ router.patch('/revert-applications/:id', async (req, res) => {
   }
 });
 
+// ─── Teacher Hours ──────────────────────────────────────────────────────────
+
+// GET /admin/teacher-hours — monthly teaching hours per teacher
+router.get('/teacher-hours', async (req, res) => {
+  const now = new Date();
+  const month = req.query.month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  // Validate YYYY-MM format
+  if (!/^\d{4}-\d{2}$/.test(month))
+    return res.status(400).json({ error: 'month must be in YYYY-MM format' });
+
+  const [year, mon] = month.split('-').map(Number);
+  const startDate = new Date(Date.UTC(year, mon - 1, 1));
+  const endDate = new Date(Date.UTC(year, mon, 1));
+
+  try {
+    const result = await pool.query(
+      `SELECT
+         u.id AS teacher_id,
+         u.display_name,
+         COALESCE(SUM(s.duration_minutes) FILTER (WHERE s.status = 'completed'), 0)::int AS total_minutes,
+         COUNT(s.id) FILTER (WHERE s.status = 'completed')::int AS completed_sessions,
+         COUNT(s.id) FILTER (WHERE s.status = 'cancelled')::int AS cancelled_sessions,
+         COUNT(s.id) FILTER (WHERE s.status = 'rescheduled')::int AS rescheduled_sessions
+       FROM users u
+       LEFT JOIN sessions s
+         ON s.teacher_id = u.id
+         AND s.scheduled_at >= $1
+         AND s.scheduled_at < $2
+       WHERE u.role = 'teacher' AND u.is_active = true
+       ${req.query.teacher_id ? 'AND u.id = $3' : ''}
+       GROUP BY u.id, u.display_name
+       ORDER BY total_minutes DESC, u.display_name ASC`,
+      req.query.teacher_id
+        ? [startDate.toISOString(), endDate.toISOString(), req.query.teacher_id]
+        : [startDate.toISOString(), endDate.toISOString()]
+    );
+
+    const teachers = result.rows.map(r => ({
+      ...r,
+      total_hours: Math.round((r.total_minutes / 60) * 10) / 10,
+    }));
+
+    res.json({ month, teachers });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ─── Newsfeed ───────────────────────────────────────────────────────────────
 
 // GET /admin/newsfeed — all posts, newest first, paginated

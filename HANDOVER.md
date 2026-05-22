@@ -21,8 +21,9 @@ Plain-English guide for running and maintaining the platform.
 12. [How to Add a Community Post](#12-how-to-add-a-community-post)
 13. [How to Manage Homepage Entries](#13-how-to-manage-homepage-entries)
 14. [How to Handle Revert Application Inquiries](#14-how-to-handle-revert-application-inquiries)
-15. [Known Limitations](#15-known-limitations)
-16. [Who Built What](#16-who-built-what)
+15. [Checking Teacher Hours for Salary](#15-checking-teacher-hours-for-salary)
+16. [Known Limitations](#16-known-limitations)
+17. [Who Built What](#17-who-built-what)
 
 ---
 
@@ -280,7 +281,22 @@ To view and manage applications:
 
 ---
 
-## 15. Known Limitations
+## 15. Checking Teacher Hours for Salary
+
+1. Log in as admin or supervisor.
+2. Click **Teacher Hours** from the People tab on the supervisor dashboard, or navigate directly to `/admin/teacher-hours`.
+3. The current month is shown by default. Use the left/right arrows to navigate to previous or future months.
+4. Each teacher row shows:
+   - **Total hours** (large emerald number) — this is the number to use for salary calculation.
+   - **Completed sessions** — how many sessions were marked as completed that month.
+   - **Cancelled / Rescheduled** — shown for context but **not** counted toward paid hours.
+5. The summary bar at the top shows the total hours across all teachers for the month.
+
+> **Note:** There is currently no per-teacher hourly pay rate in the system. To auto-calculate salary amounts, a teacher pay rate field would need to be added in a future update. For now, multiply the hours shown by each teacher's agreed rate manually.
+
+---
+
+## 16. Known Limitations
 
 - **Password reset does not immediately log out other devices.** When an admin resets a teacher or student's password, any existing login sessions for that person remain valid until their access tokens expire naturally (within 15 minutes). There is no forced logout across all devices on password reset. Strict session invalidation is a future improvement.
 
@@ -292,7 +308,7 @@ To view and manage applications:
 
 ---
 
-## 16. Who Built What
+## 17. Who Built What
 
 The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 

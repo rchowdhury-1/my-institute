@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart } from "lucide-react";
+import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock } from "lucide-react";
 import Link from "next/link";
 
 interface Session {
@@ -342,6 +342,13 @@ export default function SupervisorPage() {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
             >
               <Newspaper size={15} /> Manage Community →
+            </Link>
+            <Link
+              href="/admin/teacher-hours"
+              data-testid="link-teacher-hours"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
+            >
+              <Clock size={15} /> Teacher Hours →
             </Link>
             <Link
               href="/admin/revert-applications"
