@@ -99,7 +99,7 @@ Go to **Render → Service → Environment**.
 | `DATABASE_URL` | Neon PostgreSQL connection string |
 | `JWT_SECRET` | Signs access tokens (keep secret, 64+ chars) |
 | `JWT_REFRESH_SECRET` | Signs refresh tokens (keep secret, 64+ chars) |
-| `RESEND_API_KEY` | Required for sending welcome and password-reset emails to teachers and students. If absent, account creation still succeeds and the temp password is shown on screen — share it manually. |
+| `RESEND_API_KEY` | Required for sending welcome emails to teachers and students from `noreply@my-institute.com`. Domain verified (SPF/DKIM/DMARC). If absent, account creation still succeeds and the temp password is shown on screen — share it manually. |
 | `CONTACT_EMAIL` | Admin notification email |
 | `CLIENT_URL` | Exact URL of the Vercel frontend (CORS) |
 | `NODE_ENV` | Set to `production` |
@@ -319,7 +319,7 @@ The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 - Supervisor/admin dashboard — session management, people directory, student payments
 - Admin management pages — `/admin/teachers` and `/admin/students` with full CRUD
 - Authentication — email/password, JWT refresh tokens, role-based access
-- Transactional email via Resend
+- Transactional email via Resend (sends from `noreply@my-institute.com`, domain verified)
 - Database on Neon (PostgreSQL), backend on Render, frontend on Vercel
 
 **Phase 2B (built, feature-flagged off)**

@@ -5,7 +5,7 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
 }
 
-const FROM = process.env.EMAIL_FROM || 'noreply@myinstitute.com';
+const FROM = 'MY Institute <noreply@my-institute.com>';
 const BRAND_COLOR = '#065f46';
 
 async function sendVerificationEmail({ to, name, verificationUrl }) {

@@ -52,7 +52,7 @@ Message:    ${data.message || "—"}
       const resend = new Resend(process.env.RESEND_API_KEY);
 
       await resend.emails.send({
-        from: "My Institute <noreply@myinstitute.com>",
+        from: "MY Institute <noreply@my-institute.com>",
         to: process.env.CONTACT_EMAIL || "myinstitute2026@gmail.com",
         subject: `Free Trial Request — ${data.firstName} ${data.lastName}`,
         text: emailBody,

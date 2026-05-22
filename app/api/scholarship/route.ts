@@ -57,7 +57,7 @@ How they heard about us: ${data.source || "Not provided"}
       const resend = new Resend(process.env.RESEND_API_KEY);
 
       await resend.emails.send({
-        from: "My Institute <noreply@myinstitute.com>",
+        from: "MY Institute <noreply@my-institute.com>",
         to: process.env.CONTACT_EMAIL || "my.institute@gmail.com",
         subject: `Scholarship Application — ${data.fullName}`,
         text: emailBody,
