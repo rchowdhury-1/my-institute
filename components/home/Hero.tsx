@@ -13,8 +13,8 @@ export default function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: [0.21, 0.47, 0.32, 0.98] }}
         >
-          {/* Logo crown */}
-          <div className="flex justify-center mb-7">
+          {/* Logo crown — hidden on mobile to avoid duplication with header logo */}
+          <div className="hidden md:flex justify-center mb-7">
             <Image
               src="/images/logo.png"
               alt="My Institute"
