@@ -165,6 +165,7 @@ export default function Footer() {
           <p className="text-gray-500 text-sm">
             © 2026 {BRAND.name}. All rights reserved.
           </p>
+          <p className="text-gray-600 text-xs mt-2">Website made by <a href="https://portfolio-project-tau-olive.vercel.app" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-white transition-colors">Razwanul Chowdhury</a></p>
         </div>
       </div>
     </footer>
