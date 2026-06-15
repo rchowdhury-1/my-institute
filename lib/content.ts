@@ -3,7 +3,7 @@ import type { BrandInfo, Service, Package, RecordedCourse, Testimonial } from "@
 export const BRAND: BrandInfo = {
   name: "My Institute",
   tagline: "Learn Quran, Arabic & Islam",
-  email: "my.institute@gmail.com",
+  email: "my.institute2027@gmail.com",
   phone: "+201067827621",
   whatsapp: "+201067827621",
   social: {

@@ -58,7 +58,7 @@ How they heard about us: ${data.source || "Not provided"}
 
       await resend.emails.send({
         from: "MY Institute <noreply@my-institute.com>",
-        to: process.env.CONTACT_EMAIL || "my.institute@gmail.com",
+        to: process.env.CONTACT_EMAIL || "my.institute2027@gmail.com",
         subject: `Scholarship Application — ${data.fullName}`,
         text: emailBody,
       });

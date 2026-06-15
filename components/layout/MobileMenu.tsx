@@ -9,9 +9,11 @@ interface MobileMenuProps {
   isOpen: boolean;
   onClose: () => void;
   links: { href: string; label: string }[];
+  loggedIn?: boolean;
+  dashboardHref?: string;
 }
 
-export default function MobileMenu({ isOpen, onClose, links }: MobileMenuProps) {
+export default function MobileMenu({ isOpen, onClose, links, loggedIn, dashboardHref = "/student/dashboard" }: MobileMenuProps) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -62,11 +64,11 @@ export default function MobileMenu({ isOpen, onClose, links }: MobileMenuProps) 
           <div className="mx-6 my-3 border-t border-gray-100" />
 
           <Link
-            href="/login"
+            href={loggedIn ? dashboardHref : "/login"}
             onClick={onClose}
             className="block px-6 py-3 text-charcoal font-medium hover:bg-emerald-primary/5 hover:text-emerald-primary transition-colors"
           >
-            Login
+            {loggedIn ? "Dashboard" : "Login"}
           </Link>
           <Link
             href="/donate"

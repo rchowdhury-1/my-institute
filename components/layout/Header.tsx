@@ -17,10 +17,16 @@ const NAV_LINKS = [
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [dashboardHref, setDashboardHref] = useState("/student/dashboard");
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll);
+    setLoggedIn(!!localStorage.getItem("accessToken"));
+    const role = document.cookie.match(/(?:^|; )userRole=([^;]*)/)?.[1];
+    if (role === "admin" || role === "supervisor") setDashboardHref("/supervisor");
+    else if (role === "teacher") setDashboardHref("/teacher/dashboard");
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
@@ -69,14 +75,14 @@ export default function Header() {
             <div className="flex items-center gap-3">
               <NotificationBell />
               <Link
-                href="/login"
+                href={loggedIn ? dashboardHref : "/login"}
                 className={`hidden lg:inline-flex text-sm font-medium transition-colors ${
                   scrolled
                     ? "text-charcoal hover:text-emerald-primary"
                     : "text-cream hover:text-white"
                 }`}
               >
-                Login
+                {loggedIn ? "Dashboard" : "Login"}
               </Link>
               <Link
                 href="/free-trial"
@@ -104,6 +110,8 @@ export default function Header() {
         isOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
         links={NAV_LINKS}
+        loggedIn={loggedIn}
+        dashboardHref={dashboardHref}
       />
     </>
   );

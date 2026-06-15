@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { Video, ExternalLink } from "lucide-react";
 
 interface Lesson {
   id: string;
@@ -12,6 +13,7 @@ interface Lesson {
   status: string;
   student_name: string;
   notes?: string;
+  zoom_link?: string;
 }
 
 interface Teacher {
@@ -178,15 +180,29 @@ export default function TeacherDashboard() {
               {upcomingLessons
                 .filter((l) => !isToday(l.scheduled_at))
                 .map((l) => (
-                  <div key={l.id} className="bg-white rounded-2xl border border-black/5 p-5 flex items-center justify-between gap-4">
-                    <div>
-                      <p className="font-semibold text-charcoal">{subjectLabel(l.subject)}</p>
-                      <p className="text-charcoal/55 text-sm mt-0.5">with {l.student_name} · {l.duration_minutes} min</p>
+                  <div key={l.id} className="bg-white rounded-2xl border border-black/5 p-5">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-semibold text-charcoal">{subjectLabel(l.subject)}</p>
+                        <p className="text-charcoal/55 text-sm mt-0.5">with {l.student_name} · {l.duration_minutes} min</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-medium text-charcoal">{formatDate(l.scheduled_at)}</p>
+                        <p className="text-charcoal/55 text-sm">{formatTime(l.scheduled_at)}</p>
+                      </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-medium text-charcoal">{formatDate(l.scheduled_at)}</p>
-                      <p className="text-charcoal/55 text-sm">{formatTime(l.scheduled_at)}</p>
-                    </div>
+                    {l.zoom_link && (
+                      <a
+                        href={l.zoom_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
+                      >
+                        <Video size={14} />
+                        Join Session
+                        <ExternalLink size={12} />
+                      </a>
+                    )}
                   </div>
                 ))}
             </div>
@@ -228,6 +244,19 @@ function LessonCard({
           </span>
         ) : null}
       </div>
+
+      {!done && lesson.zoom_link && (
+        <a
+          href={lesson.zoom_link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mb-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
+        >
+          <Video size={14} />
+          Join Session
+          <ExternalLink size={12} />
+        </a>
+      )}
 
       {!done && (
         <>

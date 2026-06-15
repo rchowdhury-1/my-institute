@@ -42,6 +42,7 @@ export default function SupervisorPage() {
   const [teachers, setTeachers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const messagingEnabled = process.env.NEXT_PUBLIC_FEATURE_MESSAGING === "true";
   const [activeTab, setActiveTab] = useState<"sessions" | "people" | "message">("sessions");
 
   // create session form
@@ -54,6 +55,13 @@ export default function SupervisorPage() {
   const [msgForm, setMsgForm] = useState({ receiver_id: "", content: "" });
   const [sending, setSending] = useState(false);
   const [msgSent, setMsgSent] = useState(false);
+
+  const handleLogout = async () => {
+    await api.post("/auth/logout", {}).catch(() => {});
+    localStorage.clear();
+    document.cookie = "userRole=; path=/; max-age=0";
+    router.push("/login");
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -159,7 +167,15 @@ export default function SupervisorPage() {
   return (
     <main className="min-h-screen bg-cream">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <h1 className="font-display text-3xl font-bold text-charcoal mb-2">Supervisor Dashboard</h1>
+        <div className="flex items-start justify-between mb-2">
+          <h1 className="font-display text-3xl font-bold text-charcoal">Supervisor Dashboard</h1>
+          <button
+            onClick={handleLogout}
+            className="text-sm text-charcoal/50 hover:text-charcoal transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
         <p className="text-charcoal/50 text-sm mb-8">Manage sessions, students and teachers</p>
 
         {/* Stats row */}
@@ -178,7 +194,7 @@ export default function SupervisorPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-white rounded-full p-1 border border-black/5 mb-6 w-fit">
-          {(["sessions", "people", "message"] as const).map((tab) => (
+          {(["sessions", "people", ...(messagingEnabled ? ["message" as const] : [])] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -390,7 +406,7 @@ export default function SupervisorPage() {
         )}
 
         {/* Message tab */}
-        {activeTab === "message" && (
+        {activeTab === "message" && messagingEnabled && (
           <div className="max-w-lg">
             <h2 className="font-display text-xl font-bold text-charcoal mb-4">Send Message</h2>
             <div className="bg-white rounded-2xl border border-black/5 p-6 space-y-3">
