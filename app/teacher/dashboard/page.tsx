@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink } from "lucide-react";
+import { formatSessionDate, formatTimeOnly } from "@/lib/datetime";
 
 interface Lesson {
   id: string;
@@ -33,15 +34,6 @@ function isToday(iso: string) {
     d.getDate() === now.getDate();
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    weekday: "short", day: "numeric", month: "short",
-  });
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-}
 
 export default function TeacherDashboard() {
   const router = useRouter();
@@ -187,8 +179,8 @@ export default function TeacherDashboard() {
                         <p className="text-charcoal/55 text-sm mt-0.5">with {l.student_name} · {l.duration_minutes} min</p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-sm font-medium text-charcoal">{formatDate(l.scheduled_at)}</p>
-                        <p className="text-charcoal/55 text-sm">{formatTime(l.scheduled_at)}</p>
+                        <p className="text-sm font-medium text-charcoal">{formatSessionDate(l.scheduled_at)}</p>
+                        <p className="text-charcoal/55 text-sm">{formatTimeOnly(l.scheduled_at)}</p>
                       </div>
                     </div>
                     {l.zoom_link && (
@@ -231,7 +223,7 @@ function LessonCard({
         <div>
           <p className="font-semibold text-charcoal">{subjectLabel(lesson.subject)}</p>
           <p className="text-charcoal/55 text-sm mt-0.5">
-            with {lesson.student_name} · {lesson.duration_minutes} min · {formatTime(lesson.scheduled_at)}
+            with {lesson.student_name} · {lesson.duration_minutes} min · {formatTimeOnly(lesson.scheduled_at)}
           </p>
         </div>
         {done ? (

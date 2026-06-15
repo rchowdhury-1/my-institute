@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink } from "lucide-react";
+import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate } from "@/lib/datetime";
 
 interface Session {
   id: string;
@@ -38,14 +39,6 @@ function subjectLabel(s?: string) {
   return s === "quran" ? "Quran" : s === "arabic" ? "Arabic" : "Islamic Studies";
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    weekday: "short", day: "numeric", month: "short", year: "numeric",
-  });
-}
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-}
 
 const statusStyle: Record<string, string> = {
   scheduled: "bg-emerald-primary/10 text-emerald-primary",
@@ -189,7 +182,7 @@ export default function StudentSessionsPage() {
               )}
               {pkg.expires_at && (
                 <p className={`text-xs mt-1 ${pkg.sessions_remaining !== null && pkg.sessions_remaining <= 2 ? "text-amber-600" : "text-white/60"}`}>
-                  Renewal date: {formatDate(pkg.expires_at)}
+                  Renewal date: {formatSimpleDate(pkg.expires_at)}
                 </p>
               )}
             </div>
@@ -224,9 +217,9 @@ export default function StudentSessionsPage() {
                       </div>
                       <div className="flex items-center gap-2 text-charcoal/55 text-sm">
                         <Calendar size={14} />
-                        <span>{formatDate(s.scheduled_at)}</span>
+                        <span>{formatSessionDate(s.scheduled_at)}</span>
                         <Clock size={14} className="ml-1" />
-                        <span>{formatTime(s.scheduled_at)} · {s.duration_minutes} min</span>
+                        <span>{formatTimeOnly(s.scheduled_at)} · {s.duration_minutes} min</span>
                       </div>
                     </div>
                     <span className="shrink-0 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-primary/10 text-emerald-primary">
@@ -336,7 +329,7 @@ export default function StudentSessionsPage() {
                       {s.subject && <span className="text-charcoal/40 font-normal"> · {subjectLabel(s.subject)}</span>}
                     </p>
                     <p className="text-charcoal/50 text-xs mt-0.5">
-                      {formatDate(s.scheduled_at)} · {formatTime(s.scheduled_at)}
+                      {formatSessionTime(s.scheduled_at)}
                     </p>
                     {s.cancellation_reason && (
                       <p className="text-charcoal/40 text-xs mt-0.5 italic">{s.cancellation_reason}</p>

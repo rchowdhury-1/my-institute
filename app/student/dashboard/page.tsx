@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink } from "lucide-react";
+import { formatSessionDate, formatTimeOnly, formatSimpleDate } from "@/lib/datetime";
 
 interface Lesson {
   id: string;
@@ -39,15 +40,6 @@ function subjectLabel(s: string) {
   return s === "quran" ? "Quran" : s === "arabic" ? "Arabic" : "Islamic Studies";
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    weekday: "short", day: "numeric", month: "short", year: "numeric",
-  });
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-}
 
 export default function StudentDashboard() {
   const router = useRouter();
@@ -136,7 +128,7 @@ export default function StudentDashboard() {
                 </p>
               </div>
               {pkg.expires_at && (
-                <p className="text-white/60 text-xs">Expires {formatDate(pkg.expires_at)}</p>
+                <p className="text-white/60 text-xs">Expires {formatSimpleDate(pkg.expires_at)}</p>
               )}
             </div>
           ) : (
@@ -163,8 +155,8 @@ export default function StudentDashboard() {
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-medium text-charcoal">{formatDate(l.scheduled_at)}</p>
-                      <p className="text-charcoal/55 text-sm">{formatTime(l.scheduled_at)}</p>
+                      <p className="text-sm font-medium text-charcoal">{formatSessionDate(l.scheduled_at)}</p>
+                      <p className="text-charcoal/55 text-sm">{formatTimeOnly(l.scheduled_at)}</p>
                     </div>
                   </div>
                   {l.zoom_link && (
@@ -211,7 +203,7 @@ export default function StudentDashboard() {
                     }`}>
                       {l.status}
                     </span>
-                    <p className="text-charcoal/40 text-xs mt-1">{formatDate(l.scheduled_at)}</p>
+                    <p className="text-charcoal/40 text-xs mt-1">{formatSessionDate(l.scheduled_at)}</p>
                   </div>
                 </div>
               ))}

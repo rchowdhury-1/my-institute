@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock } from "lucide-react";
 import Link from "next/link";
+import { formatSessionTime } from "@/lib/datetime";
 
 interface Session {
   id: string;
@@ -20,12 +21,6 @@ interface User {
   display_name: string;
   email: string;
   role: string;
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-  });
 }
 
 const statusStyle: Record<string, string> = {
@@ -310,7 +305,7 @@ export default function SupervisorPage() {
                         {s.student_name} ↔ {s.teacher_name}
                       </p>
                       <p className="text-charcoal/50 text-xs mt-0.5">
-                        {formatDate(s.scheduled_at)} · {s.duration_minutes} min
+                        {formatSessionTime(s.scheduled_at)} · {s.duration_minutes} min
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
