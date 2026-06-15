@@ -108,7 +108,7 @@ router.post('/:id/enroll', requireAuth, async (req, res) => {
        VALUES ($1, $2)
        ON CONFLICT (course_id, user_id) DO NOTHING
        RETURNING *`,
-      [req.params.id, req.user.id]
+      [req.params.id, req.userId]
     );
     res.status(201).json({ enrollment: result.rows[0] ?? { already_enrolled: true } });
   } catch (err) {

@@ -133,7 +133,7 @@ router.delete('/:id', requireRole('admin', 'supervisor'), async (req, res) => {
 });
 
 // PATCH /sessions/:id/cancel
-router.patch('/:id/cancel', async (req, res) => {
+router.patch('/:id/cancel', requireRole('student', 'teacher', 'admin', 'supervisor'), async (req, res) => {
   const { cancellation_reason } = req.body;
   const { id } = req.params;
 

@@ -3,7 +3,7 @@ const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 // GET /payments — teacher sees own history, admin sees all
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requireRole('admin', 'supervisor', 'teacher'), async (req, res) => {
   try {
     let result;
     if (req.userRole === 'teacher') {
