@@ -17,7 +17,7 @@ const NAV_LINKS = [
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [dashboardHref, setDashboardHref] = useState("/student/dashboard");
 
   useEffect(() => {
@@ -74,16 +74,18 @@ export default function Header() {
             {/* CTA + Mobile Toggle */}
             <div className="flex items-center gap-3">
               <NotificationBell />
-              <Link
-                href={loggedIn ? dashboardHref : "/login"}
-                className={`hidden lg:inline-flex text-sm font-medium transition-colors ${
-                  scrolled
-                    ? "text-charcoal hover:text-emerald-primary"
-                    : "text-cream hover:text-white"
-                }`}
-              >
-                {loggedIn ? "Dashboard" : "Login"}
-              </Link>
+              {loggedIn !== null && (
+                <Link
+                  href={loggedIn ? dashboardHref : "/login"}
+                  className={`hidden lg:inline-flex text-sm font-medium transition-colors ${
+                    scrolled
+                      ? "text-charcoal hover:text-emerald-primary"
+                      : "text-cream hover:text-white"
+                  }`}
+                >
+                  {loggedIn ? "Dashboard" : "Login"}
+                </Link>
+              )}
               <Link
                 href="/free-trial"
                 className="hidden sm:inline-flex items-center px-4 py-2 rounded-full bg-gold text-white text-sm font-semibold hover:bg-gold-dark transition-colors shadow-sm"

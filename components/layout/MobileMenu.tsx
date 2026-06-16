@@ -9,7 +9,7 @@ interface MobileMenuProps {
   isOpen: boolean;
   onClose: () => void;
   links: { href: string; label: string }[];
-  loggedIn?: boolean;
+  loggedIn?: boolean | null;
   dashboardHref?: string;
 }
 
@@ -63,13 +63,15 @@ export default function MobileMenu({ isOpen, onClose, links, loggedIn, dashboard
 
           <div className="mx-6 my-3 border-t border-gray-100" />
 
-          <Link
-            href={loggedIn ? dashboardHref : "/login"}
-            onClick={onClose}
-            className="block px-6 py-3 text-charcoal font-medium hover:bg-emerald-primary/5 hover:text-emerald-primary transition-colors"
-          >
-            {loggedIn ? "Dashboard" : "Login"}
-          </Link>
+          {loggedIn !== null && (
+            <Link
+              href={loggedIn ? dashboardHref : "/login"}
+              onClick={onClose}
+              className="block px-6 py-3 text-charcoal font-medium hover:bg-emerald-primary/5 hover:text-emerald-primary transition-colors"
+            >
+              {loggedIn ? "Dashboard" : "Login"}
+            </Link>
+          )}
           <Link
             href="/donate"
             onClick={onClose}
