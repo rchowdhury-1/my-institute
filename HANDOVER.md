@@ -371,11 +371,21 @@ Teachers can only assign homework to students they have at least one session wit
 **In-app messaging:**
 Still feature-flagged off (`FEATURE_MESSAGING` on Render, `NEXT_PUBLIC_FEATURE_MESSAGING` on Vercel). Both flags must be `false`/unset. See Phase 2B items below for what needs fixing before shipping.
 
-**Deferred items (Phase 2B / test debt):**
+**Automated tests (CI):**
+21 API-level Playwright tests run automatically on every push to master and daily at 8 AM UTC via GitHub Actions (`.github/workflows/api-tests.yml`). Tests execute against the production backend.
+
+**DO NOT DELETE the test student account** `rizwanc43@gmail.com` (display name: "rizwantest", ID: `3de0a33b-...`). It is used by the Playwright test suite. Deleting it will break CI.
+
+**Test coverage scope:**
+- API-level tests: 21 tests covering reschedule requests, cancellation buffer, admin edit, legacy route gate, homework auth, notification format. These run in CI and catch backend regressions.
+- Frontend rendering (modals, WhatsApp buttons, buffer UX): tested manually. No automated browser-level tests.
+- Race conditions and concurrency: tested only manually. Serial API tests cannot verify concurrent behaviour.
+- Full browser-level Playwright coverage: Phase 4 item if needed. Requires CI with a running dev server.
+
+**Deferred items (Phase 2B):**
 - Messaging: fix receiver_id validation, add relationship checks, build supervisor conversation UI
 - Exams: POST /exams/:id/assign ownership check, GET /exams/:id/results access control
 - Admin route FK existence validation (student_id/teacher_id on create endpoints)
-- ~10 Playwright tests: 5 frontend-interaction, 1 race-condition, 4 reschedule backfill
 - Course enrollment: feature-flagged off, req.userId fix shipped in Phase 2.5
 
 ---
