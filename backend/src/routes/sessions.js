@@ -2,6 +2,8 @@ const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { notify, notifyAdmins } = require('../lib/notify');
+const { canStudentCancel } = require('../lib/cancellation');
+const { formatSessionTime } = require('../lib/datetime');
 const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
@@ -147,6 +149,13 @@ router.patch('/:id/cancel', requireRole('student', 'teacher', 'admin', 'supervis
     if (req.userRole === 'teacher' && session.teacher_id !== req.userId)
       return res.status(403).json({ error: 'Forbidden' });
 
+    // 12-hour buffer for students only
+    if (req.userRole === 'student') {
+      const check = canStudentCancel(session);
+      if (!check.allowed)
+        return res.status(403).json({ error: check.reason, code: check.code });
+    }
+
     const result = await pool.query(
       `UPDATE sessions SET status='cancelled', cancellation_reason=$1, updated_at=NOW()
        WHERE id=$2 RETURNING *`,
@@ -171,8 +180,8 @@ router.patch('/:id/cancel', requireRole('student', 'teacher', 'admin', 'supervis
   }
 });
 
-// PATCH /sessions/:id/reschedule  (student / admin / supervisor)
-router.patch('/:id/reschedule', requireRole('student', 'admin', 'supervisor'), async (req, res) => {
+// PATCH /sessions/:id/reschedule  (admin / supervisor only — students use /reschedule-requests)
+router.patch('/:id/reschedule', requireRole('admin', 'supervisor'), async (req, res) => {
   const { scheduled_at } = req.body;
   const { id } = req.params;
   if (!scheduled_at) return res.status(400).json({ error: 'scheduled_at is required' });
@@ -182,11 +191,9 @@ router.patch('/:id/reschedule', requireRole('student', 'admin', 'supervisor'), a
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Session not found' });
     const session = existing.rows[0];
 
-    if (req.userRole === 'student' && session.student_id !== req.userId)
-      return res.status(403).json({ error: 'Forbidden' });
-
     await pool.query(
-      `UPDATE sessions SET status='rescheduled', updated_at=NOW() WHERE id=$1`, [id]
+      `UPDATE sessions SET status='rescheduled', last_modified_by=$1, updated_at=NOW() WHERE id=$2`,
+      [req.userId, id]
     );
 
     const newId = uuidv4();
@@ -197,7 +204,7 @@ router.patch('/:id/reschedule', requireRole('student', 'admin', 'supervisor'), a
        session.duration_minutes, session.subject || 'quran', id]
     );
 
-    const newDt = new Date(scheduled_at).toLocaleString('en-GB');
+    const newDt = formatSessionTime(scheduled_at);
     await notify(session.teacher_id, 'session_rescheduled', 'Session Rescheduled',
       `A session has been rescheduled to ${newDt}`, '/teacher/dashboard');
     await notifyAdmins('session_rescheduled', 'Session Rescheduled',

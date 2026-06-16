@@ -41,10 +41,10 @@ router.post('/', requireRole('student'), async (req, res) => {
     if (session.status !== 'scheduled')
       return res.status(400).json({ error: 'This session is no longer active' });
 
-    // 3. 12-hour buffer
+    // 3. 12-hour buffer / past session check
     const bufferCheck = canStudentCancel(session);
     if (!bufferCheck.allowed)
-      return res.status(403).json({ error: bufferCheck.reason, code: 'CANCELLATION_BUFFER' });
+      return res.status(403).json({ error: bufferCheck.reason, code: bufferCheck.code });
 
     // 4. No existing pending request
     const pending = await pool.query(

@@ -4,6 +4,8 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { sendWelcomeEmail } = require('../email');
 const { generateTempPassword, hashPassword } = require('../utils/password');
 const { v4: uuidv4 } = require('uuid');
+const { notify } = require('../lib/notify');
+const { formatSessionTime } = require('../lib/datetime');
 
 const router = express.Router();
 
@@ -791,6 +793,191 @@ router.delete('/newsfeed/:id', async (req, res) => {
     if (result.rows.length === 0)
       return res.status(404).json({ error: 'Post not found' });
     res.json({ deleted: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── PATCH /admin/sessions/:id — edit a session ────────────────────────────
+router.patch('/sessions/:id', async (req, res) => {
+  const { scheduled_at, duration_minutes, subject, teacher_id, zoom_link, notes } = req.body;
+  const { id } = req.params;
+
+  try {
+    const existing = await pool.query(
+      `SELECT s.*,
+              st.display_name AS student_name, st.phone AS student_phone,
+              t.display_name  AS teacher_name
+       FROM sessions s
+       JOIN users st ON st.id = s.student_id
+       JOIN users t  ON t.id  = s.teacher_id
+       WHERE s.id = $1`, [id]
+    );
+    if (existing.rows.length === 0)
+      return res.status(404).json({ error: 'Session not found' });
+    const session = existing.rows[0];
+
+    // Validate inputs
+    if (duration_minutes != null) {
+      const dur = parseInt(duration_minutes);
+      if (isNaN(dur) || dur < 30 || dur % 30 !== 0)
+        return res.status(400).json({ error: 'Duration must be 30, 60, 90, or 120 minutes' });
+    }
+
+    if (teacher_id) {
+      const teacherCheck = await pool.query(
+        "SELECT id, display_name FROM users WHERE id = $1 AND role = 'teacher' AND is_active = true",
+        [teacher_id]
+      );
+      if (teacherCheck.rows.length === 0)
+        return res.status(400).json({ error: 'Teacher not found or inactive' });
+    }
+
+    if (scheduled_at) {
+      if (isNaN(new Date(scheduled_at).getTime()))
+        return res.status(400).json({ error: 'Invalid date' });
+      if (new Date(scheduled_at) <= new Date())
+        return res.status(400).json({ error: 'Scheduled time must be in the future' });
+    }
+
+    // Overlap check if time or teacher changed
+    const effectiveTeacher = teacher_id || session.teacher_id;
+    const effectiveTime = scheduled_at ? new Date(scheduled_at).toISOString() : session.scheduled_at;
+    const effectiveDuration = duration_minutes != null ? parseInt(duration_minutes) : session.duration_minutes;
+
+    if (scheduled_at || teacher_id) {
+      const conflict = await pool.query(
+        `SELECT id FROM sessions
+         WHERE teacher_id = $1
+           AND status = 'scheduled'
+           AND id <> $2
+           AND tstzrange(scheduled_at, scheduled_at + duration_minutes * interval '1 minute')
+            && tstzrange($3::timestamptz, $3::timestamptz + $4 * interval '1 minute')`,
+        [effectiveTeacher, id, effectiveTime, effectiveDuration]
+      );
+      if (conflict.rows.length > 0)
+        return res.status(409).json({
+          error: 'The chosen teacher already has a session overlapping this time. Please pick a different time or teacher.',
+          code: 'TEACHER_CONFLICT',
+        });
+    }
+
+    // Build SET clause dynamically
+    const sets = ['last_modified_by = $1', 'updated_at = now()'];
+    const params = [req.userId];
+    let paramIdx = 2;
+
+    const changes = {};
+
+    if (scheduled_at !== undefined) {
+      sets.push(`scheduled_at = $${paramIdx++}`);
+      params.push(new Date(scheduled_at).toISOString());
+      changes.scheduled_at = { from: session.scheduled_at, to: scheduled_at };
+    }
+    if (duration_minutes !== undefined) {
+      sets.push(`duration_minutes = $${paramIdx++}`);
+      params.push(parseInt(duration_minutes));
+      if (parseInt(duration_minutes) !== session.duration_minutes)
+        changes.duration_minutes = { from: session.duration_minutes, to: parseInt(duration_minutes) };
+    }
+    if (subject !== undefined) {
+      sets.push(`subject = $${paramIdx++}`);
+      params.push(subject);
+      if (subject !== session.subject)
+        changes.subject = { from: session.subject, to: subject };
+    }
+    if (teacher_id !== undefined) {
+      sets.push(`teacher_id = $${paramIdx++}`);
+      params.push(teacher_id);
+      if (teacher_id !== session.teacher_id)
+        changes.teacher_id = { from: session.teacher_id, to: teacher_id };
+    }
+    if (zoom_link !== undefined) {
+      sets.push(`zoom_link = $${paramIdx++}`);
+      params.push(zoom_link || null);
+      if ((zoom_link || null) !== session.zoom_link)
+        changes.zoom_link = true;
+    }
+    if (notes !== undefined) {
+      sets.push(`notes = $${paramIdx++}`);
+      params.push(notes || null);
+      if ((notes || null) !== session.notes)
+        changes.notes = true;
+    }
+
+    params.push(id);
+    const result = await pool.query(
+      `UPDATE sessions SET ${sets.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
+      params
+    );
+    const updated = result.rows[0];
+
+    // ── Batched notifications ──
+    const hasVisibleChange = changes.scheduled_at || changes.duration_minutes ||
+      changes.subject || changes.teacher_id || changes.zoom_link;
+
+    if (hasVisibleChange) {
+      // Build change summary parts
+      const parts = [];
+      if (changes.scheduled_at)
+        parts.push(`New time: ${formatSessionTime(changes.scheduled_at.to)}`);
+      if (changes.duration_minutes)
+        parts.push(`New duration: ${changes.duration_minutes.to} min`);
+      if (changes.subject) {
+        const label = (s) => s === 'quran' ? 'Quran' : s === 'arabic' ? 'Arabic' : 'Islamic Studies';
+        parts.push(`New subject: ${label(changes.subject.to)}`);
+      }
+      if (changes.zoom_link)
+        parts.push('Zoom link updated');
+
+      if (changes.teacher_id) {
+        // Get names for old and new teacher
+        const newTeacherRes = await pool.query('SELECT display_name FROM users WHERE id = $1', [changes.teacher_id.to]);
+        const newTeacherName = newTeacherRes.rows[0]?.display_name || 'a new teacher';
+        const changeSummary = parts.length > 0 ? ' ' + parts.join('. ') + '.' : '';
+
+        // Student: full summary with new teacher name
+        await notify(session.student_id, 'session_updated', 'Session Updated',
+          `Your session has been updated. New teacher: ${newTeacherName}.${changeSummary}`,
+          '/student/sessions');
+
+        // Old teacher: reassignment notice
+        await notify(session.teacher_id, 'session_updated', 'Session Reassigned',
+          'A session has been reassigned to a different teacher.',
+          '/teacher/dashboard');
+
+        // New teacher: assignment notice with changes
+        await notify(changes.teacher_id.to, 'session_updated', 'Session Assigned',
+          `A session with ${session.student_name} has been assigned to you.${changeSummary}`,
+          '/teacher/dashboard');
+      } else {
+        // No teacher change — notify student + current teacher
+        const changeSummary = parts.join('. ') + '.';
+        await notify(session.student_id, 'session_updated', 'Session Updated',
+          `Your session has been updated. ${changeSummary}`,
+          '/student/sessions');
+        await notify(session.teacher_id, 'session_updated', 'Session Updated',
+          `A session with ${session.student_name} has been updated. ${changeSummary}`,
+          '/teacher/dashboard');
+      }
+    }
+    // notes-only change: no notifications
+
+    // Return with joined names
+    const nameRes = await pool.query(
+      `SELECT st.display_name AS student_name, t.display_name AS teacher_name,
+              st.phone AS student_phone
+       FROM users st, users t
+       WHERE st.id = $1 AND t.id = $2`,
+      [updated.student_id, updated.teacher_id]
+    );
+    const names = nameRes.rows[0] || {};
+
+    res.json({
+      session: { ...updated, ...names },
+      changes: Object.keys(changes).filter(k => k !== 'notes'),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

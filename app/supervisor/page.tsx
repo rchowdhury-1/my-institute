@@ -3,17 +3,23 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock, RefreshCw, X as XIcon } from "lucide-react";
+import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock, RefreshCw, X as XIcon, Pencil } from "lucide-react";
 import Link from "next/link";
 import { formatSessionTime, formatRelative } from "@/lib/datetime";
 
 interface Session {
   id: string;
+  student_id: string;
+  teacher_id: string;
   student_name: string;
   teacher_name: string;
+  student_phone?: string;
   scheduled_at: string;
   duration_minutes: number;
   status: string;
+  subject?: string;
+  zoom_link?: string;
+  notes?: string;
 }
 
 interface User {
@@ -69,6 +75,13 @@ export default function SupervisorPage() {
   const [rrRejectReason, setRrRejectReason] = useState("");
   const [rrResult, setRrResult] = useState<Record<string, { action: "approved" | "rejected"; phone?: string; proposedAt?: string; originalAt?: string; reason?: string }>>({});
   const [rrError, setRrError] = useState<Record<string, string>>({});
+
+  // edit session modal
+  const [editSession, setEditSession] = useState<Session | null>(null);
+  const [editForm, setEditForm] = useState({ scheduled_at: "", duration_minutes: "", subject: "", teacher_id: "", zoom_link: "", notes: "" });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editWaMsg, setEditWaMsg] = useState<{ phone?: string; time?: string } | null>(null);
 
   // message form
   const [msgForm, setMsgForm] = useState({ receiver_id: "", content: "" });
@@ -228,6 +241,72 @@ export default function SupervisorPage() {
     const num = (phone || "").replace(/[^0-9]/g, "");
     if (!num) return null;
     return `https://wa.me/${num}?text=${encodeURIComponent(message)}`;
+  }
+
+  function openEditModal(s: Session) {
+    setEditSession(s);
+    const dt = new Date(s.scheduled_at);
+    const dateStr = dt.toISOString().slice(0, 10);
+    const timeStr = dt.toISOString().slice(11, 16);
+    setEditForm({
+      scheduled_at: `${dateStr}T${timeStr}`,
+      duration_minutes: String(s.duration_minutes),
+      subject: s.subject || "quran",
+      teacher_id: s.teacher_id || "",
+      zoom_link: s.zoom_link || "",
+      notes: s.notes || "",
+    });
+    setEditError("");
+    setEditWaMsg(null);
+  }
+
+  async function handleEditSession() {
+    if (!editSession) return;
+    const token = localStorage.getItem("accessToken");
+    if (!token) return;
+
+    // Confirmation for teacher change
+    if (editForm.teacher_id && editForm.teacher_id !== editSession.teacher_id) {
+      const newTeacher = teachers.find((t) => t.id === editForm.teacher_id);
+      if (!confirm(`You are changing the teacher from ${editSession.teacher_name} to ${newTeacher?.display_name || "unknown"}. The student and both teachers will be notified.`)) return;
+    }
+
+    setEditSaving(true);
+    setEditError("");
+    try {
+      const body: Record<string, unknown> = {};
+      const orig = editSession;
+      const newDt = new Date(editForm.scheduled_at).toISOString();
+      if (newDt !== new Date(orig.scheduled_at).toISOString()) body.scheduled_at = newDt;
+      if (parseInt(editForm.duration_minutes) !== orig.duration_minutes) body.duration_minutes = parseInt(editForm.duration_minutes);
+      if (editForm.subject !== (orig.subject || "quran")) body.subject = editForm.subject;
+      if (editForm.teacher_id !== orig.teacher_id) body.teacher_id = editForm.teacher_id;
+      if (editForm.zoom_link !== (orig.zoom_link || "")) body.zoom_link = editForm.zoom_link;
+      if (editForm.notes !== (orig.notes || "")) body.notes = editForm.notes;
+
+      if (Object.keys(body).length === 0) { setEditSession(null); return; }
+
+      const res = await api.patch(`/admin/sessions/${editSession.id}`, body,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const updated = res.data.session;
+      setSessions((prev) => prev.map((s) => s.id === editSession.id ? updated : s));
+
+      // Show WhatsApp button if time changed
+      if (body.scheduled_at) {
+        setEditWaMsg({ phone: updated.student_phone, time: body.scheduled_at as string });
+      }
+      setEditSession(null);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { code?: string; error?: string } } };
+      if (e.response?.data?.code === "TEACHER_CONFLICT") {
+        setEditError("The chosen teacher already has a session overlapping this time. Please pick a different time or teacher.");
+      } else {
+        setEditError(e.response?.data?.error || "Couldn't save changes. Please try again.");
+      }
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   if (loading) {
@@ -516,13 +595,21 @@ export default function SupervisorPage() {
                         {s.status}
                       </span>
                       {s.status === "scheduled" && (
-                        <button
-                          onClick={() => handleDeleteSession(s.id)}
-                          disabled={deleting === s.id}
-                          className="p-1.5 rounded-lg text-charcoal/30 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => openEditModal(s)}
+                            className="p-1.5 rounded-lg text-charcoal/30 hover:text-emerald-primary hover:bg-emerald-primary/5 transition-colors"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSession(s.id)}
+                            disabled={deleting === s.id}
+                            className="p-1.5 rounded-lg text-charcoal/30 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -643,6 +730,93 @@ export default function SupervisorPage() {
           </div>
         )}
       </div>
+
+      {/* Edit session modal */}
+      {editSession && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEditSession(null)}>
+          <div className="bg-white rounded-2xl border border-black/5 p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display text-lg font-bold text-charcoal mb-4">Edit Session</h3>
+            <p className="text-charcoal/50 text-xs mb-4">{editSession.student_name} ↔ {editSession.teacher_name}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-charcoal/60 mb-1">Date &amp; Time</label>
+                <input type="datetime-local" value={editForm.scheduled_at}
+                  onChange={(e) => setEditForm((p) => ({ ...p, scheduled_at: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30" />
+              </div>
+              <div>
+                <label className="block text-xs text-charcoal/60 mb-1">Duration</label>
+                <select value={editForm.duration_minutes}
+                  onChange={(e) => setEditForm((p) => ({ ...p, duration_minutes: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30">
+                  <option value="30">30 min</option><option value="60">60 min</option>
+                  <option value="90">90 min</option><option value="120">120 min</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-charcoal/60 mb-1">Subject</label>
+                <select value={editForm.subject}
+                  onChange={(e) => setEditForm((p) => ({ ...p, subject: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30">
+                  <option value="quran">Quran</option><option value="arabic">Arabic</option>
+                  <option value="islamic_studies">Islamic Studies</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-charcoal/60 mb-1">Teacher</label>
+                <select value={editForm.teacher_id}
+                  onChange={(e) => setEditForm((p) => ({ ...p, teacher_id: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30">
+                  {teachers.map((t) => <option key={t.id} value={t.id}>{t.display_name}</option>)}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs text-charcoal/60 mb-1">Zoom Link</label>
+                <input type="url" value={editForm.zoom_link} placeholder="https://zoom.us/..."
+                  onChange={(e) => setEditForm((p) => ({ ...p, zoom_link: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs text-charcoal/60 mb-1">Notes</label>
+                <textarea value={editForm.notes} rows={2} placeholder="Admin notes..."
+                  onChange={(e) => setEditForm((p) => ({ ...p, notes: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 resize-none" />
+              </div>
+            </div>
+            {editError && <p className="text-red-500 text-xs mt-3">{editError}</p>}
+            <div className="flex gap-2 mt-4">
+              <button onClick={handleEditSession} disabled={editSaving}
+                className="px-5 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
+                {editSaving ? "Saving…" : "Save Changes"}
+              </button>
+              <button onClick={() => setEditSession(null)}
+                className="px-5 py-2 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-black/20 transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp follow-up after edit */}
+      {editWaMsg && (
+        <div className="fixed bottom-6 right-6 z-50 bg-white rounded-2xl border border-black/5 shadow-lg p-4 flex items-center gap-3 max-w-sm">
+          <p className="text-charcoal text-sm">Session updated.</p>
+          {(() => {
+            const msg = `Assalamu alaikum! Your session time has been updated to ${formatSessionTime(editWaMsg.time || "")}. Please note the new time. — My Institute`;
+            const url = whatsAppUrl(editWaMsg.phone, msg);
+            return url ? (
+              <a href={url} target="_blank" rel="noopener noreferrer"
+                className="shrink-0 px-3 py-1.5 rounded-full bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors">
+                WhatsApp student →
+              </a>
+            ) : null;
+          })()}
+          <button onClick={() => setEditWaMsg(null)} className="text-charcoal/30 hover:text-charcoal/60">
+            <XIcon size={14} />
+          </button>
+        </div>
+      )}
     </main>
   );
 }

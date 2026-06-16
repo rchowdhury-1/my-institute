@@ -315,7 +315,36 @@ Students can no longer reschedule sessions directly. Instead, they submit a **re
 
 ---
 
-## 17. Known Limitations
+## 17. Cancellation Buffer + Admin Session Editing
+
+**12-hour cancellation buffer:**
+Students cannot cancel or request-reschedule a session within 12 hours of its start time. Instead, they see a "WhatsApp Mohammad" button. This protects against last-minute no-shows. Admin, supervisor, and teachers can still cancel at any time.
+
+**Admin session editing:**
+On the Supervisor Dashboard (Sessions tab), each scheduled session has an edit (pencil) icon. Click it to open a modal where you can change:
+- **Date & time** — the system checks for teacher conflicts
+- **Duration** — 30/60/90/120 minutes
+- **Subject** — Quran, Arabic, or Islamic Studies
+- **Teacher** — reassign to a different teacher (both old and new teacher are notified)
+- **Zoom link** — update the meeting URL
+- **Notes** — admin-only notes (no notification sent for notes-only changes)
+
+After saving, all affected users (student, teacher) receive ONE in-app notification summarising all changes. If the time was changed, a green "WhatsApp student" button appears so you can message them directly.
+
+**`last_modified_by` tracking:**
+Every admin edit records who made the change in the `last_modified_by` column on the sessions table. To check who last modified a session, query Neon:
+```sql
+SELECT s.id, s.last_modified_by, u.display_name
+FROM sessions s LEFT JOIN users u ON u.id = s.last_modified_by
+WHERE s.id = '<session-id>';
+```
+
+**Legacy direct reschedule:**
+The old direct-reschedule API (`PATCH /sessions/:id/reschedule`) is now restricted to admin/supervisor only. Students must use the reschedule request flow (see section 16).
+
+---
+
+## 18. Known Limitations
 
 - **Password reset does not immediately log out other devices.** When an admin resets a teacher or student's password, any existing login sessions for that person remain valid until their access tokens expire naturally (within 15 minutes). There is no forced logout across all devices on password reset. Strict session invalidation is a future improvement.
 
@@ -327,7 +356,7 @@ Students can no longer reschedule sessions directly. Instead, they submit a **re
 
 ---
 
-## 18. Who Built What
+## 19. Who Built What
 
 The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 
