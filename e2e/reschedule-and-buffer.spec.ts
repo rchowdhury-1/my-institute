@@ -1,6 +1,9 @@
 /**
  * Phase 3.2–3.3 acceptance tests — reschedule requests + cancellation buffer + admin edit
  *
+ * NOTE: Tests written for Phase 3.3 but not executed in CI. First run
+ * pending — expect possible minor fixes to selectors or assertions.
+ *
  * Prerequisites:
  *   - Backend running on http://localhost:5001
  *   - Admin credentials: razwanul712@gmail.com / Test12345

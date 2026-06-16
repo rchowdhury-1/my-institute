@@ -344,7 +344,43 @@ The old direct-reschedule API (`PATCH /sessions/:id/reschedule`) is now restrict
 
 ---
 
-## 18. Known Limitations
+## 18. Notifications, WhatsApp, and Homework Policy
+
+**In-app notifications:**
+The bell icon in the header shows notifications for these events:
+| Event | Who gets notified |
+|-------|------------------|
+| Session created | Student + teacher |
+| Session cancelled | Counterparty + admins |
+| Session rescheduled (by admin) | Student + teacher + admins |
+| Reschedule requested (by student) | Teacher + admins |
+| Reschedule approved | Student + the other party (teacher or admins) |
+| Reschedule rejected | Student + the other party |
+| Admin edits session | Student + teacher (+ old teacher if reassigned) |
+| Homework assigned | Student |
+| Homework graded | Student |
+
+All session times in notifications use the dual-timezone format: "Mon 22 Jun · 14:00 BST · 16:00 Cairo".
+
+**WhatsApp buttons:**
+After approving/rejecting a reschedule request or editing a session time, a green "WhatsApp student" button appears inline. It opens WhatsApp with a pre-filled message including the session time. These are manual — no automated messaging.
+
+**Homework assignment policy:**
+Teachers can only assign homework to students they have at least one session with. Admin/supervisor can assign to any student. This prevents accidental homework to the wrong student.
+
+**In-app messaging:**
+Still feature-flagged off (`FEATURE_MESSAGING` on Render, `NEXT_PUBLIC_FEATURE_MESSAGING` on Vercel). Both flags must be `false`/unset. See Phase 2B items below for what needs fixing before shipping.
+
+**Deferred items (Phase 2B / test debt):**
+- Messaging: fix receiver_id validation, add relationship checks, build supervisor conversation UI
+- Exams: POST /exams/:id/assign ownership check, GET /exams/:id/results access control
+- Admin route FK existence validation (student_id/teacher_id on create endpoints)
+- ~10 Playwright tests: 5 frontend-interaction, 1 race-condition, 4 reschedule backfill
+- Course enrollment: feature-flagged off, req.userId fix shipped in Phase 2.5
+
+---
+
+## 19. Known Limitations
 
 - **Password reset does not immediately log out other devices.** When an admin resets a teacher or student's password, any existing login sessions for that person remain valid until their access tokens expire naturally (within 15 minutes). There is no forced logout across all devices on password reset. Strict session invalidation is a future improvement.
 
@@ -356,7 +392,7 @@ The old direct-reschedule API (`PATCH /sessions/:id/reschedule`) is now restrict
 
 ---
 
-## 19. Who Built What
+## 20. Who Built What
 
 The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 

@@ -8,12 +8,22 @@ const router = express.Router();
 router.use(requireAuth);
 
 // POST /homework  (teacher / admin)
-router.post('/', requireRole('teacher', 'admin'), async (req, res) => {
+router.post('/', requireRole('teacher', 'admin', 'supervisor'), async (req, res) => {
   const { student_id, title, description, file_url, due_date } = req.body;
   if (!student_id || !title)
     return res.status(400).json({ error: 'student_id and title are required' });
 
   try {
+    // Teachers can only assign to students they have sessions with
+    if (req.userRole === 'teacher') {
+      const rel = await pool.query(
+        'SELECT 1 FROM sessions WHERE teacher_id = $1 AND student_id = $2 LIMIT 1',
+        [req.userId, student_id]
+      );
+      if (rel.rows.length === 0)
+        return res.status(403).json({ error: 'You can only assign homework to your own students', code: 'NOT_YOUR_STUDENT' });
+    }
+
     const id = uuidv4();
     const result = await pool.query(
       `INSERT INTO homework (id, teacher_id, student_id, title, description, file_url, due_date)
@@ -121,15 +131,16 @@ router.post('/:id/submit', requireRole('student'), async (req, res) => {
   }
 });
 
-// PATCH /homework/:id/grade  (teacher / admin)
-router.patch('/:id/grade', requireRole('teacher', 'admin'), async (req, res) => {
+// PATCH /homework/:id/grade  (teacher / admin / supervisor)
+router.patch('/:id/grade', requireRole('teacher', 'admin', 'supervisor'), async (req, res) => {
   const { grade, teacher_notes } = req.body;
   const { id } = req.params;
 
   try {
-    const hw = await pool.query(
-      'SELECT * FROM homework WHERE id=$1 AND teacher_id=$2', [id, req.userId]
-    );
+    // Admin/supervisor can grade any homework; teacher can only grade their own
+    const hw = req.userRole === 'teacher'
+      ? await pool.query('SELECT * FROM homework WHERE id=$1 AND teacher_id=$2', [id, req.userId])
+      : await pool.query('SELECT * FROM homework WHERE id=$1', [id]);
     if (hw.rows.length === 0) return res.status(404).json({ error: 'Homework not found' });
 
     const result = await pool.query(

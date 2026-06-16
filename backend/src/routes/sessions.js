@@ -78,7 +78,7 @@ router.post('/', requireRole('admin', 'supervisor'), async (req, res) => {
       [id, student_id, teacher_id, scheduled_at, dur, sessionSubject, zoom_link || null, hourly_rate, currency]
     );
     const session = result.rows[0];
-    const dt = new Date(scheduled_at).toLocaleString('en-GB');
+    const dt = formatSessionTime(scheduled_at);
 
     await notify(student_id, 'session_scheduled', 'Session Scheduled',
       `A session has been booked for ${dt}`, '/student/sessions');
@@ -122,7 +122,7 @@ router.delete('/:id', requireRole('admin', 'supervisor'), async (req, res) => {
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const session = existing.rows[0];
     await pool.query('DELETE FROM sessions WHERE id=$1', [id]);
-    const dt = new Date(session.scheduled_at).toLocaleString('en-GB');
+    const dt = formatSessionTime(session.scheduled_at);
     await notify(session.student_id, 'session_cancelled', 'Session Removed',
       `Your session on ${dt} has been removed by admin`, '/student/sessions');
     await notify(session.teacher_id, 'session_cancelled', 'Session Removed',
@@ -162,7 +162,7 @@ router.patch('/:id/cancel', requireRole('student', 'teacher', 'admin', 'supervis
       [cancellation_reason || null, id]
     );
 
-    const dt = new Date(session.scheduled_at).toLocaleString('en-GB');
+    const dt = formatSessionTime(session.scheduled_at);
     if (req.userRole === 'student') {
       await notify(session.teacher_id, 'session_cancelled', 'Session Cancelled',
         `Session on ${dt} was cancelled by the student`, '/teacher/dashboard');
@@ -205,6 +205,8 @@ router.patch('/:id/reschedule', requireRole('admin', 'supervisor'), async (req, 
     );
 
     const newDt = formatSessionTime(scheduled_at);
+    await notify(session.student_id, 'session_rescheduled', 'Session Rescheduled',
+      `Your session has been rescheduled to ${newDt}`, '/student/sessions');
     await notify(session.teacher_id, 'session_rescheduled', 'Session Rescheduled',
       `A session has been rescheduled to ${newDt}`, '/teacher/dashboard');
     await notifyAdmins('session_rescheduled', 'Session Rescheduled',

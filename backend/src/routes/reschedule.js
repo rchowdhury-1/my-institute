@@ -134,7 +134,8 @@ router.get('/', async (req, res) => {
              st.display_name AS student_name,
              st.email AS student_email,
              st.phone AS student_phone,
-             t.display_name AS teacher_name
+             t.display_name AS teacher_name,
+             t.phone AS teacher_phone
       FROM reschedule_requests rr
       JOIN sessions s ON s.id = rr.session_id
       JOIN users st ON st.id = rr.student_id
