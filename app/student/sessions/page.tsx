@@ -17,6 +17,13 @@ interface Session {
   subject?: string;
 }
 
+interface RescheduleRequest {
+  id: string;
+  session_id: string;
+  proposed_at: string;
+  status: "pending" | "approved" | "rejected" | "cancelled_by_student";
+}
+
 interface Pkg {
   package_name: string;
   sessions_remaining: number | null;
@@ -39,7 +46,6 @@ function subjectLabel(s?: string) {
   return s === "quran" ? "Quran" : s === "arabic" ? "Arabic" : "Islamic Studies";
 }
 
-
 const statusStyle: Record<string, string> = {
   scheduled: "bg-emerald-primary/10 text-emerald-primary",
   completed: "bg-blue-50 text-blue-600",
@@ -54,16 +60,20 @@ export default function StudentSessionsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [pendingRequests, setPendingRequests] = useState<RescheduleRequest[]>([]);
 
   // cancel state
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSaving, setCancelSaving] = useState(false);
 
-  // reschedule state
+  // reschedule request state
   const [rescheduleId, setRescheduleId] = useState<string | null>(null);
-  const [newDate, setNewDate] = useState("");
+  const [proposedDate, setProposedDate] = useState("");
+  const [proposedTime, setProposedTime] = useState("");
   const [rescheduleSaving, setRescheduleSaving] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState("");
+  const [cancellingRequest, setCancellingRequest] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -74,15 +84,21 @@ export default function StudentSessionsPage() {
       api.get("/sessions", { headers }),
       api.get("/students/me", { headers }),
       api.get("/students/payments", { headers }),
+      api.get("/reschedule-requests?status=pending", { headers }),
     ])
-      .then(([sRes, meRes, payRes]) => {
+      .then(([sRes, meRes, payRes, rrRes]) => {
         setSessions(sRes.data.sessions);
         setPkg(meRes.data.package ?? null);
         setPayments(payRes.data.payments ?? []);
+        setPendingRequests(rrRes.data.requests ?? []);
       })
       .catch(() => setError("Failed to load sessions."))
       .finally(() => setLoading(false));
   }, [router]);
+
+  function getPendingRequest(sessionId: string) {
+    return pendingRequests.find((r) => r.session_id === sessionId);
+  }
 
   async function handleCancel() {
     if (!cancelId) return;
@@ -106,26 +122,54 @@ export default function StudentSessionsPage() {
     }
   }
 
-  async function handleReschedule() {
-    if (!rescheduleId || !newDate) return;
+  async function handleRequestReschedule() {
+    if (!rescheduleId || !proposedDate || !proposedTime) return;
     const token = localStorage.getItem("accessToken");
     if (!token) return;
+
+    const proposed_at = new Date(`${proposedDate}T${proposedTime}`).toISOString();
     setRescheduleSaving(true);
+    setRescheduleError("");
     try {
-      const res = await api.patch(`/sessions/${rescheduleId}/reschedule`,
-        { scheduled_at: new Date(newDate).toISOString() },
+      const res = await api.post("/reschedule-requests",
+        { session_id: rescheduleId, proposed_at },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setSessions((prev) => [
-        ...prev.map((s) => s.id === rescheduleId ? { ...s, status: "rescheduled" as const } : s),
-        res.data.session,
-      ]);
+      setPendingRequests((prev) => [...prev, res.data.request]);
       setRescheduleId(null);
-      setNewDate("");
-    } catch {
-      alert("Failed to reschedule session.");
+      setProposedDate("");
+      setProposedTime("");
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { code?: string; error?: string } } };
+      const code = e.response?.data?.code;
+      const msg = e.response?.data?.error;
+      if (code === "CANCELLATION_BUFFER") {
+        setRescheduleError("Too close to session start. Please message the admin on WhatsApp to request changes.");
+      } else if (code === "TEACHER_CONFLICT") {
+        setRescheduleError("Teacher not available at this time. Please choose another.");
+      } else if (msg?.includes("already pending")) {
+        setRescheduleError("You already have a pending reschedule request for this session.");
+      } else {
+        setRescheduleError(msg || "Couldn't submit your request. Please try again.");
+      }
     } finally {
       setRescheduleSaving(false);
+    }
+  }
+
+  async function handleCancelRequest(requestId: string) {
+    const token = localStorage.getItem("accessToken");
+    if (!token) return;
+    setCancellingRequest(requestId);
+    try {
+      await api.delete(`/reschedule-requests/${requestId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+    } catch {
+      alert("Failed to cancel request.");
+    } finally {
+      setCancellingRequest(null);
     }
   }
 
@@ -148,6 +192,12 @@ export default function StudentSessionsPage() {
     (s) => s.status === "scheduled" && new Date(s.scheduled_at) > new Date()
   );
   const past = sessions.filter((s) => s.status !== "scheduled" || new Date(s.scheduled_at) <= new Date());
+
+  const timeOptions = Array.from({ length: 48 }, (_, i) => {
+    const h = String(Math.floor(i / 2)).padStart(2, "0");
+    const m = i % 2 === 0 ? "00" : "30";
+    return `${h}:${m}`;
+  });
 
   return (
     <main className="min-h-screen bg-cream">
@@ -204,7 +254,9 @@ export default function StudentSessionsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {upcoming.map((s) => (
+              {upcoming.map((s) => {
+                const pendingReq = getPendingRequest(s.id);
+                return (
                 <div key={s.id} className="bg-white rounded-2xl border border-black/5 p-5">
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div className="space-y-1">
@@ -226,6 +278,23 @@ export default function StudentSessionsPage() {
                       Scheduled
                     </span>
                   </div>
+
+                  {/* Pending reschedule badge */}
+                  {pendingReq && (
+                    <div className="mb-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                      <p className="text-amber-700 text-sm font-medium">Reschedule requested — awaiting approval</p>
+                      <p className="text-amber-600 text-xs mt-1">
+                        Proposed: {formatSessionTime(pendingReq.proposed_at)}
+                      </p>
+                      <button
+                        onClick={() => handleCancelRequest(pendingReq.id)}
+                        disabled={cancellingRequest === pendingReq.id}
+                        className="mt-2 text-xs text-amber-600 hover:text-amber-800 underline disabled:opacity-50"
+                      >
+                        {cancellingRequest === pendingReq.id ? "Cancelling…" : "Cancel request"}
+                      </button>
+                    </div>
+                  )}
 
                   {/* Join Class button */}
                   {s.zoom_link && (
@@ -269,35 +338,51 @@ export default function StudentSessionsPage() {
                     </div>
                   ) : rescheduleId === s.id ? (
                     <div className="border-t border-black/5 pt-3 space-y-2">
-                      <input
-                        type="datetime-local"
-                        value={newDate}
-                        onChange={(e) => setNewDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
-                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="date"
+                          value={proposedDate}
+                          onChange={(e) => setProposedDate(e.target.value)}
+                          min={new Date().toISOString().split("T")[0]}
+                          className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                        />
+                        <select
+                          value={proposedTime}
+                          onChange={(e) => setProposedTime(e.target.value)}
+                          className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                        >
+                          <option value="">Select time…</option>
+                          {timeOptions.map((t) => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {rescheduleError && (
+                        <p className="text-red-500 text-xs">{rescheduleError}</p>
+                      )}
                       <div className="flex gap-2">
                         <button
-                          onClick={handleReschedule}
-                          disabled={rescheduleSaving || !newDate}
+                          onClick={handleRequestReschedule}
+                          disabled={rescheduleSaving || !proposedDate || !proposedTime}
                           className="px-4 py-1.5 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors"
                         >
-                          {rescheduleSaving ? "Rescheduling…" : "Confirm Reschedule"}
+                          {rescheduleSaving ? "Submitting…" : "Submit Request"}
                         </button>
                         <button
-                          onClick={() => { setRescheduleId(null); setNewDate(""); }}
+                          onClick={() => { setRescheduleId(null); setProposedDate(""); setProposedTime(""); setRescheduleError(""); }}
                           className="px-4 py-1.5 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-black/20 transition-colors"
                         >
                           Cancel
                         </button>
                       </div>
                     </div>
-                  ) : (
+                  ) : !pendingReq ? (
                     <div className="flex gap-2 border-t border-black/5 pt-3">
                       <button
                         onClick={() => setRescheduleId(s.id)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-emerald-primary/40 hover:text-emerald-primary transition-colors"
                       >
-                        <RefreshCw size={13} /> Reschedule
+                        <RefreshCw size={13} /> Request Reschedule
                       </button>
                       <button
                         onClick={() => setCancelId(s.id)}
@@ -306,9 +391,10 @@ export default function StudentSessionsPage() {
                         <X size={13} /> Cancel
                       </button>
                     </div>
-                  )}
+                  ) : null}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
@@ -359,7 +445,7 @@ export default function StudentSessionsPage() {
                     {p.notes && <p className="text-charcoal/50 text-xs mt-0.5">{p.notes}</p>}
                   </div>
                   <p className="text-charcoal/40 text-xs shrink-0">
-                    {new Date(p.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    {formatSimpleDate(p.created_at)}
                   </p>
                 </div>
               ))}

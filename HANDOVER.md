@@ -296,7 +296,26 @@ To view and manage applications:
 
 ---
 
-## 16. Known Limitations
+## 16. How Reschedule Requests Work
+
+Students can no longer reschedule sessions directly. Instead, they submit a **reschedule request** proposing a new time. Either you (admin) or the teacher can approve or reject it.
+
+**How it works:**
+1. The student clicks "Request Reschedule" on their session card, picks a new date and time, and submits.
+2. You and the teacher both get an in-app notification (check the bell icon in the header).
+3. On the **Supervisor Dashboard** (Sessions tab), pending requests appear at the top with Approve/Reject buttons. The teacher also sees them on their dashboard.
+4. **To approve:** click Approve. The system creates a new session at the proposed time and marks the old one as rescheduled. The student gets a notification.
+5. **To reject:** click Reject, optionally type a reason, then Confirm. The student gets a notification with the reason.
+6. After approving or rejecting, a green **"Send WhatsApp to student"** button appears so you can message them directly.
+
+**Rules:**
+- Students cannot request a reschedule within **12 hours** of the session start. If they need a last-minute change, they must message you on WhatsApp.
+- Only one pending request per session at a time. The student must cancel their pending request before submitting a new one.
+- The system checks that the teacher is available at the proposed time — if there's a conflict, you'll see an error and should reject the request.
+
+---
+
+## 17. Known Limitations
 
 - **Password reset does not immediately log out other devices.** When an admin resets a teacher or student's password, any existing login sessions for that person remain valid until their access tokens expire naturally (within 15 minutes). There is no forced logout across all devices on password reset. Strict session invalidation is a future improvement.
 
@@ -308,7 +327,7 @@ To view and manage applications:
 
 ---
 
-## 17. Who Built What
+## 18. Who Built What
 
 The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 
