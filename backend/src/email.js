@@ -1,4 +1,5 @@
 const { Resend } = require('resend');
+const { shouldSendEmail } = require('./lib/email-guard');
 
 function getResend() {
   if (!process.env.RESEND_API_KEY) return null;
@@ -9,7 +10,11 @@ const FROM = 'MY Institute <noreply@my-institute.com>';
 const BRAND_COLOR = '#065f46';
 
 async function sendVerificationEmail({ to, name, verificationUrl }) {
+  const guard = shouldSendEmail(to);
+  if (!guard.allowed) return guard;
+
   const resend = getResend();
+  if (!resend) return;
 
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111;">
@@ -32,7 +37,11 @@ async function sendVerificationEmail({ to, name, verificationUrl }) {
 }
 
 async function sendContactNotification({ to, firstName, lastName, email, phone, subject, message }) {
+  const guard = shouldSendEmail(to);
+  if (!guard.allowed) return guard;
+
   const resend = getResend();
+  if (!resend) return;
 
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111;">
@@ -62,6 +71,9 @@ async function sendContactNotification({ to, firstName, lastName, email, phone, 
  * No-ops silently when RESEND_API_KEY is not configured.
  */
 async function sendWelcomeEmail({ to, name, email, tempPassword, role }) {
+  const guard = shouldSendEmail(to);
+  if (!guard.allowed) return guard;
+
   const resend = getResend();
   if (!resend) {
     console.error('sendWelcomeEmail: RESEND_API_KEY not set — email skipped. Share login details manually.');

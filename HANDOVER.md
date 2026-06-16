@@ -374,7 +374,7 @@ Still feature-flagged off (`FEATURE_MESSAGING` on Render, `NEXT_PUBLIC_FEATURE_M
 **Automated tests (CI):**
 21 API-level Playwright tests run automatically on every push to master and daily at 8 AM UTC via GitHub Actions (`.github/workflows/api-tests.yml`). Tests execute against the production backend.
 
-**DO NOT DELETE the test student account** `rizwanc43@gmail.com` (display name: "rizwantest", ID: `3de0a33b-...`). It is used by the Playwright test suite. Deleting it will break CI.
+**DO NOT DELETE the test student account** `playwright-student@phase35test.local` (display name: "rizwantest", ID: `3de0a33b-...`). It is used by the Playwright test suite. Deleting it will break CI.
 
 **Test coverage scope:**
 - API-level tests: 21 tests covering reschedule requests, cancellation buffer, admin edit, legacy route gate, homework auth, notification format. These run in CI and catch backend regressions.
@@ -402,7 +402,25 @@ Still feature-flagged off (`FEATURE_MESSAGING` on Render, `NEXT_PUBLIC_FEATURE_M
 
 ---
 
-## 20. Who Built What
+## 20. Email Sending — Test Suppression & Rate Limits
+
+**Recipient guard** (`backend/src/lib/email-guard.js`):
+Every email send checks the recipient address before calling Resend. Addresses matching test patterns are silently suppressed with a log line `[EMAIL SUPPRESSED]`. Suppressed patterns include:
+- Domains: `@test.local`, `@phase*test.local`, `@example.com`, `@mailinator.com`
+- Local parts containing: `playwright-`, `+emailtest`, `+smoketest`, `_test_`, `_phase`
+
+Legitimate addresses (real Gmail, Outlook, etc.) go through normally.
+
+**Circuit breaker** (same file):
+If more than 20 emails are sent within 60 seconds, all further sends are refused with `[EMAIL CIRCUIT BREAKER]` until the window clears. This prevents any bug or test loop from exhausting the Resend quota.
+
+**Resend free-tier limit:** 100 emails/day. If real student onboarding exceeds this, upgrade to Resend paid plan (~$20/month for 50k emails). Update `RESEND_API_KEY` in Render environment variables when rotating the key.
+
+**When adding new test addresses:** use one of the suppressed patterns (e.g. `newtest@phase35test.local`) to ensure emails are never sent to test accounts.
+
+---
+
+## 21. Who Built What
 
 The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 

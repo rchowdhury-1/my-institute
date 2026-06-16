@@ -28,13 +28,14 @@ async function getAdminToken(request: APIRequestContext) {
 }
 
 async function getStudentToken(request: APIRequestContext) {
-  // Reset student password first
+  // Reset student password — send_email: false prevents welcome email
   const adminToken = await getAdminToken(request);
   const resetRes = await request.post(`${API}/admin/students/${STUDENT_ID}/reset-password`, {
     headers: { Authorization: `Bearer ${adminToken}` },
+    data: { send_email: false },
   });
   const { tempPassword } = await resetRes.json();
-  return getToken(request, "rizwanc43@gmail.com", tempPassword);
+  return getToken(request, "playwright-student@phase35test.local", tempPassword);
 }
 
 // Counter to generate unique non-conflicting times for test sessions.
@@ -394,6 +395,7 @@ test("teacher cannot approve another teacher's session request", async ({ reques
   const adminToken = await getAdminToken(request);
   const resetRes = await request.post(`${API}/admin/teachers/0570342b-3f2d-40ea-9cde-8ea58a4f14ff/reset-password`, {
     headers: { Authorization: `Bearer ${adminToken}` },
+    data: { send_email: false },
   });
   if (resetRes.status() !== 200) { await deleteSession(request, session.id); return; }
   const { tempPassword } = await resetRes.json();
@@ -410,6 +412,7 @@ test("teacher homework on unrelated student → NOT_YOUR_STUDENT", async ({ requ
   const adminToken = await getAdminToken(request);
   const resetRes = await request.post(`${API}/admin/teachers/${TEACHER_ID}/reset-password`, {
     headers: { Authorization: `Bearer ${adminToken}` },
+    data: { send_email: false },
   });
   const { tempPassword } = await resetRes.json();
   const teacherToken = await getToken(request, "mohamedebnyousef20@gmail.com", tempPassword);
@@ -425,6 +428,7 @@ test("teacher CAN create homework for their own student", async ({ request }) =>
   const adminToken = await getAdminToken(request);
   const resetRes = await request.post(`${API}/admin/teachers/${TEACHER_ID}/reset-password`, {
     headers: { Authorization: `Bearer ${adminToken}` },
+    data: { send_email: false },
   });
   const { tempPassword } = await resetRes.json();
   const teacherToken = await getToken(request, "mohamedebnyousef20@gmail.com", tempPassword);
