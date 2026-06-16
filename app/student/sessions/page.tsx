@@ -201,7 +201,7 @@ export default function StudentSessionsPage() {
 
   return (
     <main className="min-h-screen bg-cream">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
         <h1 className="font-display text-3xl font-bold text-charcoal mb-2">My Sessions</h1>
         <p className="text-charcoal/50 text-sm mb-8">Manage your upcoming and past sessions</p>
 
