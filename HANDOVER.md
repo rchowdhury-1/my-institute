@@ -420,7 +420,20 @@ If more than 20 emails are sent within 60 seconds, all further sends are refused
 
 ---
 
-## 21. Who Built What
+## 21. Production Polish (Phase 3.7)
+
+Final pre-launch fixes applied:
+- **Temp password always visible**: When creating a user or resetting a password, the admin sees a persistent panel with the credentials, email status (sent/failed/suppressed), and a "Share via WhatsApp" button. The password is never lost.
+- **Email status reporting**: Backend now returns `email_sent`, `email_status`, and `email_error` on all create/reset routes. Frontend shows warnings when email fails.
+- **FreeTrialForm bug fixed**: WhatsApp no longer opens when the form submission fails (was in a `finally` block, now in success branch only).
+- **Silent catches eliminated**: 6 admin page catch blocks that silently swallowed errors now show inline error messages or alerts.
+- **Session status CHECK constraint**: Migration 012 adds `CHECK (status IN ('scheduled','completed','cancelled','rescheduled','no_show'))` to prevent invalid status values.
+- **Homework indexes**: Migration 013 adds indexes on `homework.student_id` and `homework.teacher_id`.
+- **WhatsApp number centralised**: All 7 hardcoded instances replaced with `BRAND.whatsapp` (frontend) or `brand.js` (backend).
+
+---
+
+## 22. Who Built What
 
 The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 

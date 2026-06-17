@@ -111,15 +111,16 @@ router.post('/students', async (req, res) => {
       );
     }
 
-    // Fire-and-forget welcome email
+    // Send welcome email and report status
+    let emailResult = { email_sent: false, email_status: 'skipped', email_error: null };
     if (send_email) {
-      sendWelcomeEmail({
+      emailResult = await sendWelcomeEmail({
         to: student.email, name: student.display_name,
         email: student.email, tempPassword, role: 'student',
-      }).catch(() => {});
+      }).catch(err => ({ email_sent: false, email_status: 'failed', email_error: err.message }));
     }
 
-    res.status(201).json({ student, tempPassword });
+    res.status(201).json({ student, tempPassword, ...emailResult });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -211,14 +212,15 @@ router.post('/students/:id/reset-password', async (req, res) => {
       [hash, req.params.id]
     );
 
+    let emailResult = { email_sent: false, email_status: 'skipped', email_error: null };
     if (send_email) {
-      sendWelcomeEmail({
+      emailResult = await sendWelcomeEmail({
         to: user.email, name: user.display_name,
         email: user.email, tempPassword, role: 'student',
-      }).catch(() => {});
+      }).catch(err => ({ email_sent: false, email_status: 'failed', email_error: err.message }));
     }
 
-    res.json({ tempPassword });
+    res.json({ tempPassword, ...emailResult });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -281,14 +283,15 @@ router.post('/teachers', async (req, res) => {
     );
     const teacher = result.rows[0];
 
+    let emailResult = { email_sent: false, email_status: 'skipped', email_error: null };
     if (send_email) {
-      sendWelcomeEmail({
+      emailResult = await sendWelcomeEmail({
         to: teacher.email, name: teacher.display_name,
         email: teacher.email, tempPassword, role: 'teacher',
-      }).catch(() => {});
+      }).catch(err => ({ email_sent: false, email_status: 'failed', email_error: err.message }));
     }
 
-    res.status(201).json({ teacher, tempPassword });
+    res.status(201).json({ teacher, tempPassword, ...emailResult });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -366,14 +369,15 @@ router.post('/teachers/:id/reset-password', async (req, res) => {
       [hash, req.params.id]
     );
 
+    let emailResult = { email_sent: false, email_status: 'skipped', email_error: null };
     if (send_email) {
-      sendWelcomeEmail({
+      emailResult = await sendWelcomeEmail({
         to: user.email, name: user.display_name,
         email: user.email, tempPassword, role: 'teacher',
-      }).catch(() => {});
+      }).catch(err => ({ email_sent: false, email_status: 'failed', email_error: err.message }));
     }
 
-    res.json({ tempPassword });
+    res.json({ tempPassword, ...emailResult });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

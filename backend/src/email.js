@@ -72,12 +72,12 @@ async function sendContactNotification({ to, firstName, lastName, email, phone, 
  */
 async function sendWelcomeEmail({ to, name, email, tempPassword, role }) {
   const guard = shouldSendEmail(to);
-  if (!guard.allowed) return guard;
+  if (!guard.allowed) return { email_sent: false, email_status: 'suppressed_test', email_error: null };
 
   const resend = getResend();
   if (!resend) {
-    console.error('sendWelcomeEmail: RESEND_API_KEY not set — email skipped. Share login details manually.');
-    return;
+    console.error('sendWelcomeEmail: RESEND_API_KEY not set — email skipped.');
+    return { email_sent: false, email_status: 'no_api_key', email_error: 'Email service not configured' };
   }
 
   const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
@@ -115,8 +115,10 @@ async function sendWelcomeEmail({ to, name, email, tempPassword, role }) {
       subject: 'Welcome to My Institute — your login details',
       html,
     });
+    return { email_sent: true, email_status: 'sent', email_error: null };
   } catch (err) {
     console.error('sendWelcomeEmail error:', err.message);
+    return { email_sent: false, email_status: 'failed', email_error: err.message };
   }
 }
 

@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
-const ADMIN_WHATSAPP = '201067827621';
+const { whatsapp: ADMIN_WHATSAPP } = require('../lib/brand');
 
 // GET /courses — public
 router.get('/', async (req, res) => {

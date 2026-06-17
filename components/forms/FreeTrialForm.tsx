@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { freeTrialSchema, type FreeTrialInput } from "@/lib/validators";
 import Button from "@/components/shared/Button";
+import { BRAND } from "@/lib/content";
 
 export default function FreeTrialForm() {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -37,12 +38,11 @@ export default function FreeTrialForm() {
 
       setStatus("success");
       reset();
+      const msg = `New Free Trial Request\nName: ${data.firstName} ${data.lastName}\nEmail: ${data.email}\nPhone: ${data.phone}\nCourse: ${data.interest}\nMessage: ${data.message || ""}`;
+      window.open(`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(msg)}`);
     } catch (err) {
       setStatus("error");
       setErrorMessage(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      const msg = `New Free Trial Request\nName: ${data.firstName} ${data.lastName}\nEmail: ${data.email}\nPhone: ${data.phone}\nCourse: ${data.interest}\nMessage: ${data.message || ""}`;
-      window.open(`https://wa.me/201067827621?text=${encodeURIComponent(msg)}`);
     }
   };
 

@@ -6,9 +6,10 @@ import { Heart, BookOpen, Users, GraduationCap } from "lucide-react";
 import AnimatedSection from "@/components/shared/AnimatedSection";
 import Badge from "@/components/shared/Badge";
 import Section from "@/components/shared/Section";
+import { BRAND } from "@/lib/content";
 
 const whatsappUrl =
-  "https://wa.me/201067827621?text=" +
+  `https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=` +
   encodeURIComponent(
     "Hi, I'd like to sponsor a student. Please let me know how to donate."
   );

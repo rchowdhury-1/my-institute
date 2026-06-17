@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink, MessageCircle } from "lucide-react";
 import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate } from "@/lib/datetime";
+import { BRAND } from "@/lib/content";
 
 interface Session {
   id: string;
@@ -315,7 +316,7 @@ export default function StudentSessionsPage() {
                     const hoursUntil = (new Date(s.scheduled_at).getTime() - Date.now()) / 3600000;
                     const withinBuffer = hoursUntil >= 0 && hoursUntil < 12;
                     const waText = `Hi, I need to change my session on ${formatSessionTime(s.scheduled_at)}.`;
-                    const waUrl = `https://wa.me/201067827621?text=${encodeURIComponent(waText)}`;
+                    const waUrl = `https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(waText)}`;
 
                     if (withinBuffer && !pendingReq) {
                       return (

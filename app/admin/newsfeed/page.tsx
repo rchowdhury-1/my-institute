@@ -48,6 +48,7 @@ export default function AdminNewsfeedPage() {
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   // Create form
   const [showCreate, setShowCreate] = useState(false);
@@ -97,8 +98,9 @@ export default function AdminNewsfeedPage() {
         headers: { Authorization: `Bearer ${t}` },
       });
       setPosts(res.data.posts ?? []);
-    } catch {
-      // keep empty
+    } catch (err) {
+      console.error('Fetch posts error:', err);
+      setLoadError("Failed to load posts. Please refresh.");
     } finally {
       setLoading(false);
     }
@@ -184,8 +186,9 @@ export default function AdminNewsfeedPage() {
       });
       setPosts((prev) => prev.filter((p) => p.id !== postId));
       setDeleteConfirmId(null);
-    } catch {
-      // silent
+    } catch (err) {
+      console.error('Delete post error:', err);
+      alert("Failed to delete post. Please try again.");
     } finally {
       setDeleteLoading(false);
     }
@@ -199,6 +202,9 @@ export default function AdminNewsfeedPage() {
   return (
     <main className="min-h-screen bg-cream">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
+        {loadError && (
+          <div className="mb-4 px-4 py-2 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm">{loadError}</div>
+        )}
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>

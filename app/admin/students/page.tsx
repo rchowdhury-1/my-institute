@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { BRAND } from "@/lib/content";
 import {
   Plus,
   X,
@@ -120,6 +121,7 @@ export default function AdminStudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Create form
@@ -145,8 +147,8 @@ export default function AdminStudentsPage() {
   const [createError, setCreateError] = useState("");
 
   // Banners
-  const [successBanner, setSuccessBanner] = useState<{ name: string; password: string } | null>(null);
-  const [resetBanner, setResetBanner] = useState<{ studentId: string; name: string; password: string } | null>(null);
+  const [successBanner, setSuccessBanner] = useState<{ name: string; password: string; email: string; emailSent: boolean; emailError?: string } | null>(null);
+  const [resetBanner, setResetBanner] = useState<{ studentId: string; name: string; password: string; email: string; emailSent: boolean; emailError?: string } | null>(null);
 
   // Per-card state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -183,8 +185,9 @@ export default function AdminStudentsPage() {
         headers: { Authorization: `Bearer ${t}` },
       });
       setStudents(res.data.students ?? res.data);
-    } catch {
-      // keep empty list
+    } catch (err) {
+      console.error('Fetch students error:', err);
+      setError("Failed to load students. Please refresh the page.");
     } finally {
       setLoading(false);
     }
@@ -296,7 +299,13 @@ export default function AdminStudentsPage() {
 
       setShowCreate(false);
       resetCreateForm();
-      setSuccessBanner({ name: newName, password: tempPassword });
+      setSuccessBanner({
+        name: newName,
+        password: tempPassword,
+        email: createForm.email,
+        emailSent: res.data.email_sent ?? false,
+        emailError: res.data.email_error || undefined,
+      });
     } catch (err) {
       const { status, message } = getAxiosError(err);
       setCreateError(
@@ -377,15 +386,23 @@ export default function AdminStudentsPage() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const tempPassword: string = res.data.tempPassword ?? res.data.temp_password;
-      setResetBanner({ studentId: student.id, name: student.display_name, password: tempPassword });
+      setResetBanner({
+        studentId: student.id,
+        name: student.display_name,
+        password: tempPassword,
+        email: student.email,
+        emailSent: res.data.email_sent ?? false,
+        emailError: res.data.email_error || undefined,
+      });
       setResetConfirmId(null);
       setStudents((prev) =>
         prev.map((s) =>
           s.id === student.id ? { ...s, must_change_password: true } : s
         )
       );
-    } catch {
-      // silent
+    } catch (err) {
+      console.error('Reset password error:', err);
+      alert("Failed to reset password. Please try again.");
     } finally {
       setResetLoading(false);
     }
@@ -431,6 +448,12 @@ export default function AdminStudentsPage() {
     <main className="min-h-screen bg-cream">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
 
+        {error && (
+          <div className="mb-4 px-4 py-2 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm">
+            {error}
+          </div>
+        )}
+
         {/* ── Header ────────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>
@@ -457,39 +480,70 @@ export default function AdminStudentsPage() {
 
         {/* ── Create success banner ──────────────────────────────────────── */}
         {successBanner && (
-          <div data-testid="success-banner" className="mb-6 p-4 bg-emerald-primary/10 border border-emerald-primary/20 rounded-2xl flex items-start justify-between gap-4">
-            <div className="text-sm text-charcoal">
-              <p className="font-semibold text-emerald-primary mb-1">{successBanner.name} has been added.</p>
-              <p className="text-charcoal/70">
-                Temporary password:{" "}
-                <span data-testid="temp-password" className="font-mono font-bold text-charcoal">
-                  {successBanner.password}
-                </span>
-                <CopyButton text={successBanner.password} />
-              </p>
+          <div data-testid="success-banner" className="mb-6 p-4 bg-emerald-primary/10 border border-emerald-primary/20 rounded-2xl">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="text-sm text-charcoal">
+                <p className="font-semibold text-emerald-primary mb-2">Account created for {successBanner.name}</p>
+                <p className="text-charcoal/70 mb-1">Login email: <span className="font-medium text-charcoal">{successBanner.email}</span></p>
+                <p className="text-charcoal/70">
+                  Temporary password:{" "}
+                  <span data-testid="temp-password" className="font-mono font-bold text-charcoal">{successBanner.password}</span>
+                  <CopyButton text={successBanner.password} />
+                </p>
+              </div>
+              <button data-testid="btn-dismiss-success" onClick={() => setSuccessBanner(null)} className="text-charcoal/40 hover:text-charcoal transition-colors mt-0.5">
+                <X size={16} />
+              </button>
             </div>
-            <button data-testid="btn-dismiss-success" onClick={() => setSuccessBanner(null)} className="text-charcoal/40 hover:text-charcoal transition-colors mt-0.5">
-              <X size={16} />
-            </button>
+            {successBanner.emailSent ? (
+              <p className="text-xs text-emerald-primary">✓ Welcome email sent</p>
+            ) : (
+              <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl">
+                <p className="text-xs text-amber-700 font-medium">⚠ Welcome email could not be sent — please share these credentials manually.</p>
+                {successBanner.emailError && <p className="text-xs text-amber-600 mt-1">Reason: {successBanner.emailError}</p>}
+                <a
+                  href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(`Assalamu alaikum! Your My Institute account is ready.\n\nLogin: ${successBanner.email}\nPassword: ${successBanner.password}\n\nPlease log in at https://www.my-institute.com/login and set a new password.`)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors"
+                >
+                  Share via WhatsApp →
+                </a>
+              </div>
+            )}
           </div>
         )}
 
         {/* ── Reset password banner ──────────────────────────────────────── */}
         {resetBanner && (
-          <div data-testid="reset-banner" className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start justify-between gap-4">
-            <div className="text-sm text-charcoal">
-              <p className="font-semibold text-amber-700 mb-1">Password reset for {resetBanner.name}.</p>
-              <p className="text-charcoal/70">
-                New temporary password:{" "}
-                <span data-testid="reset-temp-password" className="font-mono font-bold text-charcoal">
-                  {resetBanner.password}
-                </span>
-                <CopyButton text={resetBanner.password} />
-              </p>
+          <div data-testid="reset-banner" className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="text-sm text-charcoal">
+                <p className="font-semibold text-amber-700 mb-2">Password reset for {resetBanner.name}</p>
+                <p className="text-charcoal/70 mb-1">Login email: <span className="font-medium text-charcoal">{resetBanner.email}</span></p>
+                <p className="text-charcoal/70">
+                  New temporary password:{" "}
+                  <span data-testid="reset-temp-password" className="font-mono font-bold text-charcoal">{resetBanner.password}</span>
+                  <CopyButton text={resetBanner.password} />
+                </p>
+              </div>
+              <button onClick={() => setResetBanner(null)} className="text-charcoal/40 hover:text-charcoal transition-colors mt-0.5">
+                <X size={16} />
+              </button>
             </div>
-            <button onClick={() => setResetBanner(null)} className="text-charcoal/40 hover:text-charcoal transition-colors mt-0.5">
-              <X size={16} />
-            </button>
+            {resetBanner.emailSent ? (
+              <p className="text-xs text-emerald-primary">✓ Password reset email sent</p>
+            ) : (
+              <div className="p-2 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-xs text-red-700 font-medium">⚠ Email could not be sent — please share the new password manually.</p>
+                <a
+                  href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(`Your My Institute password has been reset.\n\nLogin: ${resetBanner.email}\nNew password: ${resetBanner.password}\n\nPlease log in and set a new password.`)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors"
+                >
+                  Share via WhatsApp →
+                </a>
+              </div>
+            )}
           </div>
         )}
 
