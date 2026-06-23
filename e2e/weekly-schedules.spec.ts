@@ -17,13 +17,15 @@ const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || "Test12345";
 const STUDENT_ID = "3de0a33b-93bf-4041-9ae0-770a290626d9";
 const TEACHER_ID = "c084e832-ebdb-4152-83f6-ba923e5655db";
 
-// Use unique early-morning UTC times that are always in the future
-// (03:00-04:59 UTC — future for London which is UTC+0/+1)
+// Use random early-morning UTC times to avoid conflicts across test runs.
+// Range: 02:00-04:59 with random minute offsets
+const slotBase = Math.floor(Math.random() * 120); // 0-119 → maps to 02:00-03:59
 let slotCounter = 0;
 function uniqueSlotTime(): string {
-  const h = 3 + Math.floor(slotCounter / 60);
-  const m = slotCounter % 60;
+  const totalMinutes = (slotBase + slotCounter * 7) % 180; // spread across 3 hours
   slotCounter++;
+  const h = 2 + Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
