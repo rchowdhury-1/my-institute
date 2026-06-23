@@ -17,6 +17,22 @@ const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || "Test12345";
 const STUDENT_ID = "3de0a33b-93bf-4041-9ae0-770a290626d9";
 const TEACHER_ID = "c084e832-ebdb-4152-83f6-ba923e5655db";
 
+// Use unique early-morning times (02:00-04:59) to avoid conflicts with real sessions
+let slotCounter = 0;
+function uniqueSlotTime(): string {
+  const h = 2 + Math.floor(slotCounter / 60);
+  const m = slotCounter % 60;
+  slotCounter++;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// Use unique far-future dates for attendance tests to avoid teacher conflicts
+let attendanceCounter = 0;
+function uniqueAttendanceTime(): string {
+  const day = 10 + attendanceCounter++;
+  return `2026-08-${String(day).padStart(2, "0")}T03:00:00Z`;
+}
+
 async function getToken(
   request: APIRequestContext,
   email: string,
@@ -32,40 +48,22 @@ async function getAdminToken(request: APIRequestContext) {
   return getToken(request, ADMIN_EMAIL, ADMIN_PASSWORD);
 }
 
-async function getTeacherToken(request: APIRequestContext) {
-  const adminToken = await getAdminToken(request);
-  const resetRes = await request.post(
-    `${API}/admin/teachers/${TEACHER_ID}/reset-password`,
-    {
-      headers: { Authorization: `Bearer ${adminToken}` },
-      data: { send_email: false },
-    }
-  );
-  const body = await resetRes.json();
-  // Teacher email is needed — get it from admin endpoint
-  const teacherRes = await request.get(`${API}/admin/teachers`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-  });
-  const teachers = (await teacherRes.json()).teachers || [];
-  const teacher = teachers.find((t: any) => t.id === TEACHER_ID);
-  if (!teacher) throw new Error("Teacher not found");
-  return getToken(request, teacher.email, body.tempPassword);
-}
-
 // Helpers
 async function createSchedule(
   request: APIRequestContext,
   overrides: Record<string, any> = {}
 ) {
   const token = await getAdminToken(request);
+  const t1 = uniqueSlotTime();
+  const t2 = uniqueSlotTime();
   const data = {
     student_id: STUDENT_ID,
     teacher_id: TEACHER_ID,
     subject: "quran",
     default_duration: 60,
     slots: [
-      { day: "mon", time: "05:00", duration: 60 },
-      { day: "wed", time: "05:00", duration: 60 },
+      { day: "mon", time: t1, duration: 60 },
+      { day: "wed", time: t2, duration: 60 },
     ],
     lessons_remaining: 10,
     ...overrides,
@@ -74,7 +72,8 @@ async function createSchedule(
     headers: { Authorization: `Bearer ${token}` },
     data,
   });
-  return { res, body: await res.json() };
+  const body = await res.json();
+  return { res, body };
 }
 
 async function deleteSchedule(request: APIRequestContext, id: string) {
@@ -99,30 +98,28 @@ test("create schedule generates sessions for 4 weeks", async ({ request }) => {
   expect(body.schedule).toBeDefined();
   expect(body.schedule.is_active).toBe(true);
   expect(body.generation.created).toBeGreaterThan(0);
-  // 2 slots × ~4 weeks = ~8 sessions (exact count depends on current day)
   expect(body.generation.created).toBeGreaterThanOrEqual(4);
   expect(body.generation.created).toBeLessThanOrEqual(10);
 
-  // Cleanup
   await deleteSchedule(request, body.schedule.id);
 });
 
 test("edit schedule wipes and regenerates sessions", async ({ request }) => {
-  const { body: created } = await createSchedule(request);
+  const { res, body: created } = await createSchedule(request);
+  expect(res.status()).toBe(201);
   const scheduleId = created.schedule.id;
-  const initialCount = created.generation.created;
 
   const token = await getAdminToken(request);
+  const newTime = uniqueSlotTime();
 
-  // Edit: change Wed to Thu
   const editRes = await request.patch(
     `${API}/admin/weekly-schedules/${scheduleId}`,
     {
       headers: { Authorization: `Bearer ${token}` },
       data: {
         slots: [
-          { day: "mon", time: "05:00", duration: 60 },
-          { day: "thu", time: "05:00", duration: 60 },
+          { day: "mon", time: newTime, duration: 60 },
+          { day: "thu", time: uniqueSlotTime(), duration: 60 },
         ],
       },
     }
@@ -136,8 +133,10 @@ test("edit schedule wipes and regenerates sessions", async ({ request }) => {
 });
 
 test("deactivate schedule removes future sessions", async ({ request }) => {
-  const { body: created } = await createSchedule(request);
+  const { res, body: created } = await createSchedule(request);
+  expect(res.status()).toBe(201);
   const scheduleId = created.schedule.id;
+  expect(created.generation.created).toBeGreaterThan(0);
 
   const token = await getAdminToken(request);
 
@@ -159,7 +158,8 @@ test("deactivate schedule removes future sessions", async ({ request }) => {
 });
 
 test("reactivate schedule generates fresh sessions", async ({ request }) => {
-  const { body: created } = await createSchedule(request);
+  const { res, body: created } = await createSchedule(request);
+  expect(res.status()).toBe(201);
   const scheduleId = created.schedule.id;
   const token = await getAdminToken(request);
 
@@ -183,16 +183,16 @@ test("reactivate schedule generates fresh sessions", async ({ request }) => {
 test("multiple schedules for same student+teacher allowed", async ({
   request,
 }) => {
-  const { body: first } = await createSchedule(request, {
+  const { res: firstRes, body: first } = await createSchedule(request, {
     subject: "quran",
-    slots: [{ day: "mon", time: "05:00", duration: 60 }],
+    slots: [{ day: "mon", time: uniqueSlotTime(), duration: 60 }],
   });
+  expect(firstRes.status()).toBe(201);
 
   const { res: secondRes, body: second } = await createSchedule(request, {
     subject: "arabic",
-    slots: [{ day: "tue", time: "05:00", duration: 60 }],
+    slots: [{ day: "tue", time: uniqueSlotTime(), duration: 60 }],
   });
-
   expect(secondRes.status()).toBe(201);
   expect(second.schedule.id).not.toBe(first.schedule.id);
 
@@ -205,7 +205,8 @@ test("multiple schedules for same student+teacher allowed", async ({
 test("generate is idempotent — no duplicates on second call", async ({
   request,
 }) => {
-  const { body: created } = await createSchedule(request);
+  const { res, body: created } = await createSchedule(request);
+  expect(res.status()).toBe(201);
   const scheduleId = created.schedule.id;
   const token = await getAdminToken(request);
 
@@ -216,7 +217,7 @@ test("generate is idempotent — no duplicates on second call", async ({
   );
   expect(genRes.status()).toBe(200);
   const genBody = await genRes.json();
-  expect(genBody.generation.created).toBe(0); // Nothing new created
+  expect(genBody.generation.created).toBe(0);
 
   await deleteSchedule(request, scheduleId);
 });
@@ -226,9 +227,11 @@ test("generate is idempotent — no duplicates on second call", async ({
 test("cancelled auto-generated session is NOT re-generated", async ({
   request,
 }) => {
-  const { body: created } = await createSchedule(request, {
-    slots: [{ day: "mon", time: "05:00", duration: 60 }],
+  const t = uniqueSlotTime();
+  const { res, body: created } = await createSchedule(request, {
+    slots: [{ day: "mon", time: t, duration: 60 }],
   });
+  expect(res.status()).toBe(201);
   const scheduleId = created.schedule.id;
   const token = await getAdminToken(request);
 
@@ -237,7 +240,8 @@ test("cancelled auto-generated session is NOT re-generated", async ({
     `${API}/admin/weekly-schedules/${scheduleId}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
-  const upcoming = (await sessionsRes.json()).upcoming_sessions;
+  const { upcoming_sessions: upcoming } = await sessionsRes.json();
+  expect(upcoming).toBeDefined();
   expect(upcoming.length).toBeGreaterThan(0);
 
   // Cancel the first session
@@ -267,9 +271,8 @@ test("cancelled auto-generated session is NOT re-generated", async ({
 test("attendance: teacher+student attended → completed", async ({
   request,
 }) => {
-  // Create a session happening right now (admin can mark at any time)
   const token = await getAdminToken(request);
-  const sessionTime = new Date(Date.now() + 30 * 60000).toISOString(); // 30 min from now
+  const sessionTime = uniqueAttendanceTime();
   const createRes = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
@@ -280,9 +283,10 @@ test("attendance: teacher+student attended → completed", async ({
       subject: "quran",
     },
   });
+  expect(createRes.status()).toBe(201);
   const session = (await createRes.json()).session;
 
-  // Admin marks attendance
+  // Admin marks attendance (admin can mark at any time)
   const attRes = await request.patch(
     `${API}/sessions/${session.id}/attendance`,
     {
@@ -303,21 +307,19 @@ test("attendance: teacher attended, student didn't → no_show", async ({
   request,
 }) => {
   const token = await getAdminToken(request);
-  const sessionTime = new Date(Date.now() + 30 * 60000).toISOString();
-  const session = (
-    await (
-      await request.post(`${API}/sessions`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: {
-          student_id: STUDENT_ID,
-          teacher_id: TEACHER_ID,
-          scheduled_at: sessionTime,
-          duration_minutes: 60,
-          subject: "quran",
-        },
-      })
-    ).json()
-  ).session;
+  const sessionTime = uniqueAttendanceTime();
+  const createRes = await request.post(`${API}/sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      student_id: STUDENT_ID,
+      teacher_id: TEACHER_ID,
+      scheduled_at: sessionTime,
+      duration_minutes: 60,
+      subject: "quran",
+    },
+  });
+  expect(createRes.status()).toBe(201);
+  const session = (await createRes.json()).session;
 
   const attRes = await request.patch(
     `${API}/sessions/${session.id}/attendance`,
@@ -336,21 +338,19 @@ test("attendance: teacher didn't attend → cancelled_teacher", async ({
   request,
 }) => {
   const token = await getAdminToken(request);
-  const sessionTime = new Date(Date.now() + 30 * 60000).toISOString();
-  const session = (
-    await (
-      await request.post(`${API}/sessions`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: {
-          student_id: STUDENT_ID,
-          teacher_id: TEACHER_ID,
-          scheduled_at: sessionTime,
-          duration_minutes: 60,
-          subject: "quran",
-        },
-      })
-    ).json()
-  ).session;
+  const sessionTime = uniqueAttendanceTime();
+  const createRes = await request.post(`${API}/sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      student_id: STUDENT_ID,
+      teacher_id: TEACHER_ID,
+      scheduled_at: sessionTime,
+      duration_minutes: 60,
+      subject: "quran",
+    },
+  });
+  expect(createRes.status()).toBe(201);
+  const session = (await createRes.json()).session;
 
   const attRes = await request.patch(
     `${API}/sessions/${session.id}/attendance`,
@@ -369,35 +369,55 @@ test("teacher cannot mark attendance too early (ATTENDANCE_TOO_EARLY)", async ({
   request,
 }) => {
   const token = await getAdminToken(request);
-  // Session far in the future (48h from now)
-  const sessionTime = new Date(
-    Date.now() + 48 * 3600000
-  ).toISOString();
-  const session = (
-    await (
-      await request.post(`${API}/sessions`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: {
-          student_id: STUDENT_ID,
-          teacher_id: TEACHER_ID,
-          scheduled_at: sessionTime,
-          duration_minutes: 60,
-          subject: "quran",
-        },
-      })
-    ).json()
-  ).session;
+  // Session 48h in the future — teacher can't mark yet
+  const sessionTime = new Date(Date.now() + 48 * 3600000).toISOString();
+  const createRes = await request.post(`${API}/sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      student_id: STUDENT_ID,
+      teacher_id: TEACHER_ID,
+      scheduled_at: sessionTime,
+      duration_minutes: 60,
+      subject: "quran",
+    },
+  });
+  expect(createRes.status()).toBe(201);
+  const session = (await createRes.json()).session;
 
   // Get teacher token
-  let teacherToken: string;
-  try {
-    teacherToken = await getTeacherToken(request);
-  } catch {
-    // If teacher password reset fails, skip test gracefully
+  const adminToken = token;
+  const resetRes = await request.post(
+    `${API}/admin/teachers/${TEACHER_ID}/reset-password`,
+    {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      data: { send_email: false },
+    }
+  );
+  const resetBody = await resetRes.json();
+  if (!resetBody.tempPassword) {
+    // Teacher password reset not supported — skip test
     await deleteSession(request, session.id);
     test.skip();
     return;
   }
+
+  // Get teacher email
+  const teachersRes = await request.get(`${API}/admin/teachers`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  const teachers = (await teachersRes.json()).teachers || [];
+  const teacher = teachers.find((t: any) => t.id === TEACHER_ID);
+  if (!teacher) {
+    await deleteSession(request, session.id);
+    test.skip();
+    return;
+  }
+
+  const teacherToken = await getToken(
+    request,
+    teacher.email,
+    resetBody.tempPassword
+  );
 
   const attRes = await request.patch(
     `${API}/sessions/${session.id}/attendance`,
@@ -414,7 +434,7 @@ test("teacher cannot mark attendance too early (ATTENDANCE_TOO_EARLY)", async ({
   const adminAttRes = await request.patch(
     `${API}/sessions/${session.id}/attendance`,
     {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${adminToken}` },
       data: { teacher_attended: true, student_attended: true },
     }
   );
@@ -439,7 +459,6 @@ test("set pay rate and verify salary in teacher-hours", async ({
 }) => {
   const token = await getAdminToken(request);
 
-  // Set pay rate
   const payRes = await request.patch(
     `${API}/admin/teachers/${TEACHER_ID}/pay-rate`,
     {
@@ -452,7 +471,6 @@ test("set pay rate and verify salary in teacher-hours", async ({
   expect(parseFloat(payBody.teacher.pay_rate_per_hour)).toBe(15.0);
   expect(payBody.teacher.pay_currency).toBe("GBP");
 
-  // Query teacher-hours — verify salary field exists
   const hoursRes = await request.get(
     `${API}/admin/teacher-hours?teacher_id=${TEACHER_ID}`,
     { headers: { Authorization: `Bearer ${token}` } }
@@ -460,9 +478,8 @@ test("set pay rate and verify salary in teacher-hours", async ({
   expect(hoursRes.status()).toBe(200);
   const hoursBody = await hoursRes.json();
   expect(hoursBody.teachers.length).toBeGreaterThan(0);
-  const teacher = hoursBody.teachers[0];
-  expect(teacher.pay_rate_per_hour).toBeDefined();
-  expect(teacher.pay_currency).toBe("GBP");
-  // salary is total_hours * rate — may be 0 if no completed sessions this month
-  expect(teacher).toHaveProperty("salary");
+  const teacherData = hoursBody.teachers[0];
+  expect(teacherData.pay_rate_per_hour).toBeDefined();
+  expect(teacherData.pay_currency).toBe("GBP");
+  expect(teacherData).toHaveProperty("salary");
 });
