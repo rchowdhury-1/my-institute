@@ -5,6 +5,7 @@ const { notify, notifyAdmins } = require('../lib/notify');
 const { canStudentCancel } = require('../lib/cancellation');
 const { formatSessionTime } = require('../lib/datetime');
 const { v4: uuidv4 } = require('uuid');
+const { generateAllSchedules } = require('../lib/schedule-generator');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -12,19 +13,32 @@ router.use(requireAuth);
 // GET /sessions
 router.get('/', async (req, res) => {
   try {
+    // On-demand session generation — idempotent, fills any gaps in the 4-week window
+    try {
+      await generateAllSchedules();
+    } catch (genErr) {
+      console.error('[ON-DEMAND] Generation failed (non-blocking):', genErr.message);
+    }
+
     let result;
     if (req.userRole === 'student') {
       result = await pool.query(
-        `SELECT s.*, u.display_name AS teacher_name
-         FROM sessions s JOIN users u ON u.id = s.teacher_id
+        `SELECT s.*, u.display_name AS teacher_name,
+                ws.lessons_remaining AS schedule_lessons_remaining
+         FROM sessions s
+         JOIN users u ON u.id = s.teacher_id
+         LEFT JOIN weekly_schedules ws ON ws.id = s.schedule_id
          WHERE s.student_id = $1
          ORDER BY s.scheduled_at DESC`,
         [req.userId]
       );
     } else if (req.userRole === 'teacher') {
       result = await pool.query(
-        `SELECT s.*, u.display_name AS student_name
-         FROM sessions s JOIN users u ON u.id = s.student_id
+        `SELECT s.*, u.display_name AS student_name,
+                ws.lessons_remaining AS schedule_lessons_remaining
+         FROM sessions s
+         JOIN users u ON u.id = s.student_id
+         LEFT JOIN weekly_schedules ws ON ws.id = s.schedule_id
          WHERE s.teacher_id = $1
          ORDER BY s.scheduled_at DESC`,
         [req.userId]
@@ -34,10 +48,12 @@ router.get('/', async (req, res) => {
       result = await pool.query(
         `SELECT s.*,
                 st.display_name AS student_name,
-                t.display_name  AS teacher_name
+                t.display_name  AS teacher_name,
+                ws.lessons_remaining AS schedule_lessons_remaining
          FROM sessions s
          JOIN users st ON st.id = s.student_id
          JOIN users t  ON t.id  = s.teacher_id
+         LEFT JOIN weekly_schedules ws ON ws.id = s.schedule_id
          ORDER BY s.scheduled_at DESC`
       );
     }
@@ -328,8 +344,9 @@ router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supe
 
     const updated = result.rows[0];
 
-    // Decrement lessons_remaining on completion
-    if (newStatus === 'completed') {
+    // Decrement lessons_remaining on completed or no_show (lesson slot was consumed)
+    // cancelled_teacher does NOT decrement (lesson wasn't consumed)
+    if (newStatus === 'completed' || newStatus === 'no_show') {
       if (session.schedule_id) {
         // Schedule-based: decrement weekly_schedules.lessons_remaining
         await pool.query(
@@ -340,17 +357,28 @@ router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supe
           [session.schedule_id]
         );
 
-        // Check if renewal needed
+        // Check balance and notify
         const sched = await pool.query(
           'SELECT lessons_remaining FROM weekly_schedules WHERE id = $1',
           [session.schedule_id]
         );
-        if (sched.rows[0] && sched.rows[0].lessons_remaining !== null && sched.rows[0].lessons_remaining <= 2) {
-          await notify(session.student_id, 'renewal_reminder', 'Renew Your Lessons',
-            `You have ${sched.rows[0].lessons_remaining} lesson${sched.rows[0].lessons_remaining !== 1 ? 's' : ''} remaining. Contact us to renew.`,
-            '/student/sessions');
-          await notifyAdmins('renewal_reminder', 'Student Lesson Renewal',
-            `A student has ${sched.rows[0].lessons_remaining} lessons remaining and needs renewal.`, '/supervisor');
+        const balance = sched.rows[0]?.lessons_remaining;
+        if (balance !== null && balance !== undefined) {
+          if (balance === 0) {
+            // Balance just hit zero — notify student + admins
+            const studentName = (await pool.query('SELECT display_name FROM users WHERE id=$1', [session.student_id])).rows[0]?.display_name || 'A student';
+            await notify(session.student_id, 'lesson_balance_zero', 'Lesson Balance Empty',
+              'Your lesson balance has reached 0. Please contact admin to renew.',
+              '/student/sessions');
+            await notifyAdmins('lesson_balance_zero', 'Student Lesson Balance Empty',
+              `${studentName}'s lesson balance has reached 0 and needs renewal.`, '/supervisor');
+          } else if (balance <= 2) {
+            await notify(session.student_id, 'renewal_reminder', 'Renew Your Lessons',
+              `You have ${balance} lesson${balance !== 1 ? 's' : ''} remaining. Contact us to renew.`,
+              '/student/sessions');
+            await notifyAdmins('renewal_reminder', 'Student Lesson Renewal',
+              `A student has ${balance} lessons remaining and needs renewal.`, '/supervisor');
+          }
         }
       } else {
         // Legacy: decrement packages.sessions_remaining (existing logic)

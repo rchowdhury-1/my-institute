@@ -444,23 +444,18 @@ Mohammad sets up **weekly recurring schedules** instead of creating sessions one
 3. Click **Add Schedule**.
 4. Search for a student (typeahead) and teacher.
 5. Enter subject, default duration, and check the days with start times.
-6. Optionally set "Lessons remaining" (a manual counter — does not block generation).
-7. Click **Create Schedule**. Sessions for the next 4 weeks are generated immediately.
+6. Optionally set "Lessons remaining" — this gates student access (see Section 23). Sessions still generate regardless, but students with balance 0 cannot join.
+7. Optionally paste a **Zoom link** — all generated sessions inherit this link. Students see "Join Session" / "Join Class" buttons automatically. Each session's link can be overridden later via the session edit modal if needed.
+8. Click **Create Schedule**. Sessions for the next 4 weeks are generated immediately.
 
 ### How schedules work
 
-- **Cron job**: Every Sunday at 23:00 UTC, a Render Cron Job calls `POST /cron/generate-sessions` to fill any gaps in the 4-week horizon.
+- **On-demand generation**: Sessions are auto-generated whenever anyone loads a session list (`GET /sessions`) or views schedules in the admin dashboard. Generation is idempotent — most loads are instant no-ops. This replaces the previous cron-based approach.
 - **On edit**: If you change the days/times or teacher, all future `scheduled` sessions are deleted and regenerated.
 - **Deactivate**: Moves the schedule to "Archived" and removes future sessions. Can be reactivated later.
-- **Generate Now**: Button on each schedule card to manually trigger generation (fallback if cron fails).
+- **Generate Now**: Button on each schedule card to manually trigger generation.
 - **Slot times are London time** (`Europe/London`). The system converts to UTC automatically, including across DST changes.
-
-### Render Cron Job setup
-
-- Service type: Cron Job ($7/month)
-- Schedule: `0 23 * * 0` (Sunday 23:00 UTC)
-- Command: `curl -s -X POST -H "x-cron-secret: $CRON_SECRET" https://my-institute-sxjs.onrender.com/cron/generate-sessions`
-- The `CRON_SECRET` env var must be set on both the web service and the cron job.
+- **Manual trigger**: `POST /cron/generate-sessions` (requires admin/supervisor JWT auth) can be called to force generation for all schedules.
 
 ### Legacy sessions
 
@@ -491,11 +486,17 @@ Replaces the old "Mark Completed" button on the teacher dashboard.
 
 On the Supervisor Dashboard (Sessions tab), past sessions without attendance show a **Mark Attendance** button. Admin can mark at any time (no time window restriction).
 
-### Lessons remaining
+### Lessons remaining (access gate)
 
-- On completion: if session belongs to a schedule, `weekly_schedules.lessons_remaining` is decremented.
+`lessons_remaining` on the schedule **gates student access** to sessions:
+- **Decrement on `completed`**: teacher and student both attended — lesson consumed.
+- **Decrement on `no_show`**: teacher attended but student didn't — lesson slot was consumed.
+- **No decrement on `cancelled_teacher`**: teacher didn't attend — lesson not consumed.
+- **Balance = 0**: student sees "Your lesson balance is 0. Please contact admin to renew" + WhatsApp button instead of "Join Session". Schedule continues generating sessions but student cannot join.
+- **Balance = null**: no limit set — student can always join.
+- **Admin notified** when balance hits 0 (notification fires once on the decrement).
+- Supervisor dashboard shows colour-coded badges: green (5+), amber (1-4), red (0), grey (null).
 - If session is legacy (no schedule), `packages.sessions_remaining` is decremented (existing behaviour).
-- Renewal notification fires at ≤ 2 remaining.
 
 ---
 
@@ -556,7 +557,7 @@ The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 - Attendance tracking (replaces Mark Complete) — teacher + student attended, no-show, teacher cancelled
 - Teacher salary page with per-teacher pay rate and monthly calculation
 - Student/teacher typeahead search (replaces dropdowns)
-- Render Cron Job for Sunday session generation
+- On-demand session generation (replaces cron — sessions auto-generate on page load)
 - Vercel Analytics integration
 - 13 new API tests (schedule CRUD, generation, attendance, salary)
 
@@ -566,3 +567,73 @@ The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 - [Neon](https://neon.tech) — PostgreSQL database
 - [Resend](https://resend.com) — transactional email
 - [Sentry](https://sentry.io) — error tracking (optional, configure DSN to activate)
+
+---
+
+## 27. Phase 4.5 — Architecture Patches (shipped)
+
+**4.5.1 — Lessons remaining as access gate:**
+- `lessons_remaining` now gates student access to sessions (previously tracking-only)
+- Student with balance 0 sees "contact admin to renew" + WhatsApp button instead of "Join Session"
+- Decrements on `completed` AND `no_show` (not `cancelled_teacher`)
+- Admin notified when balance hits 0
+- Colour-coded badges in supervisor dashboard (green 5+, amber 1-4, red 0)
+
+**4.5.2 — On-demand generation (replaces cron):**
+- Sessions auto-generate when any user loads `GET /sessions` or admin views schedules
+- Generation is idempotent — most calls are instant no-ops
+- No Render Cron Job needed (saves $7/month)
+- No CRON_SECRET needed
+- Manual trigger stays as `POST /cron/generate-sessions` with JWT auth
+
+---
+
+## 28. Calendar Views (Phase 5.1)
+
+A reusable `<SessionCalendar />` component (`components/shared/SessionCalendar.tsx`) provides week and month calendar views. Read-only display — no drag-to-reschedule.
+
+### Where it appears
+
+- **Student** (`/student/sessions`): List/Calendar toggle at page header. Calendar shows sessions with teacher names.
+- **Teacher** (`/teacher/dashboard`): List/Calendar toggle at page header. Calendar shows sessions with student names.
+- **Supervisor** (Sessions tab): List/Calendar toggle alongside "Add Session" button. Teacher filter dropdown selects a specific teacher or shows all. Used for visual conflict awareness.
+
+### Features
+
+- **Week view**: 7-column Mon–Sun grid with session pills per day cell
+- **Month view**: standard calendar grid, max 3 sessions per cell, "+N more" overflow
+- **Status colours**: blue (scheduled), green (completed), grey (cancelled), amber (rescheduled), red (no-show), orange (teacher cancelled)
+- **Dual timezone**: each session shows London time + Cairo time
+- **Navigation**: prev/next buttons, "Today" button, week/month toggle
+- **Accessibility**: aria-labels on all session pills with full context (date, time, status, subject, name)
+- **Status legend**: colour-coded pills shown below the controls
+
+---
+
+## 29. Supervisor Session Filters and Grouping (Phase 5.2)
+
+The supervisor Sessions tab now has filtering and week-based grouping.
+
+### Filter bar
+
+Above the session list, a filter bar provides:
+- **Teacher dropdown**: filter to a specific teacher's sessions
+- **Student search**: typeahead filter by student name (reuses `UserSearchInput`)
+- **Status toggles**: pill buttons for each status (scheduled, completed, cancelled, rescheduled, no-show, teacher cancelled). Click to toggle on/off.
+- **Clear button**: resets all filters (shown only when filters are active)
+- **Session count**: shows how many sessions match current filters
+
+### Week grouping
+
+Sessions are grouped by ISO week (Mon–Sun):
+- Current week is highlighted with a green dot and bold label
+- Future weeks shown chronologically
+- Past sessions collapsed under a "Past sessions (N)" toggle
+
+### URL persistence
+
+Filters persist in URL search params: `?teacher=uuid&student=uuid&status=scheduled,completed`. Refreshing the page restores filters. URL updates on every filter change.
+
+### Calendar integration
+
+The List/Calendar view toggle applies filters to both views. In calendar mode, an additional teacher dropdown lets you focus on a specific teacher's schedule for conflict awareness.

@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Video, ExternalLink, RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX } from "lucide-react";
+import { Video, ExternalLink, RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
 import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative } from "@/lib/datetime";
+import SessionCalendar from "@/components/shared/SessionCalendar";
 
 interface Lesson {
   id: string;
@@ -18,6 +19,7 @@ interface Lesson {
   teacher_attended?: boolean | null;
   student_attended?: boolean | null;
   schedule_id?: string | null;
+  schedule_lessons_remaining?: number | null;
 }
 
 interface Teacher {
@@ -66,6 +68,8 @@ export default function TeacherDashboard() {
   const [rrRejectReason, setRrRejectReason] = useState("");
   const [rrResult, setRrResult] = useState<Record<string, { action: "approved" | "rejected"; phone?: string; proposedAt?: string; originalAt?: string; reason?: string }>>({});
   const [rrError, setRrError] = useState<Record<string, string>>({});
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [calendarMode, setCalendarMode] = useState<"week" | "month">("week");
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -223,14 +227,47 @@ export default function TeacherDashboard() {
             </h1>
             <p className="text-charcoal/55 mt-1 text-sm">{teacher.email}</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-charcoal/50 hover:text-charcoal transition-colors"
-          >
-            Sign out
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex rounded-lg border border-black/10 overflow-hidden">
+              <button
+                onClick={() => setViewMode("list")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                  viewMode === "list" ? "bg-emerald-primary text-white" : "text-charcoal/60 hover:bg-black/5"
+                }`}
+              >
+                <List size={13} /> List
+              </button>
+              <button
+                onClick={() => setViewMode("calendar")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                  viewMode === "calendar" ? "bg-emerald-primary text-white" : "text-charcoal/60 hover:bg-black/5"
+                }`}
+              >
+                <Calendar size={13} /> Calendar
+              </button>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="text-sm text-charcoal/50 hover:text-charcoal transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
 
+        {/* Calendar view */}
+        {viewMode === "calendar" && (
+          <section className="mb-10">
+            <SessionCalendar
+              sessions={lessons}
+              mode={calendarMode}
+              onModeChange={setCalendarMode}
+              nameField="student_name"
+            />
+          </section>
+        )}
+
+        {viewMode === "list" && <>
         {/* Reschedule Requests */}
         {(rescheduleRequests.length > 0 || Object.keys(rrResult).length > 0) && (
           <section className="mb-10">
@@ -384,11 +421,17 @@ export default function TeacherDashboard() {
                         <ExternalLink size={12} />
                       </a>
                     )}
+                    {l.schedule_lessons_remaining === 0 && (
+                      <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                        Student&apos;s lesson balance is 0 — renewal needed
+                      </p>
+                    )}
                   </div>
                 ))}
             </div>
           )}
         </section>
+        </>}
       </div>
     </main>
   );
@@ -470,6 +513,12 @@ function LessonCard({
           Join Session
           <ExternalLink size={12} />
         </a>
+      )}
+
+      {!done && lesson.schedule_lessons_remaining === 0 && (
+        <p className="mb-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          Student&apos;s lesson balance is 0 — renewal needed
+        </p>
       )}
 
       {!done && (

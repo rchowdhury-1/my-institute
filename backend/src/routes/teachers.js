@@ -41,9 +41,11 @@ router.get('/students', requireAuth, requireRole('teacher', 'admin'), async (req
 router.get('/lessons', requireAuth, requireRole('teacher', 'admin'), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.*, u.display_name AS student_name
+      `SELECT s.*, u.display_name AS student_name,
+              ws.lessons_remaining AS schedule_lessons_remaining
        FROM sessions s
        JOIN users u ON u.id = s.student_id
+       LEFT JOIN weekly_schedules ws ON ws.id = s.schedule_id
        WHERE s.teacher_id = $1
        ORDER BY s.scheduled_at DESC`,
       [req.userId]

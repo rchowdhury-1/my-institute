@@ -97,7 +97,6 @@ initDb()
   .then(() => {
     const resendKey = process.env.RESEND_API_KEY;
     console.log(`RESEND_API_KEY: ${resendKey ? resendKey.slice(0, 6) + '...' : 'NOT SET — welcome emails disabled'}`);
-    if (!process.env.CRON_SECRET) console.warn('CRON_SECRET not set — cron endpoint will reject all requests');
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
   .catch((err) => {

@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink, MessageCircle } from "lucide-react";
+import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink, MessageCircle, List } from "lucide-react";
 import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate } from "@/lib/datetime";
 import { BRAND } from "@/lib/content";
+import SessionCalendar from "@/components/shared/SessionCalendar";
 
 interface Session {
   id: string;
@@ -16,6 +17,7 @@ interface Session {
   cancellation_reason?: string;
   zoom_link?: string;
   subject?: string;
+  schedule_lessons_remaining?: number | null;
 }
 
 interface RescheduleRequest {
@@ -62,6 +64,10 @@ export default function StudentSessionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pendingRequests, setPendingRequests] = useState<RescheduleRequest[]>([]);
+
+  // view mode
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [calendarMode, setCalendarMode] = useState<"week" | "month">("week");
 
   // cancel state
   const [cancelId, setCancelId] = useState<string | null>(null);
@@ -203,7 +209,27 @@ export default function StudentSessionsPage() {
   return (
     <main className="min-h-screen bg-cream">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
-        <h1 className="font-display text-3xl font-bold text-charcoal mb-2">My Sessions</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="font-display text-3xl font-bold text-charcoal">My Sessions</h1>
+          <div className="flex rounded-lg border border-black/10 overflow-hidden">
+            <button
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === "list" ? "bg-emerald-primary text-white" : "text-charcoal/60 hover:bg-black/5"
+              }`}
+            >
+              <List size={13} /> List
+            </button>
+            <button
+              onClick={() => setViewMode("calendar")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === "calendar" ? "bg-emerald-primary text-white" : "text-charcoal/60 hover:bg-black/5"
+              }`}
+            >
+              <Calendar size={13} /> Calendar
+            </button>
+          </div>
+        </div>
         <p className="text-charcoal/50 text-sm mb-8">Manage your upcoming and past sessions</p>
 
         {/* Package / sessions remaining */}
@@ -243,6 +269,20 @@ export default function StudentSessionsPage() {
           </div>
         )}
 
+        {/* Calendar view */}
+        {viewMode === "calendar" && (
+          <section className="mb-10">
+            <SessionCalendar
+              sessions={sessions}
+              mode={calendarMode}
+              onModeChange={setCalendarMode}
+              nameField="teacher_name"
+            />
+          </section>
+        )}
+
+        {/* List view */}
+        {viewMode === "list" && <>
         {/* Upcoming */}
         <section className="mb-10">
           <h2 className="font-display text-xl font-bold text-charcoal mb-4">
@@ -297,8 +337,21 @@ export default function StudentSessionsPage() {
                     </div>
                   )}
 
-                  {/* Join Class button */}
-                  {s.zoom_link && (
+                  {/* Join Class button — gated by lesson balance */}
+                  {s.schedule_lessons_remaining === 0 ? (
+                    <div className="mb-3 p-3 rounded-xl bg-red-50 border border-red-200">
+                      <p className="text-red-700 text-sm font-medium">Your lesson balance is 0. Please contact admin to renew.</p>
+                      <a
+                        href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent("Hi, my lesson balance has reached 0. I'd like to renew.")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors w-fit"
+                      >
+                        <MessageCircle size={14} />
+                        WhatsApp Admin
+                      </a>
+                    </div>
+                  ) : s.zoom_link ? (
                     <a
                       href={s.zoom_link}
                       target="_blank"
@@ -309,7 +362,7 @@ export default function StudentSessionsPage() {
                       Join Class
                       <ExternalLink size={12} />
                     </a>
-                  )}
+                  ) : null}
 
                   {/* Actions — check 12h buffer */}
                   {(() => {
@@ -491,6 +544,7 @@ export default function StudentSessionsPage() {
             </div>
           </section>
         )}
+        </>}
       </div>
     </main>
   );

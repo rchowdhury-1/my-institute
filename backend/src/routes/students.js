@@ -17,9 +17,11 @@ router.get('/me', requireAuth, requireRole('student'), async (req, res) => {
         [req.userId]
       ),
       pool.query(
-        `SELECT s.*, u.display_name AS teacher_name
+        `SELECT s.*, u.display_name AS teacher_name,
+                ws.lessons_remaining AS schedule_lessons_remaining
          FROM sessions s
          JOIN users u ON u.id = s.teacher_id
+         LEFT JOIN weekly_schedules ws ON ws.id = s.schedule_id
          WHERE s.student_id = $1 AND s.status = 'scheduled' AND s.scheduled_at >= NOW()
          ORDER BY s.scheduled_at ASC
          LIMIT 5`,
@@ -42,9 +44,11 @@ router.get('/me', requireAuth, requireRole('student'), async (req, res) => {
 router.get('/lessons', requireAuth, requireRole('student'), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.*, u.display_name AS teacher_name
+      `SELECT s.*, u.display_name AS teacher_name,
+              ws.lessons_remaining AS schedule_lessons_remaining
        FROM sessions s
        JOIN users u ON u.id = s.teacher_id
+       LEFT JOIN weekly_schedules ws ON ws.id = s.schedule_id
        WHERE s.student_id = $1
        ORDER BY s.scheduled_at DESC`,
       [req.userId]

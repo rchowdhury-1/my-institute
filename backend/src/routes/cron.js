@@ -1,22 +1,16 @@
 const express = require('express');
 const { pool } = require('../db');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { generateAllSchedules } = require('../lib/schedule-generator');
 
 const router = express.Router();
 
-// Auth: CRON_SECRET header (not JWT)
-function requireCronSecret(req, res, next) {
-  const secret = req.headers['x-cron-secret'];
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-}
-
-// POST /cron/generate-sessions
-router.post('/generate-sessions', requireCronSecret, async (req, res) => {
+// POST /cron/generate-sessions — manual trigger (admin/supervisor only)
+// On-demand generation in GET /sessions handles normal usage.
+// This endpoint is a manual fallback for forcing generation.
+router.post('/generate-sessions', requireAuth, requireRole('admin', 'supervisor'), async (req, res) => {
   try {
-    console.log('[CRON] Session generation started');
+    console.log('[CRON] Manual session generation triggered');
 
     const generation = await generateAllSchedules();
 
@@ -30,7 +24,7 @@ router.post('/generate-sessions', requireCronSecret, async (req, res) => {
     const legacyCount = legacy.rows[0]?.count || 0;
 
     if (legacyCount > 0) {
-      console.log(`[CRON] Skipped ${legacyCount} potential generations due to existing legacy sessions`);
+      console.log(`[CRON] ${legacyCount} legacy sessions (not linked to a schedule) exist`);
     }
 
     console.log(`[CRON] Done — ${generation.schedules_processed} schedules, ${generation.total_created} created, ${generation.total_skipped} skipped`);

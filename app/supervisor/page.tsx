@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock, RefreshCw, X as XIcon, Pencil, Repeat, ChevronDown, Archive, Play, AlertTriangle } from "lucide-react";
+import { startOfWeek, format, addWeeks } from "date-fns";
+import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock, RefreshCw, X as XIcon, Pencil, Repeat, ChevronDown, Archive, Play, AlertTriangle, List } from "lucide-react";
 import UserSearchInput from "@/components/shared/UserSearchInput";
+import SessionCalendar from "@/components/shared/SessionCalendar";
 import Link from "next/link";
 import { formatSessionTime, formatRelative } from "@/lib/datetime";
 
@@ -36,6 +38,7 @@ interface Schedule {
   default_duration: number;
   slots: { day: string; time: string; duration?: number }[];
   lessons_remaining: number | null;
+  zoom_link?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -83,6 +86,7 @@ const DAY_LABELS: Record<string, string> = {
   mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
 };
 const ALL_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const ALL_STATUSES = ["scheduled", "completed", "cancelled", "rescheduled", "no_show", "cancelled_teacher"] as const;
 
 export default function SupervisorPage() {
   const router = useRouter();
@@ -115,10 +119,199 @@ export default function SupervisorPage() {
   const [editError, setEditError] = useState("");
   const [editWaMsg, setEditWaMsg] = useState<{ phone?: string; time?: string } | null>(null);
 
+  // calendar view
+  const [sessionsView, setSessionsView] = useState<"list" | "calendar">("list");
+  const [calendarMode, setCalendarMode] = useState<"week" | "month">("week");
+  const [calendarTeacherId, setCalendarTeacherId] = useState<string>("");
+
+  // session filters (read from URL on mount)
+  const [filterTeacherId, setFilterTeacherId] = useState<string>("");
+  const [filterStudentId, setFilterStudentId] = useState<string>("");
+  const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set(ALL_STATUSES));
+
+  // Restore filters from URL params on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("teacher")) setFilterTeacherId(params.get("teacher")!);
+    if (params.get("student")) setFilterStudentId(params.get("student")!);
+    if (params.get("status")) setFilterStatuses(new Set(params.get("status")!.split(",")));
+  }, []);
+  const [showPast, setShowPast] = useState(false);
+  const STATUS_LABELS: Record<string, string> = { scheduled: "Scheduled", completed: "Completed", cancelled: "Cancelled", rescheduled: "Rescheduled", no_show: "No-show", cancelled_teacher: "Teacher cancelled" };
+
   // attendance override
   const [attendanceId, setAttendanceId] = useState<string | null>(null);
   const [attendanceStep, setAttendanceStep] = useState<"teacher" | "student" | null>(null);
   const [attendanceSaving, setAttendanceSaving] = useState(false);
+
+  // URL param sync for filters
+  const updateFilterParams = useCallback((teacher: string, student: string, statuses: Set<string>) => {
+    const params = new URLSearchParams();
+    if (teacher) params.set("teacher", teacher);
+    if (student) params.set("student", student);
+    if (statuses.size < ALL_STATUSES.length) params.set("status", Array.from(statuses).join(","));
+    const qs = params.toString();
+    const url = qs ? `?${qs}` : window.location.pathname;
+    window.history.replaceState(null, "", url);
+  }, []);
+
+  function handleFilterTeacher(id: string) { setFilterTeacherId(id); updateFilterParams(id, filterStudentId, filterStatuses); }
+  function handleFilterStudent(id: string) { setFilterStudentId(id); updateFilterParams(filterTeacherId, id, filterStatuses); }
+  function toggleFilterStatus(status: string) {
+    setFilterStatuses(prev => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status); else next.add(status);
+      updateFilterParams(filterTeacherId, filterStudentId, next);
+      return next;
+    });
+  }
+  function clearFilters() {
+    setFilterTeacherId(""); setFilterStudentId(""); setFilterStatuses(new Set(ALL_STATUSES));
+    updateFilterParams("", "", new Set(ALL_STATUSES));
+  }
+
+  // Filtered sessions
+  const filteredSessions = useMemo(() => {
+    return sessions.filter(s => {
+      if (filterTeacherId && s.teacher_id !== filterTeacherId) return false;
+      if (filterStudentId && s.student_id !== filterStudentId) return false;
+      if (!filterStatuses.has(s.status)) return false;
+      return true;
+    });
+  }, [sessions, filterTeacherId, filterStudentId, filterStatuses]);
+
+  // Group by week
+  const sessionWeeks = useMemo(() => {
+    const now = new Date();
+    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const groups = new Map<string, { label: string; sessions: typeof filteredSessions; isPast: boolean }>();
+    const pastSessions: typeof filteredSessions = [];
+
+    for (const s of filteredSessions) {
+      const d = new Date(s.scheduled_at);
+      const weekStart = startOfWeek(d, { weekStartsOn: 1 });
+      const weekEnd = addWeeks(weekStart, 1);
+      weekEnd.setMilliseconds(weekEnd.getMilliseconds() - 1);
+
+      if (weekStart < currentWeekStart) {
+        pastSessions.push(s);
+        continue;
+      }
+
+      const key = format(weekStart, "yyyy-MM-dd");
+      if (!groups.has(key)) {
+        const label = `Week of ${format(weekStart, "EEE d MMM")} – ${format(weekEnd, "EEE d MMM")}`;
+        groups.set(key, { label, sessions: [], isPast: false });
+      }
+      groups.get(key)!.sessions.push(s);
+    }
+
+    // Sort weeks chronologically
+    const sorted = Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+
+    return { weeks: sorted, pastSessions, currentWeekKey: format(currentWeekStart, "yyyy-MM-dd") };
+  }, [filteredSessions]);
+
+  const hasActiveFilters = filterTeacherId || filterStudentId || filterStatuses.size < ALL_STATUSES.length;
+
+  function renderSessionCard(s: Session, isPast: boolean, needsAttendance: boolean) {
+    return (
+      <div key={s.id} className="bg-white rounded-2xl border border-black/5 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-semibold text-charcoal text-sm truncate">
+              {s.student_name} ↔ {s.teacher_name}
+            </p>
+            <p className="text-charcoal/50 text-xs mt-0.5">
+              {formatSessionTime(s.scheduled_at)} · {s.duration_minutes} min
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {s.schedule_id && (
+              <Repeat size={12} className="text-emerald-primary/40" />
+            )}
+            {s.teacher_attended != null && (
+              <span className="text-xs text-charcoal/30 flex items-center gap-0.5">
+                {s.teacher_attended ? "T✓" : "T✗"}
+                {s.student_attended != null && (s.student_attended ? " S✓" : " S✗")}
+              </span>
+            )}
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusStyle[s.status] ?? "bg-gray-100 text-gray-600"}`}>
+              {s.status === "cancelled_teacher" ? "teacher cancelled" : s.status === "no_show" ? "no show" : s.status}
+            </span>
+            {s.status === "scheduled" && !isPast && (
+              <>
+                <button
+                  onClick={() => openEditModal(s)}
+                  className="p-1.5 rounded-lg text-charcoal/30 hover:text-emerald-primary hover:bg-emerald-primary/5 transition-colors"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  onClick={() => handleDeleteSession(s.id)}
+                  disabled={deleting === s.id}
+                  className="p-1.5 rounded-lg text-charcoal/30 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </>
+            )}
+            {needsAttendance && (
+              <button
+                onClick={() => { setAttendanceId(s.id); setAttendanceStep("teacher"); }}
+                className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium hover:bg-amber-200 transition-colors"
+              >
+                Mark Attendance
+              </button>
+            )}
+          </div>
+        </div>
+        {attendanceId === s.id && (
+          <div className="mt-3 pt-3 border-t border-black/5">
+            {attendanceStep === "teacher" && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-charcoal">Did the teacher attend?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setAttendanceStep("student")} disabled={attendanceSaving}
+                    className="px-3 py-1.5 rounded-full bg-emerald-primary text-white text-xs font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
+                    Yes
+                  </button>
+                  <button onClick={() => handleAdminAttendance(s.id, false, false)} disabled={attendanceSaving}
+                    className="px-3 py-1.5 rounded-full bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors">
+                    No (Teacher Cancelled)
+                  </button>
+                  <button onClick={() => { setAttendanceId(null); setAttendanceStep(null); }}
+                    className="px-3 py-1.5 rounded-full border border-black/10 text-charcoal/40 text-xs transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {attendanceStep === "student" && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-charcoal">Did the student attend?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => handleAdminAttendance(s.id, true, true)} disabled={attendanceSaving}
+                    className="px-3 py-1.5 rounded-full bg-emerald-primary text-white text-xs font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
+                    Yes (Completed)
+                  </button>
+                  <button onClick={() => handleAdminAttendance(s.id, true, false)} disabled={attendanceSaving}
+                    className="px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 disabled:opacity-60 transition-colors">
+                    No (No-Show)
+                  </button>
+                  <button onClick={() => setAttendanceStep("teacher")}
+                    className="px-3 py-1.5 rounded-full border border-black/10 text-charcoal/40 text-xs transition-colors">
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   async function handleAdminAttendance(sessionId: string, teacherAttended: boolean, studentAttended: boolean) {
     const token = localStorage.getItem("accessToken");
@@ -145,7 +338,7 @@ export default function SupervisorPage() {
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
     student_id: "", teacher_id: "", subject: "quran", default_duration: "60",
-    lessons_remaining: "",
+    lessons_remaining: "", zoom_link: "",
     slots: {} as Record<string, { enabled: boolean; time: string; duration: string }>,
   });
   const [scheduleSaving, setScheduleSaving] = useState(false);
@@ -207,13 +400,14 @@ export default function SupervisorPage() {
         subject: schedule.subject,
         default_duration: String(schedule.default_duration),
         lessons_remaining: schedule.lessons_remaining != null ? String(schedule.lessons_remaining) : "",
+        zoom_link: schedule.zoom_link || "",
         slots: slotState,
       });
     } else {
       setEditingSchedule(null);
       setScheduleForm({
         student_id: "", teacher_id: "", subject: "quran", default_duration: "60",
-        lessons_remaining: "", slots: slotState,
+        lessons_remaining: "", zoom_link: "", slots: slotState,
       });
     }
     setScheduleError("");
@@ -248,6 +442,7 @@ export default function SupervisorPage() {
           slots,
           lessons_remaining: scheduleForm.lessons_remaining ? parseInt(scheduleForm.lessons_remaining) : null,
           teacher_id: scheduleForm.teacher_id !== editingSchedule.teacher_id ? scheduleForm.teacher_id : undefined,
+          zoom_link: scheduleForm.zoom_link || null,
         }, { headers: { Authorization: `Bearer ${token}` } });
 
         setSchedules(prev => prev.map(s => s.id === editingSchedule.id ? { ...s, ...res.data.schedule } : s));
@@ -263,6 +458,7 @@ export default function SupervisorPage() {
           default_duration: parseInt(scheduleForm.default_duration),
           slots,
           lessons_remaining: scheduleForm.lessons_remaining ? parseInt(scheduleForm.lessons_remaining) : null,
+          zoom_link: scheduleForm.zoom_link || null,
         }, { headers: { Authorization: `Bearer ${token}` } });
 
         const student = students.find(s => s.id === scheduleForm.student_id);
@@ -591,16 +787,62 @@ export default function SupervisorPage() {
         {/* Sessions tab */}
         {activeTab === "sessions" && (
           <div>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h2 className="font-display text-xl font-bold text-charcoal">All Sessions</h2>
-              <button
-                onClick={() => setShowSessionForm(!showSessionForm)}
-                className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
-              >
-                <Plus size={16} /> Add Session
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-lg border border-black/10 overflow-hidden">
+                  <button
+                    onClick={() => setSessionsView("list")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                      sessionsView === "list" ? "bg-emerald-primary text-white" : "text-charcoal/60 hover:bg-black/5"
+                    }`}
+                  >
+                    <List size={13} /> List
+                  </button>
+                  <button
+                    onClick={() => setSessionsView("calendar")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                      sessionsView === "calendar" ? "bg-emerald-primary text-white" : "text-charcoal/60 hover:bg-black/5"
+                    }`}
+                  >
+                    <Calendar size={13} /> Calendar
+                  </button>
+                </div>
+                <button
+                  onClick={() => setShowSessionForm(!showSessionForm)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
+                >
+                  <Plus size={16} /> Add Session
+                </button>
+              </div>
             </div>
 
+            {/* Calendar view with teacher filter */}
+            {sessionsView === "calendar" && (
+              <div className="mb-6">
+                <div className="mb-3">
+                  <label className="text-xs font-medium text-charcoal/60 mb-1 block">Filter by teacher</label>
+                  <select
+                    value={calendarTeacherId}
+                    onChange={(e) => setCalendarTeacherId(e.target.value)}
+                    className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 w-full max-w-xs"
+                  >
+                    <option value="">All teachers</option>
+                    {teachers.map((t) => (
+                      <option key={t.id} value={t.id}>{t.display_name}</option>
+                    ))}
+                  </select>
+                </div>
+                <SessionCalendar
+                  sessions={calendarTeacherId ? filteredSessions.filter(s => s.teacher_id === calendarTeacherId) : filteredSessions}
+                  mode={calendarMode}
+                  onModeChange={setCalendarMode}
+                  nameField="student_name"
+                />
+              </div>
+            )}
+
+            {sessionsView === "list" && <>
             {showSessionForm && (
               <div className="bg-white rounded-2xl border border-black/5 p-5 mb-6">
                 <h3 className="font-semibold text-charcoal mb-3">New Session</h3>
@@ -786,115 +1028,113 @@ export default function SupervisorPage() {
               </div>
             )}
 
-            {sessions.length === 0 ? (
+            {/* Filter bar */}
+            <div className="bg-white rounded-2xl border border-black/5 p-3 mb-4 flex flex-wrap items-center gap-2">
+              <select
+                value={filterTeacherId}
+                onChange={(e) => handleFilterTeacher(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-black/10 bg-cream text-xs text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+              >
+                <option value="">All teachers</option>
+                {teachers.map(t => <option key={t.id} value={t.id}>{t.display_name}</option>)}
+              </select>
+              <div className="w-48">
+                <UserSearchInput
+                  users={students}
+                  value={filterStudentId}
+                  onChange={handleFilterStudent}
+                  placeholder="Filter student…"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {ALL_STATUSES.map(st => (
+                  <button
+                    key={st}
+                    onClick={() => toggleFilterStatus(st)}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
+                      filterStatuses.has(st)
+                        ? "bg-emerald-primary/10 border-emerald-primary/30 text-emerald-primary"
+                        : "bg-gray-50 border-gray-200 text-gray-400"
+                    }`}
+                  >
+                    {STATUS_LABELS[st]}
+                  </button>
+                ))}
+              </div>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="px-2.5 py-1 rounded-lg text-xs text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+              <span className="text-[10px] text-charcoal/30 ml-auto">
+                {filteredSessions.length} session{filteredSessions.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            {filteredSessions.length === 0 ? (
               <div className="bg-white rounded-2xl border border-black/5 p-8 text-center text-charcoal/30">
                 <Calendar size={32} className="mx-auto mb-3 text-charcoal/20" />
-                <p>No sessions yet.</p>
+                {hasActiveFilters ? (
+                  <>
+                    <p>No sessions match your filters</p>
+                    <button onClick={clearFilters} className="mt-2 text-xs text-emerald-primary hover:underline">Clear filters</button>
+                  </>
+                ) : (
+                  <p>No sessions yet.</p>
+                )}
               </div>
             ) : (
-              <div className="space-y-2">
-                {sessions.map((s) => {
-                  const isPast = new Date(s.scheduled_at) < new Date();
-                  const needsAttendance = s.status === "scheduled" && isPast && s.teacher_attended == null;
-                  return (
-                  <div key={s.id} className="bg-white rounded-2xl border border-black/5 p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-charcoal text-sm truncate">
-                          {s.student_name} ↔ {s.teacher_name}
-                        </p>
-                        <p className="text-charcoal/50 text-xs mt-0.5">
-                          {formatSessionTime(s.scheduled_at)} · {s.duration_minutes} min
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {s.schedule_id && (
-                          <Repeat size={12} className="text-emerald-primary/40" />
-                        )}
-                        {s.teacher_attended != null && (
-                          <span className="text-xs text-charcoal/30 flex items-center gap-0.5">
-                            {s.teacher_attended ? "T✓" : "T✗"}
-                            {s.student_attended != null && (s.student_attended ? " S✓" : " S✗")}
-                          </span>
-                        )}
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusStyle[s.status] ?? "bg-gray-100 text-gray-600"}`}>
-                          {s.status === "cancelled_teacher" ? "teacher cancelled" : s.status === "no_show" ? "no show" : s.status}
-                        </span>
-                        {s.status === "scheduled" && !isPast && (
-                          <>
-                            <button
-                              onClick={() => openEditModal(s)}
-                              className="p-1.5 rounded-lg text-charcoal/30 hover:text-emerald-primary hover:bg-emerald-primary/5 transition-colors"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSession(s.id)}
-                              disabled={deleting === s.id}
-                              className="p-1.5 rounded-lg text-charcoal/30 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </>
-                        )}
-                        {needsAttendance && (
-                          <button
-                            onClick={() => { setAttendanceId(s.id); setAttendanceStep("teacher"); }}
-                            className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium hover:bg-amber-200 transition-colors"
-                          >
-                            Mark Attendance
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {/* Inline attendance override */}
-                    {attendanceId === s.id && (
-                      <div className="mt-3 pt-3 border-t border-black/5">
-                        {attendanceStep === "teacher" && (
-                          <div className="space-y-2">
-                            <p className="text-sm font-medium text-charcoal">Did the teacher attend?</p>
-                            <div className="flex gap-2">
-                              <button onClick={() => setAttendanceStep("student")} disabled={attendanceSaving}
-                                className="px-3 py-1.5 rounded-full bg-emerald-primary text-white text-xs font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
-                                Yes
-                              </button>
-                              <button onClick={() => handleAdminAttendance(s.id, false, false)} disabled={attendanceSaving}
-                                className="px-3 py-1.5 rounded-full bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors">
-                                No (Teacher Cancelled)
-                              </button>
-                              <button onClick={() => { setAttendanceId(null); setAttendanceStep(null); }}
-                                className="px-3 py-1.5 rounded-full border border-black/10 text-charcoal/40 text-xs transition-colors">
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                        {attendanceStep === "student" && (
-                          <div className="space-y-2">
-                            <p className="text-sm font-medium text-charcoal">Did the student attend?</p>
-                            <div className="flex gap-2">
-                              <button onClick={() => handleAdminAttendance(s.id, true, true)} disabled={attendanceSaving}
-                                className="px-3 py-1.5 rounded-full bg-emerald-primary text-white text-xs font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
-                                Yes (Completed)
-                              </button>
-                              <button onClick={() => handleAdminAttendance(s.id, true, false)} disabled={attendanceSaving}
-                                className="px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 disabled:opacity-60 transition-colors">
-                                No (No-Show)
-                              </button>
-                              <button onClick={() => setAttendanceStep("teacher")}
-                                className="px-3 py-1.5 rounded-full border border-black/10 text-charcoal/40 text-xs transition-colors">
-                                Back
-                              </button>
-                            </div>
-                          </div>
-                        )}
+              <div className="space-y-4">
+                {/* Past sessions toggle */}
+                {sessionWeeks.pastSessions.length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setShowPast(!showPast)}
+                      className="flex items-center gap-2 text-sm font-medium text-charcoal/50 hover:text-charcoal transition-colors mb-2"
+                    >
+                      <ChevronDown size={14} className={`transition-transform ${showPast ? "rotate-0" : "-rotate-90"}`} />
+                      Past sessions ({sessionWeeks.pastSessions.length})
+                    </button>
+                    {showPast && (
+                      <div className="space-y-2 mb-4">
+                        {sessionWeeks.pastSessions.sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime()).map((s) => {
+                          const isPast = true;
+                          const needsAttendance = s.status === "scheduled" && isPast && s.teacher_attended == null;
+                          return renderSessionCard(s, isPast, needsAttendance);
+                        })}
                       </div>
                     )}
                   </div>
+                )}
+
+                {/* Week groups */}
+                {sessionWeeks.weeks.map(([weekKey, group]) => {
+                  const isCurrent = weekKey === sessionWeeks.currentWeekKey;
+                  return (
+                    <div key={weekKey}>
+                      <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-2 ${
+                        isCurrent ? "text-emerald-primary" : "text-charcoal/40"
+                      }`}>
+                        {isCurrent && <span className="w-2 h-2 rounded-full bg-emerald-primary inline-block" />}
+                        {group.label}
+                        <span className="text-charcoal/20 font-normal normal-case">({group.sessions.length})</span>
+                      </h3>
+                      <div className="space-y-2">
+                        {group.sessions.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()).map((s) => {
+                          const isPast = new Date(s.scheduled_at) < new Date();
+                          const needsAttendance = s.status === "scheduled" && isPast && s.teacher_attended == null;
+                          return renderSessionCard(s, isPast, needsAttendance);
+                        })}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
             )}
+            </>}
           </div>
         )}
 
@@ -957,10 +1197,34 @@ export default function SupervisorPage() {
                           {" · "}
                           {sched.default_duration} min
                         </p>
-                        {sched.lessons_remaining != null && (
-                          <p className={`text-xs mt-0.5 font-medium ${sched.lessons_remaining <= 2 ? "text-amber-600" : "text-charcoal/40"}`}>
+                        {sched.lessons_remaining != null ? (
+                          <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                            sched.lessons_remaining === 0
+                              ? "bg-red-100 text-red-700"
+                              : sched.lessons_remaining <= 4
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-emerald-100 text-emerald-700"
+                          }`}>
                             {sched.lessons_remaining} lesson{sched.lessons_remaining !== 1 ? "s" : ""} remaining
-                          </p>
+                          </span>
+                        ) : (
+                          <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                            No lesson limit set
+                          </span>
+                        )}
+                        {sched.zoom_link && (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[11px] text-blue-600 truncate max-w-[200px]" title={sched.zoom_link}>
+                              🔗 {sched.zoom_link.replace(/^https?:\/\//, '').slice(0, 30)}{sched.zoom_link.replace(/^https?:\/\//, '').length > 30 ? '…' : ''}
+                            </span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(sched.zoom_link!); }}
+                              className="text-[10px] text-charcoal/30 hover:text-charcoal/60 transition-colors"
+                              title="Copy link"
+                            >
+                              Copy
+                            </button>
+                          </div>
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -1202,6 +1466,19 @@ export default function SupervisorPage() {
                     <option value="120">120 min</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Zoom Link */}
+              <div>
+                <label className="block text-xs text-charcoal/60 mb-1">Zoom Link (optional)</label>
+                <input
+                  type="url"
+                  value={scheduleForm.zoom_link}
+                  onChange={(e) => setScheduleForm(p => ({ ...p, zoom_link: e.target.value }))}
+                  placeholder="e.g. https://zoom.us/j/123456789"
+                  className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                />
+                <p className="text-[10px] text-charcoal/30 mt-1">Used for all sessions in this schedule. Each session&apos;s link can still be overridden later if needed.</p>
               </div>
 
               {/* Lessons remaining */}

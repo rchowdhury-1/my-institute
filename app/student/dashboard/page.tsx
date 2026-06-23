@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Video, ExternalLink } from "lucide-react";
+import { Video, ExternalLink, MessageCircle } from "lucide-react";
 import { formatSessionDate, formatTimeOnly, formatSimpleDate } from "@/lib/datetime";
+import { BRAND } from "@/lib/content";
 
 interface Lesson {
   id: string;
@@ -15,6 +16,7 @@ interface Lesson {
   teacher_name: string;
   notes?: string;
   zoom_link?: string;
+  schedule_lessons_remaining?: number | null;
 }
 
 interface Package {
@@ -159,7 +161,20 @@ export default function StudentDashboard() {
                       <p className="text-charcoal/55 text-sm">{formatTimeOnly(l.scheduled_at)}</p>
                     </div>
                   </div>
-                  {l.zoom_link && (
+                  {l.schedule_lessons_remaining === 0 ? (
+                    <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200">
+                      <p className="text-red-700 text-sm font-medium">Your lesson balance is 0. Please contact admin to renew.</p>
+                      <a
+                        href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent("Hi, my lesson balance has reached 0. I'd like to renew.")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors"
+                      >
+                        <MessageCircle size={14} />
+                        WhatsApp Admin
+                      </a>
+                    </div>
+                  ) : l.zoom_link ? (
                     <a
                       href={l.zoom_link}
                       target="_blank"
@@ -170,7 +185,7 @@ export default function StudentDashboard() {
                       Join Session
                       <ExternalLink size={12} />
                     </a>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>
