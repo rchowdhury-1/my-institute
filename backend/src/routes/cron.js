@@ -7,12 +7,8 @@ const router = express.Router();
 // Auth: CRON_SECRET header (not JWT)
 function requireCronSecret(req, res, next) {
   const secret = req.headers['x-cron-secret'];
-  if (!process.env.CRON_SECRET) {
-    console.warn('[CRON] CRON_SECRET not set — rejecting request');
-    return res.status(500).json({ error: 'CRON_SECRET not configured on server' });
-  }
-  if (secret !== process.env.CRON_SECRET) {
-    return res.status(401).json({ error: 'Invalid cron secret' });
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
 }

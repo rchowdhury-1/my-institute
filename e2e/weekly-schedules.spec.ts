@@ -61,7 +61,7 @@ async function createSchedule(
   const data = {
     student_id: STUDENT_ID,
     teacher_id: TEACHER_ID,
-    subject: "quran_phase4_test",
+    subject: "quran",
     default_duration: 60,
     slots: [
       { day: "mon", time: "05:00", duration: 60 },
@@ -184,12 +184,12 @@ test("multiple schedules for same student+teacher allowed", async ({
   request,
 }) => {
   const { body: first } = await createSchedule(request, {
-    subject: "quran_test_1",
+    subject: "quran",
     slots: [{ day: "mon", time: "05:00", duration: 60 }],
   });
 
   const { res: secondRes, body: second } = await createSchedule(request, {
-    subject: "arabic_test_2",
+    subject: "arabic",
     slots: [{ day: "tue", time: "05:00", duration: 60 }],
   });
 

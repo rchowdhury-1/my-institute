@@ -171,8 +171,8 @@ router.post('/', async (req, res) => {
 
     res.status(201).json({ schedule, generation });
   } catch (err) {
-    console.error('POST /admin/weekly-schedules error:', err);
-    res.status(500).json({ error: 'Server error', detail: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

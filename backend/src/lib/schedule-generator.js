@@ -12,6 +12,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const LONDON = 'Europe/London';
 const HORIZON_DAYS = 28; // 4-week rolling window
+const VALID_SUBJECTS = ['quran', 'arabic', 'islamic_studies'];
 
 const DAY_MAP = {
   sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
@@ -121,7 +122,8 @@ async function generateSessionsForSchedule(schedule) {
         continue;
       }
 
-      // Create session
+      // Create session (map subject to valid enum for sessions table constraint)
+      const sessionSubject = VALID_SUBJECTS.includes(schedule.subject) ? schedule.subject : 'quran';
       const id = uuidv4();
       await pool.query(
         `INSERT INTO sessions
@@ -134,7 +136,7 @@ async function generateSessionsForSchedule(schedule) {
           schedule.teacher_id,
           sessionTimeUTC.toISOString(),
           duration,
-          schedule.subject,
+          sessionSubject,
           schedule.id,
           schedule.hourly_rate || null,
           schedule.currency || null,
