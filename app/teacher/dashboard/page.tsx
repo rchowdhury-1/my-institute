@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Video, ExternalLink, RefreshCw, X as XIcon } from "lucide-react";
+import { Video, ExternalLink, RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX } from "lucide-react";
 import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative } from "@/lib/datetime";
 
 interface Lesson {
@@ -15,6 +15,9 @@ interface Lesson {
   student_name: string;
   notes?: string;
   zoom_link?: string;
+  teacher_attended?: boolean | null;
+  student_attended?: boolean | null;
+  schedule_id?: string | null;
 }
 
 interface Teacher {
@@ -84,19 +87,44 @@ export default function TeacherDashboard() {
       .finally(() => setLoading(false));
   }, [router]);
 
-  const updateLesson = async (lessonId: string, status: string, notes?: string) => {
+  const markAttendance = async (lessonId: string, teacherAttended: boolean, studentAttended: boolean) => {
     const token = localStorage.getItem("accessToken");
     if (!token) return;
     setSaving(lessonId);
     try {
       const res = await api.patch(
-        `/teachers/lessons/${lessonId}`,
-        { status, notes: notes ?? noteInputs[lessonId] ?? undefined },
+        `/sessions/${lessonId}/attendance`,
+        { teacher_attended: teacherAttended, student_attended: studentAttended },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setLessons((prev) => prev.map((l) => l.id === lessonId ? res.data.lesson : l));
+      setLessons((prev) => prev.map((l) => l.id === lessonId ? { ...l, ...res.data.session } : l));
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string; code?: string } } };
+      if (e.response?.data?.code === "ATTENDANCE_TOO_EARLY") {
+        alert("Attendance can only be marked from 15 minutes before the session.");
+      } else if (e.response?.data?.code === "ATTENDANCE_WINDOW_CLOSED") {
+        alert("Attendance window has closed (24 hours after session). Contact admin.");
+      } else {
+        alert(e.response?.data?.error || "Failed to mark attendance.");
+      }
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const cancelLesson = async (lessonId: string) => {
+    const token = localStorage.getItem("accessToken");
+    if (!token) return;
+    setSaving(lessonId);
+    try {
+      const res = await api.patch(
+        `/sessions/${lessonId}/cancel`,
+        { cancellation_reason: "Cancelled by teacher" },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setLessons((prev) => prev.map((l) => l.id === lessonId ? { ...l, ...res.data.session } : l));
     } catch {
-      alert("Failed to update lesson.");
+      alert("Failed to cancel session.");
     } finally {
       setSaving(null);
     }
@@ -313,8 +341,8 @@ export default function TeacherDashboard() {
                   noteInput={noteInputs[l.id] ?? l.notes ?? ""}
                   saving={saving === l.id}
                   onNoteChange={(val) => setNoteInputs((p) => ({ ...p, [l.id]: val }))}
-                  onComplete={() => updateLesson(l.id, "completed")}
-                  onCancel={() => updateLesson(l.id, "cancelled")}
+                  onAttendance={(ta, sa) => markAttendance(l.id, ta, sa)}
+                  onCancel={() => cancelLesson(l.id)}
                 />
               ))}
             </div>
@@ -367,16 +395,39 @@ export default function TeacherDashboard() {
 }
 
 function LessonCard({
-  lesson, noteInput, saving, onNoteChange, onComplete, onCancel,
+  lesson, noteInput, saving, onNoteChange, onAttendance, onCancel,
 }: {
   lesson: Lesson;
   noteInput: string;
   saving: boolean;
   onNoteChange: (v: string) => void;
-  onComplete: () => void;
+  onAttendance: (teacherAttended: boolean, studentAttended: boolean) => void;
   onCancel: () => void;
 }) {
+  const [attendanceStep, setAttendanceStep] = useState<null | "teacher" | "student">(null);
   const done = lesson.status !== "scheduled";
+  const now = new Date();
+  const sessionStart = new Date(lesson.scheduled_at);
+  const windowStart = new Date(sessionStart.getTime() - 15 * 60 * 1000);
+  const windowEnd = new Date(sessionStart.getTime() + 24 * 60 * 60 * 1000);
+  const inWindow = now >= windowStart && now <= windowEnd;
+  const isPast = now > sessionStart;
+
+  const statusLabel: Record<string, string> = {
+    completed: "Completed",
+    no_show: "No Show",
+    cancelled: "Cancelled",
+    cancelled_teacher: "Teacher Cancelled",
+    rescheduled: "Rescheduled",
+  };
+
+  const statusColor: Record<string, string> = {
+    completed: "bg-emerald-primary/10 text-emerald-primary",
+    no_show: "bg-orange-50 text-orange-600",
+    cancelled: "bg-red-50 text-red-500",
+    cancelled_teacher: "bg-red-50 text-red-500",
+    rescheduled: "bg-amber-50 text-amber-600",
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-black/5 p-5">
@@ -387,15 +438,25 @@ function LessonCard({
             with {lesson.student_name} · {lesson.duration_minutes} min · {formatTimeOnly(lesson.scheduled_at)}
           </p>
         </div>
-        {done ? (
-          <span className={`shrink-0 inline-block px-2.5 py-1 rounded-full text-xs font-medium ${
-            lesson.status === "completed"
-              ? "bg-emerald-primary/10 text-emerald-primary"
-              : "bg-red-50 text-red-500"
-          }`}>
-            {lesson.status}
-          </span>
-        ) : null}
+        {done && (
+          <div className="shrink-0 flex items-center gap-2">
+            {lesson.teacher_attended != null && (
+              <div className="flex items-center gap-1 text-xs text-charcoal/40">
+                {lesson.teacher_attended ? <CheckCircle2 size={12} className="text-emerald-primary" /> : <XCircle size={12} className="text-red-400" />}
+                T
+                {lesson.student_attended != null && (
+                  <>
+                    {lesson.student_attended ? <CheckCircle2 size={12} className="text-emerald-primary" /> : <XCircle size={12} className="text-red-400" />}
+                    S
+                  </>
+                )}
+              </div>
+            )}
+            <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${statusColor[lesson.status] ?? "bg-gray-100 text-gray-600"}`}>
+              {statusLabel[lesson.status] ?? lesson.status}
+            </span>
+          </div>
+        )}
       </div>
 
       {!done && lesson.zoom_link && (
@@ -420,22 +481,82 @@ function LessonCard({
             rows={2}
             className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 focus:border-emerald-primary transition-all text-sm resize-none mb-3"
           />
-          <div className="flex gap-2">
-            <button
-              onClick={onComplete}
-              disabled={saving}
-              className="flex-1 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors disabled:opacity-60"
-            >
-              {saving ? "Saving…" : "Mark Completed"}
-            </button>
-            <button
-              onClick={onCancel}
-              disabled={saving}
-              className="px-4 py-2 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-red-300 hover:text-red-500 transition-colors disabled:opacity-60"
-            >
-              Cancel
-            </button>
-          </div>
+
+          {/* Attendance flow */}
+          {attendanceStep === null && (
+            <div className="flex gap-2">
+              {inWindow ? (
+                <button
+                  onClick={() => setAttendanceStep("teacher")}
+                  disabled={saving}
+                  className="flex-1 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors disabled:opacity-60"
+                >
+                  Mark Attendance
+                </button>
+              ) : isPast ? (
+                <p className="text-charcoal/40 text-xs py-2">Attendance window closed — contact admin</p>
+              ) : (
+                <p className="text-charcoal/40 text-xs py-2">Attendance available from 15 min before session</p>
+              )}
+              <button
+                onClick={onCancel}
+                disabled={saving}
+                className="px-4 py-2 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-red-300 hover:text-red-500 transition-colors disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {attendanceStep === "teacher" && (
+            <div className="bg-cream/50 rounded-xl p-3 space-y-2">
+              <p className="text-sm font-medium text-charcoal">Did you attend this session?</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAttendanceStep("student")}
+                  disabled={saving}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors disabled:opacity-60"
+                >
+                  <UserCheck size={14} /> Yes, I attended
+                </button>
+                <button
+                  onClick={() => { onAttendance(false, false); setAttendanceStep(null); }}
+                  disabled={saving}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-full bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-60"
+                >
+                  <UserX size={14} /> No
+                </button>
+              </div>
+              <button onClick={() => setAttendanceStep(null)} className="text-charcoal/40 text-xs hover:text-charcoal/60">
+                ← Back
+              </button>
+            </div>
+          )}
+
+          {attendanceStep === "student" && (
+            <div className="bg-cream/50 rounded-xl p-3 space-y-2">
+              <p className="text-sm font-medium text-charcoal">Did the student attend?</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { onAttendance(true, true); setAttendanceStep(null); }}
+                  disabled={saving}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors disabled:opacity-60"
+                >
+                  <CheckCircle2 size={14} /> Yes
+                </button>
+                <button
+                  onClick={() => { onAttendance(true, false); setAttendanceStep(null); }}
+                  disabled={saving}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-full bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60"
+                >
+                  <XCircle size={14} /> No (No-Show)
+                </button>
+              </div>
+              <button onClick={() => setAttendanceStep("teacher")} className="text-charcoal/40 text-xs hover:text-charcoal/60">
+                ← Back
+              </button>
+            </div>
+          )}
         </>
       )}
 

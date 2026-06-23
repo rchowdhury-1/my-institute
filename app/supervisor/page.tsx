@@ -114,6 +114,30 @@ export default function SupervisorPage() {
   const [editError, setEditError] = useState("");
   const [editWaMsg, setEditWaMsg] = useState<{ phone?: string; time?: string } | null>(null);
 
+  // attendance override
+  const [attendanceId, setAttendanceId] = useState<string | null>(null);
+  const [attendanceStep, setAttendanceStep] = useState<"teacher" | "student" | null>(null);
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
+
+  async function handleAdminAttendance(sessionId: string, teacherAttended: boolean, studentAttended: boolean) {
+    const token = localStorage.getItem("accessToken");
+    if (!token) return;
+    setAttendanceSaving(true);
+    try {
+      const res = await api.patch(`/sessions/${sessionId}/attendance`,
+        { teacher_attended: teacherAttended, student_attended: studentAttended },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, ...res.data.session } : s));
+      setAttendanceId(null);
+      setAttendanceStep(null);
+    } catch {
+      alert("Failed to mark attendance.");
+    } finally {
+      setAttendanceSaving(false);
+    }
+  }
+
   // schedules
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -774,43 +798,106 @@ export default function SupervisorPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {sessions.map((s) => (
-                  <div key={s.id} className="bg-white rounded-2xl border border-black/5 p-4 flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-charcoal text-sm truncate">
-                        {s.student_name} ↔ {s.teacher_name}
-                      </p>
-                      <p className="text-charcoal/50 text-xs mt-0.5">
-                        {formatSessionTime(s.scheduled_at)} · {s.duration_minutes} min
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {s.schedule_id && (
-                        <Repeat size={12} className="text-emerald-primary/40" />
-                      )}
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusStyle[s.status] ?? "bg-gray-100 text-gray-600"}`}>
-                        {s.status === "cancelled_teacher" ? "teacher cancelled" : s.status === "no_show" ? "no show" : s.status}
-                      </span>
-                      {s.status === "scheduled" && (
-                        <>
+                {sessions.map((s) => {
+                  const isPast = new Date(s.scheduled_at) < new Date();
+                  const needsAttendance = s.status === "scheduled" && isPast && s.teacher_attended == null;
+                  return (
+                  <div key={s.id} className="bg-white rounded-2xl border border-black/5 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-charcoal text-sm truncate">
+                          {s.student_name} ↔ {s.teacher_name}
+                        </p>
+                        <p className="text-charcoal/50 text-xs mt-0.5">
+                          {formatSessionTime(s.scheduled_at)} · {s.duration_minutes} min
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {s.schedule_id && (
+                          <Repeat size={12} className="text-emerald-primary/40" />
+                        )}
+                        {s.teacher_attended != null && (
+                          <span className="text-xs text-charcoal/30 flex items-center gap-0.5">
+                            {s.teacher_attended ? "T✓" : "T✗"}
+                            {s.student_attended != null && (s.student_attended ? " S✓" : " S✗")}
+                          </span>
+                        )}
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusStyle[s.status] ?? "bg-gray-100 text-gray-600"}`}>
+                          {s.status === "cancelled_teacher" ? "teacher cancelled" : s.status === "no_show" ? "no show" : s.status}
+                        </span>
+                        {s.status === "scheduled" && !isPast && (
+                          <>
+                            <button
+                              onClick={() => openEditModal(s)}
+                              className="p-1.5 rounded-lg text-charcoal/30 hover:text-emerald-primary hover:bg-emerald-primary/5 transition-colors"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSession(s.id)}
+                              disabled={deleting === s.id}
+                              className="p-1.5 rounded-lg text-charcoal/30 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </>
+                        )}
+                        {needsAttendance && (
                           <button
-                            onClick={() => openEditModal(s)}
-                            className="p-1.5 rounded-lg text-charcoal/30 hover:text-emerald-primary hover:bg-emerald-primary/5 transition-colors"
+                            onClick={() => { setAttendanceId(s.id); setAttendanceStep("teacher"); }}
+                            className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium hover:bg-amber-200 transition-colors"
                           >
-                            <Pencil size={14} />
+                            Mark Attendance
                           </button>
-                          <button
-                            onClick={() => handleDeleteSession(s.id)}
-                            disabled={deleting === s.id}
-                            className="p-1.5 rounded-lg text-charcoal/30 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </>
-                      )}
+                        )}
+                      </div>
                     </div>
+                    {/* Inline attendance override */}
+                    {attendanceId === s.id && (
+                      <div className="mt-3 pt-3 border-t border-black/5">
+                        {attendanceStep === "teacher" && (
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium text-charcoal">Did the teacher attend?</p>
+                            <div className="flex gap-2">
+                              <button onClick={() => setAttendanceStep("student")} disabled={attendanceSaving}
+                                className="px-3 py-1.5 rounded-full bg-emerald-primary text-white text-xs font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
+                                Yes
+                              </button>
+                              <button onClick={() => handleAdminAttendance(s.id, false, false)} disabled={attendanceSaving}
+                                className="px-3 py-1.5 rounded-full bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors">
+                                No (Teacher Cancelled)
+                              </button>
+                              <button onClick={() => { setAttendanceId(null); setAttendanceStep(null); }}
+                                className="px-3 py-1.5 rounded-full border border-black/10 text-charcoal/40 text-xs transition-colors">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {attendanceStep === "student" && (
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium text-charcoal">Did the student attend?</p>
+                            <div className="flex gap-2">
+                              <button onClick={() => handleAdminAttendance(s.id, true, true)} disabled={attendanceSaving}
+                                className="px-3 py-1.5 rounded-full bg-emerald-primary text-white text-xs font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
+                                Yes (Completed)
+                              </button>
+                              <button onClick={() => handleAdminAttendance(s.id, true, false)} disabled={attendanceSaving}
+                                className="px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 disabled:opacity-60 transition-colors">
+                                No (No-Show)
+                              </button>
+                              <button onClick={() => setAttendanceStep("teacher")}
+                                className="px-3 py-1.5 rounded-full border border-black/10 text-charcoal/40 text-xs transition-colors">
+                                Back
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -977,11 +1064,11 @@ export default function SupervisorPage() {
               <Newspaper size={15} /> Manage Community →
             </Link>
             <Link
-              href="/admin/teacher-hours"
-              data-testid="link-teacher-hours"
+              href="/admin/salaries"
+              data-testid="link-teacher-salaries"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
             >
-              <Clock size={15} /> Teacher Hours →
+              <Clock size={15} /> Teacher Salaries →
             </Link>
             <Link
               href="/admin/revert-applications"
