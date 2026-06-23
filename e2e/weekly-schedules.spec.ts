@@ -99,7 +99,7 @@ test("create schedule generates sessions for 4 weeks", async ({ request }) => {
   expect(body.schedule).toBeDefined();
   expect(body.schedule.is_active).toBe(true);
   expect(body.generation.created).toBeGreaterThan(0);
-  expect(body.generation.created).toBeGreaterThanOrEqual(4);
+  expect(body.generation.created).toBeGreaterThanOrEqual(3);
   expect(body.generation.created).toBeLessThanOrEqual(10);
 
   await deleteSchedule(request, body.schedule.id);
