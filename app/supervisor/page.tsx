@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock, RefreshCw, X as XIcon, Pencil } from "lucide-react";
+import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock, RefreshCw, X as XIcon, Pencil, Repeat, ChevronDown, Archive, Play, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { formatSessionTime, formatRelative } from "@/lib/datetime";
 
@@ -20,6 +20,30 @@ interface Session {
   subject?: string;
   zoom_link?: string;
   notes?: string;
+  schedule_id?: string | null;
+  teacher_attended?: boolean | null;
+  student_attended?: boolean | null;
+}
+
+interface Schedule {
+  id: string;
+  student_id: string;
+  teacher_id: string;
+  student_name: string;
+  teacher_name: string;
+  subject: string;
+  default_duration: number;
+  slots: { day: string; time: string; duration?: number }[];
+  lessons_remaining: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ScheduleGeneration {
+  created: number;
+  skipped: number;
+  conflicts: string[];
 }
 
 interface User {
@@ -50,7 +74,14 @@ const statusStyle: Record<string, string> = {
   completed: "bg-blue-50 text-blue-600",
   cancelled: "bg-red-50 text-red-500",
   rescheduled: "bg-amber-50 text-amber-600",
+  no_show: "bg-orange-50 text-orange-600",
+  cancelled_teacher: "bg-red-50 text-red-500",
 };
+
+const DAY_LABELS: Record<string, string> = {
+  mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
+};
+const ALL_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 export default function SupervisorPage() {
   const router = useRouter();
@@ -60,7 +91,7 @@ export default function SupervisorPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const messagingEnabled = process.env.NEXT_PUBLIC_FEATURE_MESSAGING === "true";
-  const [activeTab, setActiveTab] = useState<"sessions" | "people" | "message">("sessions");
+  const [activeTab, setActiveTab] = useState<"sessions" | "schedules" | "people" | "message">("sessions");
 
   // create session form
   const [showSessionForm, setShowSessionForm] = useState(false);
@@ -82,6 +113,22 @@ export default function SupervisorPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [editWaMsg, setEditWaMsg] = useState<{ phone?: string; time?: string } | null>(null);
+
+  // schedules
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    student_id: "", teacher_id: "", subject: "quran", default_duration: "60",
+    lessons_remaining: "",
+    slots: {} as Record<string, { enabled: boolean; time: string; duration: string }>,
+  });
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
+  const [scheduleGenResult, setScheduleGenResult] = useState<ScheduleGeneration | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [scheduleActioning, setScheduleActioning] = useState<string | null>(null);
+  const legacySessionCount = sessions.filter(s => !s.schedule_id && s.status === "scheduled" && new Date(s.scheduled_at) > new Date()).length;
 
   // message form
   const [msgForm, setMsgForm] = useState({ receiver_id: "", content: "" });
@@ -105,16 +152,163 @@ export default function SupervisorPage() {
       api.get("/admin/students", { headers }),
       api.get("/admin/teachers", { headers }),
       api.get("/reschedule-requests?status=pending", { headers }),
+      api.get("/admin/weekly-schedules", { headers }),
     ])
-      .then(([sessRes, studRes, teachRes, rrRes]) => {
+      .then(([sessRes, studRes, teachRes, rrRes, schedRes]) => {
         setSessions(sessRes.data.sessions);
         setStudents(studRes.data.students);
         setTeachers(teachRes.data.teachers);
         setRescheduleRequests(rrRes.data.requests ?? []);
+        setSchedules(schedRes.data.schedules ?? []);
       })
       .catch(() => setError("Failed to load data. You may not have permission."))
       .finally(() => setLoading(false));
   }, [router]);
+
+  // ─── Schedule handlers ────────────────────────────────────────────────────
+
+  function openScheduleModal(schedule?: Schedule) {
+    const slotState: Record<string, { enabled: boolean; time: string; duration: string }> = {};
+    ALL_DAYS.forEach(d => { slotState[d] = { enabled: false, time: "16:00", duration: "" }; });
+
+    if (schedule) {
+      setEditingSchedule(schedule);
+      for (const slot of schedule.slots) {
+        slotState[slot.day] = { enabled: true, time: slot.time, duration: slot.duration ? String(slot.duration) : "" };
+      }
+      setScheduleForm({
+        student_id: schedule.student_id,
+        teacher_id: schedule.teacher_id,
+        subject: schedule.subject,
+        default_duration: String(schedule.default_duration),
+        lessons_remaining: schedule.lessons_remaining != null ? String(schedule.lessons_remaining) : "",
+        slots: slotState,
+      });
+    } else {
+      setEditingSchedule(null);
+      setScheduleForm({
+        student_id: "", teacher_id: "", subject: "quran", default_duration: "60",
+        lessons_remaining: "", slots: slotState,
+      });
+    }
+    setScheduleError("");
+    setScheduleGenResult(null);
+    setShowScheduleModal(true);
+  }
+
+  async function handleSaveSchedule() {
+    const token = localStorage.getItem("accessToken");
+    if (!token) return;
+
+    const slots = ALL_DAYS
+      .filter(d => scheduleForm.slots[d]?.enabled)
+      .map(d => ({
+        day: d,
+        time: scheduleForm.slots[d].time,
+        ...(scheduleForm.slots[d].duration ? { duration: parseInt(scheduleForm.slots[d].duration) } : {}),
+      }));
+
+    if (slots.length === 0) { setScheduleError("Select at least one day"); return; }
+    if (!editingSchedule && (!scheduleForm.student_id || !scheduleForm.teacher_id)) {
+      setScheduleError("Select a student and teacher"); return;
+    }
+
+    setScheduleSaving(true);
+    setScheduleError("");
+    try {
+      if (editingSchedule) {
+        const res = await api.patch(`/admin/weekly-schedules/${editingSchedule.id}`, {
+          subject: scheduleForm.subject,
+          default_duration: parseInt(scheduleForm.default_duration),
+          slots,
+          lessons_remaining: scheduleForm.lessons_remaining ? parseInt(scheduleForm.lessons_remaining) : null,
+          teacher_id: scheduleForm.teacher_id !== editingSchedule.teacher_id ? scheduleForm.teacher_id : undefined,
+        }, { headers: { Authorization: `Bearer ${token}` } });
+
+        setSchedules(prev => prev.map(s => s.id === editingSchedule.id ? { ...s, ...res.data.schedule } : s));
+        if (res.data.generation) setScheduleGenResult(res.data.generation);
+        // Refresh sessions list
+        const sessRes = await api.get("/admin/sessions", { headers: { Authorization: `Bearer ${token}` } });
+        setSessions(sessRes.data.sessions);
+      } else {
+        const res = await api.post("/admin/weekly-schedules", {
+          student_id: scheduleForm.student_id,
+          teacher_id: scheduleForm.teacher_id,
+          subject: scheduleForm.subject,
+          default_duration: parseInt(scheduleForm.default_duration),
+          slots,
+          lessons_remaining: scheduleForm.lessons_remaining ? parseInt(scheduleForm.lessons_remaining) : null,
+        }, { headers: { Authorization: `Bearer ${token}` } });
+
+        const student = students.find(s => s.id === scheduleForm.student_id);
+        const teacher = teachers.find(t => t.id === scheduleForm.teacher_id);
+        setSchedules(prev => [{ ...res.data.schedule, student_name: student?.display_name ?? "", teacher_name: teacher?.display_name ?? "" }, ...prev]);
+        setScheduleGenResult(res.data.generation);
+        // Refresh sessions list
+        const sessRes = await api.get("/admin/sessions", { headers: { Authorization: `Bearer ${token}` } });
+        setSessions(sessRes.data.sessions);
+      }
+      if (!scheduleGenResult) setShowScheduleModal(false);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      setScheduleError(e.response?.data?.error || "Failed to save schedule.");
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
+  async function handleDeactivateSchedule(id: string) {
+    const futureCount = sessions.filter(s => s.schedule_id === id && s.status === "scheduled" && new Date(s.scheduled_at) > new Date()).length;
+    if (!confirm(`This will remove ${futureCount} future session${futureCount !== 1 ? "s" : ""}. The schedule will be moved to Archived. You can reactivate it later if needed.`)) return;
+
+    const token = localStorage.getItem("accessToken");
+    if (!token) return;
+    setScheduleActioning(id);
+    try {
+      await api.delete(`/admin/weekly-schedules/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: false } : s));
+      setSessions(prev => prev.filter(s => !(s.schedule_id === id && s.status === "scheduled" && new Date(s.scheduled_at) > new Date())));
+    } catch {
+      alert("Failed to deactivate schedule.");
+    } finally {
+      setScheduleActioning(null);
+    }
+  }
+
+  async function handleReactivateSchedule(id: string) {
+    const token = localStorage.getItem("accessToken");
+    if (!token) return;
+    setScheduleActioning(id);
+    try {
+      const res = await api.post(`/admin/weekly-schedules/${id}/reactivate`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: true } : s));
+      setScheduleGenResult(res.data.generation);
+      const sessRes = await api.get("/admin/sessions", { headers: { Authorization: `Bearer ${token}` } });
+      setSessions(sessRes.data.sessions);
+    } catch {
+      alert("Failed to reactivate schedule.");
+    } finally {
+      setScheduleActioning(null);
+    }
+  }
+
+  async function handleGenerateNow(id: string) {
+    const token = localStorage.getItem("accessToken");
+    if (!token) return;
+    setScheduleActioning(id);
+    try {
+      const res = await api.post(`/admin/weekly-schedules/${id}/generate`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      setScheduleGenResult(res.data.generation);
+      if (res.data.generation.created > 0) {
+        const sessRes = await api.get("/admin/sessions", { headers: { Authorization: `Bearer ${token}` } });
+        setSessions(sessRes.data.sessions);
+      }
+    } catch {
+      alert("Failed to generate sessions.");
+    } finally {
+      setScheduleActioning(null);
+    }
+  }
 
   async function handleCreateSession() {
     const token = localStorage.getItem("accessToken");
@@ -354,7 +548,7 @@ export default function SupervisorPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-white rounded-full p-1 border border-black/5 mb-6 w-fit">
-          {(["sessions", "people", ...(messagingEnabled ? ["message" as const] : [])] as const).map((tab) => (
+          {(["sessions", "schedules", "people", ...(messagingEnabled ? ["message" as const] : [])] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -591,8 +785,11 @@ export default function SupervisorPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      {s.schedule_id && (
+                        <Repeat size={12} className="text-emerald-primary/40" />
+                      )}
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusStyle[s.status] ?? "bg-gray-100 text-gray-600"}`}>
-                        {s.status}
+                        {s.status === "cancelled_teacher" ? "teacher cancelled" : s.status === "no_show" ? "no show" : s.status}
                       </span>
                       {s.status === "scheduled" && (
                         <>
@@ -614,6 +811,141 @@ export default function SupervisorPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Schedules tab */}
+        {activeTab === "schedules" && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display text-xl font-bold text-charcoal">Weekly Schedules</h2>
+              <button
+                onClick={() => openScheduleModal()}
+                className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
+              >
+                <Plus size={16} /> Add Schedule
+              </button>
+            </div>
+
+            {/* Generation result banner */}
+            {scheduleGenResult && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-4 flex items-center justify-between">
+                <p className="text-emerald-primary text-sm">
+                  {scheduleGenResult.created > 0 ? `${scheduleGenResult.created} sessions generated.` : "No new sessions needed."}
+                  {scheduleGenResult.skipped > 0 && ` ${scheduleGenResult.skipped} skipped.`}
+                  {scheduleGenResult.conflicts.length > 0 && ` ${scheduleGenResult.conflicts.length} conflict(s).`}
+                </p>
+                <button onClick={() => setScheduleGenResult(null)} className="text-emerald-primary/40 hover:text-emerald-primary">
+                  <XIcon size={14} />
+                </button>
+              </div>
+            )}
+
+            {/* Legacy session warning banner */}
+            {legacySessionCount > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 flex items-center gap-3">
+                <AlertTriangle size={18} className="text-amber-500 shrink-0" />
+                <p className="text-amber-700 text-sm">
+                  <strong>{legacySessionCount} legacy session{legacySessionCount !== 1 ? "s" : ""}</strong> exist that aren&apos;t linked to a schedule. These were created before the schedule system. They will continue to work normally.
+                </p>
+              </div>
+            )}
+
+            {/* Active schedules */}
+            {schedules.filter(s => s.is_active).length === 0 ? (
+              <div className="bg-white rounded-2xl border border-black/5 p-8 text-center text-charcoal/30 mb-6">
+                <Repeat size={32} className="mx-auto mb-3 text-charcoal/20" />
+                <p>No active schedules. Click &quot;Add Schedule&quot; to create one.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 mb-6">
+                {schedules.filter(s => s.is_active).map(sched => (
+                  <div key={sched.id} className="bg-white rounded-2xl border border-black/5 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-charcoal text-sm">
+                          {sched.student_name} <span className="text-charcoal/30">↔</span> {sched.teacher_name}
+                        </p>
+                        <p className="text-charcoal/50 text-xs mt-0.5">
+                          {sched.subject === "quran" ? "Quran" : sched.subject === "arabic" ? "Arabic" : sched.subject === "islamic_studies" ? "Islamic Studies" : sched.subject}
+                          {" · "}
+                          {sched.slots.map(sl => `${DAY_LABELS[sl.day] || sl.day} ${sl.time}`).join(", ")}
+                          {" · "}
+                          {sched.default_duration} min
+                        </p>
+                        {sched.lessons_remaining != null && (
+                          <p className={`text-xs mt-0.5 font-medium ${sched.lessons_remaining <= 2 ? "text-amber-600" : "text-charcoal/40"}`}>
+                            {sched.lessons_remaining} lesson{sched.lessons_remaining !== 1 ? "s" : ""} remaining
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => openScheduleModal(sched)}
+                          disabled={scheduleActioning === sched.id}
+                          className="p-1.5 rounded-lg text-charcoal/30 hover:text-emerald-primary hover:bg-emerald-primary/5 transition-colors"
+                          title="Edit schedule"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleGenerateNow(sched.id)}
+                          disabled={scheduleActioning === sched.id}
+                          className="p-1.5 rounded-lg text-charcoal/30 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                          title="Generate sessions now"
+                        >
+                          <Play size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeactivateSchedule(sched.id)}
+                          disabled={scheduleActioning === sched.id}
+                          className="p-1.5 rounded-lg text-charcoal/30 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          title="Deactivate"
+                        >
+                          <Archive size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Archived schedules */}
+            {schedules.filter(s => !s.is_active).length > 0 && (
+              <div className="mb-6">
+                <button
+                  onClick={() => setShowArchived(!showArchived)}
+                  className="flex items-center gap-2 text-charcoal/40 text-sm hover:text-charcoal/60 transition-colors mb-2"
+                >
+                  <ChevronDown size={14} className={`transition-transform ${showArchived ? "rotate-180" : ""}`} />
+                  Archived ({schedules.filter(s => !s.is_active).length})
+                </button>
+                {showArchived && (
+                  <div className="space-y-2">
+                    {schedules.filter(s => !s.is_active).map(sched => (
+                      <div key={sched.id} className="bg-white/60 rounded-2xl border border-black/5 p-4 flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-charcoal/50 text-sm">
+                            {sched.student_name} ↔ {sched.teacher_name}
+                          </p>
+                          <p className="text-charcoal/30 text-xs mt-0.5">
+                            {sched.subject} · {sched.slots.map(sl => `${DAY_LABELS[sl.day] || sl.day} ${sl.time}`).join(", ")}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleReactivateSchedule(sched.id)}
+                          disabled={scheduleActioning === sched.id}
+                          className="px-3 py-1.5 rounded-full border border-emerald-primary/30 text-emerald-primary text-xs font-semibold hover:bg-emerald-primary/5 disabled:opacity-60 transition-colors"
+                        >
+                          {scheduleActioning === sched.id ? "…" : "Reactivate"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -730,6 +1062,166 @@ export default function SupervisorPage() {
           </div>
         )}
       </div>
+
+      {/* Schedule modal */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowScheduleModal(false)}>
+          <div className="bg-white rounded-2xl border border-black/5 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display text-lg font-bold text-charcoal mb-4">
+              {editingSchedule ? "Edit Schedule" : "Add Weekly Schedule"}
+            </h3>
+
+            <div className="space-y-3">
+              {/* Student & Teacher (disabled when editing) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-charcoal/60 mb-1">Student</label>
+                  <select
+                    value={scheduleForm.student_id}
+                    onChange={(e) => setScheduleForm(p => ({ ...p, student_id: e.target.value }))}
+                    disabled={!!editingSchedule}
+                    className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 disabled:opacity-50"
+                  >
+                    <option value="">Select student…</option>
+                    {students.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-charcoal/60 mb-1">Teacher</label>
+                  <select
+                    value={scheduleForm.teacher_id}
+                    onChange={(e) => setScheduleForm(p => ({ ...p, teacher_id: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                  >
+                    <option value="">Select teacher…</option>
+                    {teachers.map(t => <option key={t.id} value={t.id}>{t.display_name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Subject & Duration */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-charcoal/60 mb-1">Subject</label>
+                  <input
+                    type="text"
+                    value={scheduleForm.subject}
+                    onChange={(e) => setScheduleForm(p => ({ ...p, subject: e.target.value }))}
+                    placeholder="e.g. Quran, Arabic, Math"
+                    className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-charcoal/60 mb-1">Default Duration</label>
+                  <select
+                    value={scheduleForm.default_duration}
+                    onChange={(e) => setScheduleForm(p => ({ ...p, default_duration: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                  >
+                    <option value="30">30 min</option>
+                    <option value="60">60 min</option>
+                    <option value="90">90 min</option>
+                    <option value="120">120 min</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Lessons remaining */}
+              <div>
+                <label className="block text-xs text-charcoal/60 mb-1">Lessons Remaining (optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={scheduleForm.lessons_remaining}
+                  onChange={(e) => setScheduleForm(p => ({ ...p, lessons_remaining: e.target.value }))}
+                  placeholder="Leave blank for unlimited"
+                  className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                />
+              </div>
+
+              {/* Day/Time grid */}
+              <div>
+                <label className="block text-xs text-charcoal/60 mb-2">Select Days & Times</label>
+                <div className="space-y-2">
+                  {ALL_DAYS.map(day => {
+                    const slot = scheduleForm.slots[day] || { enabled: false, time: "16:00", duration: "" };
+                    return (
+                      <div key={day} className={`flex items-center gap-3 p-2 rounded-xl transition-colors ${slot.enabled ? "bg-emerald-primary/5" : "bg-black/[0.02]"}`}>
+                        <label className="flex items-center gap-2 w-12 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={slot.enabled}
+                            onChange={(e) => setScheduleForm(p => ({
+                              ...p,
+                              slots: { ...p.slots, [day]: { ...slot, enabled: e.target.checked } },
+                            }))}
+                            className="rounded border-black/20 text-emerald-primary focus:ring-emerald-primary/30"
+                          />
+                          <span className="text-sm font-medium text-charcoal">{DAY_LABELS[day]}</span>
+                        </label>
+                        {slot.enabled && (
+                          <>
+                            <input
+                              type="time"
+                              value={slot.time}
+                              onChange={(e) => setScheduleForm(p => ({
+                                ...p,
+                                slots: { ...p.slots, [day]: { ...slot, time: e.target.value } },
+                              }))}
+                              className="px-2 py-1 rounded-lg border border-black/10 bg-white text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                            />
+                            <select
+                              value={slot.duration}
+                              onChange={(e) => setScheduleForm(p => ({
+                                ...p,
+                                slots: { ...p.slots, [day]: { ...slot, duration: e.target.value } },
+                              }))}
+                              className="px-2 py-1 rounded-lg border border-black/10 bg-white text-xs text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                            >
+                              <option value="">Default ({scheduleForm.default_duration} min)</option>
+                              <option value="30">30 min</option>
+                              <option value="60">60 min</option>
+                              <option value="90">90 min</option>
+                              <option value="120">120 min</option>
+                            </select>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {scheduleError && <p className="text-red-500 text-xs mt-3">{scheduleError}</p>}
+
+            {scheduleGenResult && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mt-3">
+                <p className="text-emerald-primary text-xs font-medium">
+                  {scheduleGenResult.created} session{scheduleGenResult.created !== 1 ? "s" : ""} generated
+                  {scheduleGenResult.conflicts.length > 0 && ` (${scheduleGenResult.conflicts.length} conflict${scheduleGenResult.conflicts.length !== 1 ? "s" : ""} skipped)`}
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={handleSaveSchedule}
+                disabled={scheduleSaving}
+                className="px-5 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors"
+              >
+                {scheduleSaving ? "Saving…" : editingSchedule ? "Save Changes" : "Create Schedule"}
+              </button>
+              <button
+                onClick={() => { setShowScheduleModal(false); setScheduleGenResult(null); }}
+                className="px-5 py-2 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-black/20 transition-colors"
+              >
+                {scheduleGenResult ? "Done" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit session modal */}
       {editSession && (
