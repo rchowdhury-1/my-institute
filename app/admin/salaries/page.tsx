@@ -131,13 +131,14 @@ export default function SalariesPage() {
 
         {loading ? (
           <div className="text-center py-20 text-charcoal/40">Loading…</div>
-        ) : !hasActivity ? (
+        ) : teachers.length === 0 ? (
           <div className="text-center py-20 text-charcoal/40">
-            No teaching activity recorded for {formatMonth(month)} yet.
+            No active teachers found.
           </div>
         ) : (
           <>
-            {/* Summary bar */}
+            {/* Summary bar — only when there's teaching activity */}
+            {hasActivity && (
             <div className="bg-white rounded-2xl border border-black/5 p-5 mb-6 flex items-center justify-between">
               <div>
                 <span className="text-charcoal/50 text-sm">Total across all teachers</span>
@@ -152,6 +153,7 @@ export default function SalariesPage() {
               </div>
               <Banknote size={28} className="text-emerald-primary/30" />
             </div>
+            )}
 
             {/* Teacher rows */}
             <div className="space-y-3">
