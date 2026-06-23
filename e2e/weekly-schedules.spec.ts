@@ -449,13 +449,249 @@ test("teacher cannot mark attendance too early (ATTENDANCE_TOO_EARLY)", async ({
   await deleteSession(request, session.id);
 });
 
-// ─── Cron auth ──────────────────────────────────────────────────────────
+// ─── Cron auth (JWT-based) ───────────────────────────────────────────────
 
-test("cron endpoint rejects wrong secret", async ({ request }) => {
-  const res = await request.post(`${API}/cron/generate-sessions`, {
-    headers: { "x-cron-secret": "wrong-secret" },
-  });
+test("cron endpoint rejects unauthenticated request", async ({ request }) => {
+  const res = await request.post(`${API}/cron/generate-sessions`);
   expect(res.status()).toBe(401);
+});
+
+test("cron endpoint works with admin JWT", async ({ request }) => {
+  const token = await getAdminToken(request);
+  const res = await request.post(`${API}/cron/generate-sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(body).toHaveProperty("schedules_processed");
+  expect(body).toHaveProperty("total_created");
+});
+
+// ─── Salary / pay rate ───────────────────────────────────────────────────
+
+// ─── Lessons remaining gate (Phase 4.5) ──────────────────────────────────
+
+test("no_show decrements lessons_remaining", async ({ request }) => {
+  const token = await getAdminToken(request);
+
+  // Create schedule with lessons_remaining = 3
+  const { res, body: created } = await createSchedule(request, {
+    lessons_remaining: 3,
+    slots: [{ day: "fri", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(res.status()).toBe(201);
+  const scheduleId = created.schedule.id;
+
+  // Create a manual session linked to this schedule (far future for admin marking)
+  const sessionTime = uniqueAttendanceTime();
+  const createRes = await request.post(`${API}/sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      student_id: STUDENT_ID,
+      teacher_id: TEACHER_ID,
+      scheduled_at: sessionTime,
+      duration_minutes: 60,
+      subject: "quran",
+    },
+  });
+  expect(createRes.status()).toBe(201);
+  const session = (await createRes.json()).session;
+
+  // Link session to schedule manually (session was created without schedule_id)
+  // Instead, mark attendance as no_show on a schedule-generated session
+  // Get upcoming sessions for this schedule
+  const schedRes = await request.get(
+    `${API}/admin/weekly-schedules/${scheduleId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const upcoming = (await schedRes.json()).upcoming_sessions;
+
+  if (upcoming.length > 0) {
+    // Mark first generated session as no_show
+    const attRes = await request.patch(
+      `${API}/sessions/${upcoming[0].id}/attendance`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { teacher_attended: true, student_attended: false },
+      }
+    );
+    expect(attRes.status()).toBe(200);
+    expect((await attRes.json()).session.status).toBe("no_show");
+
+    // Check balance decremented
+    const checkRes = await request.get(
+      `${API}/admin/weekly-schedules/${scheduleId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const updated = (await checkRes.json()).schedule;
+    expect(updated.lessons_remaining).toBe(2);
+  }
+
+  // Clean up the manual session
+  await deleteSession(request, session.id);
+  await deleteSchedule(request, scheduleId);
+});
+
+test("cancelled_teacher does NOT decrement lessons_remaining", async ({
+  request,
+}) => {
+  const token = await getAdminToken(request);
+
+  const { res, body: created } = await createSchedule(request, {
+    lessons_remaining: 3,
+    slots: [{ day: "fri", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(res.status()).toBe(201);
+  const scheduleId = created.schedule.id;
+
+  const schedRes = await request.get(
+    `${API}/admin/weekly-schedules/${scheduleId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const upcoming = (await schedRes.json()).upcoming_sessions;
+
+  if (upcoming.length > 0) {
+    // Mark as cancelled_teacher
+    const attRes = await request.patch(
+      `${API}/sessions/${upcoming[0].id}/attendance`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { teacher_attended: false, student_attended: false },
+      }
+    );
+    expect(attRes.status()).toBe(200);
+    expect((await attRes.json()).session.status).toBe("cancelled_teacher");
+
+    // Balance should remain 3
+    const checkRes = await request.get(
+      `${API}/admin/weekly-schedules/${scheduleId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    expect((await checkRes.json()).schedule.lessons_remaining).toBe(3);
+  }
+
+  await deleteSchedule(request, scheduleId);
+});
+
+test("GET /sessions includes schedule_lessons_remaining", async ({
+  request,
+}) => {
+  const token = await getAdminToken(request);
+
+  const { res, body: created } = await createSchedule(request, {
+    lessons_remaining: 7,
+    slots: [{ day: "sat", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(res.status()).toBe(201);
+  const scheduleId = created.schedule.id;
+
+  // Fetch sessions as admin
+  const sessRes = await request.get(`${API}/sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(sessRes.status()).toBe(200);
+  const sessions = (await sessRes.json()).sessions;
+
+  // Find a session from our schedule
+  const linkedSession = sessions.find(
+    (s: Record<string, unknown>) => s.schedule_id === scheduleId
+  );
+  if (linkedSession) {
+    expect(linkedSession.schedule_lessons_remaining).toBe(7);
+  }
+
+  await deleteSchedule(request, scheduleId);
+});
+
+// ─── Zoom link inheritance (Phase 5 patch) ──────────────────────────────
+
+test("schedule with zoom_link → generated sessions inherit it", async ({
+  request,
+}) => {
+  const { res, body } = await createSchedule(request, {
+    zoom_link: "https://zoom.us/j/111222333",
+    slots: [{ day: "sat", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(res.status()).toBe(201);
+  expect(body.schedule.zoom_link).toBe("https://zoom.us/j/111222333");
+  const scheduleId = body.schedule.id;
+  const token = await getAdminToken(request);
+
+  // Check generated sessions have the zoom link
+  const schedRes = await request.get(
+    `${API}/admin/weekly-schedules/${scheduleId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const upcoming = (await schedRes.json()).upcoming_sessions;
+  expect(upcoming.length).toBeGreaterThan(0);
+  for (const s of upcoming) {
+    expect(s.zoom_link).toBe("https://zoom.us/j/111222333");
+  }
+
+  await deleteSchedule(request, scheduleId);
+});
+
+test("schedule without zoom_link → sessions have null zoom_link", async ({
+  request,
+}) => {
+  const { res, body } = await createSchedule(request, {
+    slots: [{ day: "sun", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(res.status()).toBe(201);
+  expect(body.schedule.zoom_link).toBeNull();
+  const scheduleId = body.schedule.id;
+  const token = await getAdminToken(request);
+
+  const schedRes = await request.get(
+    `${API}/admin/weekly-schedules/${scheduleId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const upcoming = (await schedRes.json()).upcoming_sessions;
+  expect(upcoming.length).toBeGreaterThan(0);
+  for (const s of upcoming) {
+    expect(s.zoom_link).toBeNull();
+  }
+
+  await deleteSchedule(request, scheduleId);
+});
+
+test("edit zoom_link → regenerated sessions use new link", async ({
+  request,
+}) => {
+  const { res, body } = await createSchedule(request, {
+    zoom_link: "https://zoom.us/j/old-link",
+    slots: [{ day: "sat", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(res.status()).toBe(201);
+  const scheduleId = body.schedule.id;
+  const token = await getAdminToken(request);
+
+  // Edit zoom_link
+  const editRes = await request.patch(
+    `${API}/admin/weekly-schedules/${scheduleId}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { zoom_link: "https://zoom.us/j/new-link" },
+    }
+  );
+  expect(editRes.status()).toBe(200);
+  const editBody = await editRes.json();
+  expect(editBody.schedule.zoom_link).toBe("https://zoom.us/j/new-link");
+  // Wipe+regenerate should have run
+  expect(editBody.generation).toBeDefined();
+  expect(editBody.generation.created).toBeGreaterThan(0);
+
+  // Verify new sessions have the new link
+  const schedRes = await request.get(
+    `${API}/admin/weekly-schedules/${scheduleId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const upcoming = (await schedRes.json()).upcoming_sessions;
+  for (const s of upcoming) {
+    expect(s.zoom_link).toBe("https://zoom.us/j/new-link");
+  }
+
+  await deleteSchedule(request, scheduleId);
 });
 
 // ─── Salary / pay rate ───────────────────────────────────────────────────

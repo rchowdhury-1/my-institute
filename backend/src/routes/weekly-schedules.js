@@ -5,6 +5,7 @@ const { notify, notifyAdmins } = require('../lib/notify');
 const { formatSessionTime } = require('../lib/datetime');
 const {
   generateForScheduleId,
+  generateAllSchedules,
   wipeAndRegenerate,
   wipeFutureSessions,
 } = require('../lib/schedule-generator');
@@ -34,6 +35,13 @@ function validateSlots(slots) {
 // GET /admin/weekly-schedules
 router.get('/', async (req, res) => {
   try {
+    // On-demand generation — idempotent, fills gaps
+    try {
+      await generateAllSchedules();
+    } catch (genErr) {
+      console.error('[ON-DEMAND] Generation failed (non-blocking):', genErr.message);
+    }
+
     const conditions = [];
     const params = [];
     let idx = 1;
@@ -74,6 +82,13 @@ router.get('/', async (req, res) => {
 // GET /admin/weekly-schedules/:id
 router.get('/:id', async (req, res) => {
   try {
+    // On-demand generation for this specific schedule
+    try {
+      await generateForScheduleId(req.params.id);
+    } catch (genErr) {
+      console.error('[ON-DEMAND] Generation failed (non-blocking):', genErr.message);
+    }
+
     const result = await pool.query(
       `SELECT ws.*,
               s.display_name AS student_name,
@@ -110,7 +125,7 @@ router.get('/:id', async (req, res) => {
 
 // POST /admin/weekly-schedules
 router.post('/', async (req, res) => {
-  const { student_id, teacher_id, subject, default_duration, slots, lessons_remaining } = req.body;
+  const { student_id, teacher_id, subject, default_duration, slots, lessons_remaining, zoom_link } = req.body;
 
   if (!student_id || !teacher_id)
     return res.status(400).json({ error: 'student_id and teacher_id are required' });
@@ -121,6 +136,11 @@ router.post('/', async (req, res) => {
   const dur = parseInt(default_duration) || 60;
   if (dur % 30 !== 0 || dur < 30)
     return res.status(400).json({ error: 'default_duration must be 30, 60, 90, or 120 minutes' });
+
+  // Validate zoom_link if provided
+  if (zoom_link && typeof zoom_link === 'string' && zoom_link.trim() && !zoom_link.startsWith('http')) {
+    return res.status(400).json({ error: 'zoom_link must be a valid URL starting with http' });
+  }
 
   try {
     // Validate student exists
@@ -137,13 +157,16 @@ router.post('/', async (req, res) => {
     if (teacherCheck.rows.length === 0)
       return res.status(400).json({ error: 'Teacher not found or inactive' });
 
+    const cleanZoomLink = zoom_link && zoom_link.trim() ? zoom_link.trim() : null;
+
     const result = await pool.query(
       `INSERT INTO weekly_schedules
-         (student_id, teacher_id, subject, default_duration, slots, lessons_remaining)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (student_id, teacher_id, subject, default_duration, slots, lessons_remaining, zoom_link)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
       [student_id, teacher_id, subject || 'quran', dur, JSON.stringify(slots),
-       lessons_remaining != null ? parseInt(lessons_remaining) : null]
+       lessons_remaining != null ? parseInt(lessons_remaining) : null,
+       cleanZoomLink]
     );
 
     const schedule = result.rows[0];
@@ -178,7 +201,7 @@ router.post('/', async (req, res) => {
 
 // PATCH /admin/weekly-schedules/:id
 router.patch('/:id', async (req, res) => {
-  const { subject, default_duration, slots, lessons_remaining, teacher_id } = req.body;
+  const { subject, default_duration, slots, lessons_remaining, teacher_id, zoom_link } = req.body;
   const { id } = req.params;
 
   try {
@@ -221,6 +244,10 @@ router.patch('/:id', async (req, res) => {
       params.push(lessons_remaining != null ? parseInt(lessons_remaining) : null);
     }
     if (teacher_id !== undefined) { sets.push(`teacher_id = $${idx++}`); params.push(teacher_id); }
+    if (zoom_link !== undefined) {
+      sets.push(`zoom_link = $${idx++}`);
+      params.push(zoom_link && zoom_link.trim() ? zoom_link.trim() : null);
+    }
 
     params.push(id);
     const result = await pool.query(
@@ -230,12 +257,13 @@ router.patch('/:id', async (req, res) => {
 
     const updated = result.rows[0];
 
-    // If slots or teacher changed, wipe and regenerate
+    // If slots, teacher, or zoom_link changed, wipe and regenerate
     let generation = null;
     const slotsChanged = slots !== undefined && JSON.stringify(slots) !== JSON.stringify(schedule.slots);
     const teacherChanged = teacher_id !== undefined && teacher_id !== schedule.teacher_id;
+    const zoomChanged = zoom_link !== undefined && (zoom_link || null) !== (schedule.zoom_link || null);
 
-    if (slotsChanged || teacherChanged) {
+    if (slotsChanged || teacherChanged || zoomChanged) {
       generation = await wipeAndRegenerate(id);
     }
 

@@ -128,8 +128,8 @@ async function generateSessionsForSchedule(schedule) {
       await pool.query(
         `INSERT INTO sessions
            (id, student_id, teacher_id, scheduled_at, duration_minutes,
-            subject, schedule_id, rate_at_creation, currency_at_creation)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            subject, schedule_id, rate_at_creation, currency_at_creation, zoom_link)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           id,
           schedule.student_id,
@@ -140,6 +140,7 @@ async function generateSessionsForSchedule(schedule) {
           schedule.id,
           schedule.hourly_rate || null,
           schedule.currency || null,
+          schedule.zoom_link || null,
         ]
       );
 
