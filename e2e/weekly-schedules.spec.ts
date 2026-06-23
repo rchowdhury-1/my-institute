@@ -17,10 +17,11 @@ const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || "Test12345";
 const STUDENT_ID = "3de0a33b-93bf-4041-9ae0-770a290626d9";
 const TEACHER_ID = "c084e832-ebdb-4152-83f6-ba923e5655db";
 
-// Use unique early-morning times (02:00-04:59) to avoid conflicts with real sessions
+// Use unique early-morning UTC times that are always in the future
+// (03:00-04:59 UTC — future for London which is UTC+0/+1)
 let slotCounter = 0;
 function uniqueSlotTime(): string {
-  const h = 2 + Math.floor(slotCounter / 60);
+  const h = 3 + Math.floor(slotCounter / 60);
   const m = slotCounter % 60;
   slotCounter++;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
@@ -229,9 +230,10 @@ test("cancelled auto-generated session is NOT re-generated", async ({
 }) => {
   const t = uniqueSlotTime();
   const { res, body: created } = await createSchedule(request, {
-    slots: [{ day: "mon", time: t, duration: 60 }],
+    slots: [{ day: "thu", time: t, duration: 60 }],
   });
   expect(res.status()).toBe(201);
+  expect(created.generation.created).toBeGreaterThan(0);
   const scheduleId = created.schedule.id;
   const token = await getAdminToken(request);
 
@@ -240,7 +242,8 @@ test("cancelled auto-generated session is NOT re-generated", async ({
     `${API}/admin/weekly-schedules/${scheduleId}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
-  const { upcoming_sessions: upcoming } = await sessionsRes.json();
+  const sessBody = await sessionsRes.json();
+  const upcoming = sessBody.upcoming_sessions;
   expect(upcoming).toBeDefined();
   expect(upcoming.length).toBeGreaterThan(0);
 
