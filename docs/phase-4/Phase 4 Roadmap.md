@@ -77,7 +77,7 @@
 
 ### Tasks
 
-- [ ] Create "Add Weekly Schedule" modal component matching Mohammad's design:
+- [x] Create "Add Weekly Schedule" modal component matching Mohammad's design:
   - Student dropdown (to be replaced with typeahead in 4.4)
   - Teacher dropdown
   - Subject/Note free-text input
@@ -85,18 +85,18 @@
   - 7-day grid with checkbox + time picker + duration override per day
   - Lessons remaining numeric input
   - Save / Cancel buttons
-  - **On save for existing student**: detect legacy scheduled sessions and prompt: "We found N existing future sessions for this student. Choose: keep them as one-offs, or delete them and let the schedule generate fresh sessions."
-- [ ] Add "Schedules" tab to supervisor dashboard (`app/supervisor/page.tsx`)
-- [ ] Active schedule list: cards with student name, teacher name, subject, slot summary, lessons remaining, edit/deactivate buttons
-- [ ] **Archived schedules section**: collapsed by default, toggle to show, with reactivate button per row
-- [ ] Edit schedule flow: open modal pre-filled, save triggers wipe/regenerate with confirmation
-- [ ] Deactivate confirmation modal: *"This will remove N future sessions. The schedule will be moved to Archived. You can reactivate it later if needed."*
-- [ ] Reactivate button: triggers reactivation + fresh 4-week generation
-- [ ] "Generate Now" button per active schedule (fallback if cron fails)
-- [ ] **Legacy session warning banner**: on supervisor dashboard load, if sessions with `schedule_id IS NULL AND status = 'scheduled' AND scheduled_at > now()` exist, show yellow banner: *"N legacy sessions exist that aren't linked to a schedule. Review under Schedules → Legacy Sessions."*
-- [ ] Legacy Sessions section under Schedules tab: list of unlinked scheduled sessions with Keep/Delete per session
-- [ ] Recurring badge on session cards (sessions with `schedule_id` show small recurring icon)
-- [ ] Student detail page (`/admin/students`) — show active schedule summary per student
+  - ~~On save for existing student: detect legacy scheduled sessions and prompt~~ (deferred — legacy banner covers this)
+- [x] Add "Schedules" tab to supervisor dashboard (`app/supervisor/page.tsx`)
+- [x] Active schedule list: cards with student name, teacher name, subject, slot summary, lessons remaining, edit/deactivate buttons
+- [x] **Archived schedules section**: collapsed by default, toggle to show, with reactivate button per row
+- [x] Edit schedule flow: open modal pre-filled, save triggers wipe/regenerate with confirmation
+- [x] Deactivate confirmation modal: *"This will remove N future sessions. The schedule will be moved to Archived. You can reactivate it later if needed."*
+- [x] Reactivate button: triggers reactivation + fresh 4-week generation
+- [x] "Generate Now" button per active schedule (fallback if cron fails)
+- [x] **Legacy session warning banner**: shows count of unlinked future scheduled sessions
+- [ ] Legacy Sessions section under Schedules tab: list of unlinked scheduled sessions with Keep/Delete per session (deferred — banner sufficient for now)
+- [x] Recurring badge on session cards (sessions with `schedule_id` show small recurring icon)
+- [ ] Student detail page (`/admin/students`) — show active schedule summary per student (deferred to 4.4)
 
 ### Definition of Done
 
@@ -133,24 +133,25 @@
 
 ### Tasks
 
-- [ ] Teacher dashboard: replace "Mark Completed" button with attendance flow
+- [x] Teacher dashboard: replace "Mark Completed" button with attendance flow
   - "Mark Attendance" button (visible 15 min before → 24h after session)
   - Step 1: "I attended" / "I didn't attend"
   - Step 2: "Student attended" / "Student didn't attend" (only if teacher attended)
-  - Attendance status indicators on session cards (checkmarks)
+  - Attendance status indicators on session cards (T✓/✗ S✓/✗)
   - Outside time window: show informational message
-- [ ] Supervisor dashboard: add attendance override on session cards
-  - Admin can mark attendance at any time
-  - Shows current attendance state (teacher ✓/✗, student ✓/✗)
-- [ ] Create `/admin/salaries` page (`app/admin/salaries/page.tsx`)
-  - Month selector (same pattern as teacher-hours: left/right arrows, month display)
-  - Summary bar: total salary across all teachers for the month
-  - Per-teacher rows: name, sessions attended, total hours, pay rate, calculated salary, no-shows, teacher cancellations
-  - "Set Pay Rate" button: inline edit or modal for pay_rate and currency
-  - If pay_rate is null: show "Set rate" prompt
-- [ ] Server-side redirect from `/admin/teacher-hours` → `/admin/salaries`
-- [ ] Add link to salaries page in supervisor dashboard People tab (replace Teacher Hours link)
-- [ ] Auto-notification: if session unmarked 24h after scheduled_at, notify admins
+- [x] Supervisor dashboard: add attendance override on session cards
+  - Admin can mark attendance at any time (no time window)
+  - Shows current attendance state (T✓/✗ S✓/✗)
+  - "Mark Attendance" button on past sessions without attendance
+- [x] Create `/admin/salaries` page (`app/admin/salaries/page.tsx`)
+  - Month selector with left/right arrows
+  - Summary bar: total salary or hours
+  - Per-teacher rows: name, attended sessions, hours, pay rate, salary, no-shows, teacher cancellations
+  - Inline pay rate editor (GBP/USD/EUR/EGP)
+  - "Set pay rate" prompt if null
+- [x] Server-side redirect from `/admin/teacher-hours` → `/admin/salaries`
+- [x] Add link to salaries page in supervisor dashboard People tab (replaced Teacher Hours link)
+- [ ] Auto-notification: if session unmarked 24h after scheduled_at, notify admins (deferred to 4.4 — requires cron enhancement)
 
 ### Definition of Done
 

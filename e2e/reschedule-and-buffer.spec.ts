@@ -38,27 +38,26 @@ async function getStudentToken(request: APIRequestContext) {
   return getToken(request, "playwright-student@phase35test.local", tempPassword);
 }
 
-// Counter to generate unique non-conflicting times for test sessions.
-// Uses July 2026 at 5:00 AM UTC (unlikely to conflict with real sessions).
+// Random offset generator — avoids collisions between repeated test runs.
+// Each test gets a unique far-future time by combining a random base with a counter.
+const randomBase = Math.floor(Math.random() * 500) + 100; // 100-599 hours from now
 let testTimeCounter = 0;
-
-/** Generate a unique far-future time string for proposed_at values */
 let proposedCounter = 0;
+
 function uniqueProposedTime(): string {
-  const day = 1 + proposedCounter++;
-  return `2026-09-${String(day).padStart(2, "0")}T05:00:00Z`;
+  const offsetHours = randomBase + 2000 + proposedCounter++;
+  return new Date(Date.now() + offsetHours * 3600000).toISOString();
 }
 
 // Create a test session. hoursFromNow controls future/past/buffer behaviour.
-// For future sessions (hoursFromNow >= 13), uses a unique early-morning slot to avoid conflicts.
+// For future sessions (hoursFromNow >= 13), uses a random far-future time.
 // For past/buffer sessions (hoursFromNow < 13), uses exact offset from now.
 async function createTestSession(request: APIRequestContext, hoursFromNow: number) {
   const token = await getAdminToken(request);
   let time: string;
   if (hoursFromNow >= 13) {
-    // Use a unique far-future early-morning time to avoid teacher conflicts
-    const day = 10 + testTimeCounter++;
-    time = `2026-07-${String(day).padStart(2, "0")}T05:00:00Z`;
+    const offsetHours = randomBase + testTimeCounter++;
+    time = new Date(Date.now() + offsetHours * 3600000).toISOString();
   } else {
     time = new Date(Date.now() + hoursFromNow * 3600000).toISOString();
   }

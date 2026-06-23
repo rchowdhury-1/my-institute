@@ -433,7 +433,104 @@ Final pre-launch fixes applied:
 
 ---
 
-## 22. Who Built What
+## 22. Weekly Schedules (Phase 4)
+
+Mohammad sets up **weekly recurring schedules** instead of creating sessions one-by-one. Sessions are auto-generated on a rolling 4-week window.
+
+### How to create a schedule
+
+1. Log in as admin/supervisor.
+2. Go to the **Supervisor Dashboard** → **Schedules** tab.
+3. Click **Add Schedule**.
+4. Search for a student (typeahead) and teacher.
+5. Enter subject, default duration, and check the days with start times.
+6. Optionally set "Lessons remaining" (a manual counter — does not block generation).
+7. Click **Create Schedule**. Sessions for the next 4 weeks are generated immediately.
+
+### How schedules work
+
+- **Cron job**: Every Sunday at 23:00 UTC, a Render Cron Job calls `POST /cron/generate-sessions` to fill any gaps in the 4-week horizon.
+- **On edit**: If you change the days/times or teacher, all future `scheduled` sessions are deleted and regenerated.
+- **Deactivate**: Moves the schedule to "Archived" and removes future sessions. Can be reactivated later.
+- **Generate Now**: Button on each schedule card to manually trigger generation (fallback if cron fails).
+- **Slot times are London time** (`Europe/London`). The system converts to UTC automatically, including across DST changes.
+
+### Render Cron Job setup
+
+- Service type: Cron Job ($7/month)
+- Schedule: `0 23 * * 0` (Sunday 23:00 UTC)
+- Command: `curl -s -X POST -H "x-cron-secret: $CRON_SECRET" https://my-institute-sxjs.onrender.com/cron/generate-sessions`
+- The `CRON_SECRET` env var must be set on both the web service and the cron job.
+
+### Legacy sessions
+
+Sessions created before Phase 4 have `schedule_id = NULL`. They continue to work normally. A yellow warning banner appears on the Schedules tab if any exist.
+
+---
+
+## 23. Attendance Tracking (Phase 4)
+
+Replaces the old "Mark Completed" button on the teacher dashboard.
+
+### How teachers mark attendance
+
+1. A **Mark Attendance** button appears on session cards from 15 minutes before the session until 24 hours after.
+2. Step 1: "Did you attend?" — Yes / No.
+3. If Yes → Step 2: "Did the student attend?" — Yes (Completed) / No (No-Show).
+4. If teacher says No → session is marked `cancelled_teacher` immediately.
+
+### Status mapping
+
+| Teacher attended | Student attended | Session status |
+|---|---|---|
+| Yes | Yes | `completed` |
+| Yes | No | `no_show` |
+| No | — | `cancelled_teacher` |
+
+### Admin override
+
+On the Supervisor Dashboard (Sessions tab), past sessions without attendance show a **Mark Attendance** button. Admin can mark at any time (no time window restriction).
+
+### Lessons remaining
+
+- On completion: if session belongs to a schedule, `weekly_schedules.lessons_remaining` is decremented.
+- If session is legacy (no schedule), `packages.sessions_remaining` is decremented (existing behaviour).
+- Renewal notification fires at ≤ 2 remaining.
+
+---
+
+## 24. Teacher Salaries (Phase 4)
+
+### Salary page
+
+Navigate to `/admin/salaries` (linked from Supervisor Dashboard → People tab → "Teacher Salaries").
+
+- **Month selector**: left/right arrows to navigate months.
+- **Per-teacher row**: sessions attended, total hours, pay rate, calculated salary, no-shows, teacher cancellations.
+- **Pay rate editor**: click the rate or "Set pay rate" to edit. Supports GBP, USD, EUR, EGP.
+- **Formula**: `salary = total_hours × pay_rate_per_hour`
+
+`/admin/teacher-hours` redirects to `/admin/salaries`.
+
+### Setting pay rates
+
+Via the salary page inline editor, or via API:
+```
+PATCH /admin/teachers/:id/pay-rate
+{ "pay_rate_per_hour": 15.00, "pay_currency": "GBP" }
+```
+
+---
+
+## 25. Monitoring (Phase 4)
+
+- **Vercel Analytics**: Installed (`@vercel/analytics`). Page views collected automatically.
+- **Sentry**: Backend conditional on `SENTRY_DSN` env var. Set it in Render to activate error tracking.
+- **UptimeRobot**: Configure free-tier monitor to ping `GET /health` every 5 min. Also keeps Render warm (no cold starts).
+
+---
+
+## 26. Who Built What
 
 The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 
@@ -453,6 +550,15 @@ The platform was built by **Razwanul Chowdhury** with AI-assisted development.
 - In-app messaging
 - Recorded course catalogue
 - Scholarship application and sponsorship flow
+
+**Phase 4 (pre-launch workflow)**
+- Weekly recurring schedules with 4-week rolling session generation
+- Attendance tracking (replaces Mark Complete) — teacher + student attended, no-show, teacher cancelled
+- Teacher salary page with per-teacher pay rate and monthly calculation
+- Student/teacher typeahead search (replaces dropdowns)
+- Render Cron Job for Sunday session generation
+- Vercel Analytics integration
+- 13 new API tests (schedule CRUD, generation, attendance, salary)
 
 **Third-party services used**
 - [Vercel](https://vercel.com) — frontend hosting

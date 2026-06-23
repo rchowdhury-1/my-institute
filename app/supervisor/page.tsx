@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock, RefreshCw, X as XIcon, Pencil, Repeat, ChevronDown, Archive, Play, AlertTriangle } from "lucide-react";
+import UserSearchInput from "@/components/shared/UserSearchInput";
 import Link from "next/link";
 import { formatSessionTime, formatRelative } from "@/lib/datetime";
 
@@ -604,24 +605,18 @@ export default function SupervisorPage() {
               <div className="bg-white rounded-2xl border border-black/5 p-5 mb-6">
                 <h3 className="font-semibold text-charcoal mb-3">New Session</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <select
+                  <UserSearchInput
+                    users={students}
                     value={sessionForm.student_id}
-                    onChange={(e) => setSessionForm((p) => ({ ...p, student_id: e.target.value }))}
-                    data-testid="select-student"
-                    className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
-                  >
-                    <option value="">Select student…</option>
-                    {students.map((s) => <option key={s.id} value={s.id}>{s.display_name}</option>)}
-                  </select>
-                  <select
+                    onChange={(id) => setSessionForm((p) => ({ ...p, student_id: id }))}
+                    placeholder="Search student…"
+                  />
+                  <UserSearchInput
+                    users={teachers}
                     value={sessionForm.teacher_id}
-                    onChange={(e) => setSessionForm((p) => ({ ...p, teacher_id: e.target.value }))}
-                    data-testid="select-teacher"
-                    className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
-                  >
-                    <option value="">Select teacher…</option>
-                    {teachers.map((t) => <option key={t.id} value={t.id}>{t.display_name}</option>)}
-                  </select>
+                    onChange={(id) => setSessionForm((p) => ({ ...p, teacher_id: id }))}
+                    placeholder="Search teacher…"
+                  />
                   <input
                     type="datetime-local"
                     value={sessionForm.scheduled_at}
@@ -1163,26 +1158,22 @@ export default function SupervisorPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-charcoal/60 mb-1">Student</label>
-                  <select
+                  <UserSearchInput
+                    users={students}
                     value={scheduleForm.student_id}
-                    onChange={(e) => setScheduleForm(p => ({ ...p, student_id: e.target.value }))}
+                    onChange={(id) => setScheduleForm(p => ({ ...p, student_id: id }))}
+                    placeholder="Search student…"
                     disabled={!!editingSchedule}
-                    className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 disabled:opacity-50"
-                  >
-                    <option value="">Select student…</option>
-                    {students.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="block text-xs text-charcoal/60 mb-1">Teacher</label>
-                  <select
+                  <UserSearchInput
+                    users={teachers}
                     value={scheduleForm.teacher_id}
-                    onChange={(e) => setScheduleForm(p => ({ ...p, teacher_id: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
-                  >
-                    <option value="">Select teacher…</option>
-                    {teachers.map(t => <option key={t.id} value={t.id}>{t.display_name}</option>)}
-                  </select>
+                    onChange={(id) => setScheduleForm(p => ({ ...p, teacher_id: id }))}
+                    placeholder="Search teacher…"
+                  />
                 </div>
               </div>
 
