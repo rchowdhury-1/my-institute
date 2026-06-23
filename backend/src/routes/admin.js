@@ -646,7 +646,7 @@ router.patch('/revert-applications/:id', async (req, res) => {
 
 // ─── Teacher Hours ──────────────────────────────────────────────────────────
 
-// GET /admin/teacher-hours — monthly teaching hours per teacher
+// GET /admin/teacher-hours — monthly teaching hours + salary per teacher
 router.get('/teacher-hours', async (req, res) => {
   const now = new Date();
   const month = req.query.month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -664,10 +664,14 @@ router.get('/teacher-hours', async (req, res) => {
       `SELECT
          u.id AS teacher_id,
          u.display_name,
-         COALESCE(SUM(s.duration_minutes) FILTER (WHERE s.status = 'completed'), 0)::int AS total_minutes,
-         COUNT(s.id) FILTER (WHERE s.status = 'completed')::int AS completed_sessions,
+         u.pay_rate_per_hour,
+         u.pay_currency,
+         COALESCE(SUM(s.duration_minutes) FILTER (WHERE s.teacher_attended = true), 0)::int AS total_minutes,
+         COUNT(s.id) FILTER (WHERE s.teacher_attended = true)::int AS completed_sessions,
          COUNT(s.id) FILTER (WHERE s.status = 'cancelled')::int AS cancelled_sessions,
-         COUNT(s.id) FILTER (WHERE s.status = 'rescheduled')::int AS rescheduled_sessions
+         COUNT(s.id) FILTER (WHERE s.status = 'rescheduled')::int AS rescheduled_sessions,
+         COUNT(s.id) FILTER (WHERE s.status = 'no_show')::int AS no_show_sessions,
+         COUNT(s.id) FILTER (WHERE s.status = 'cancelled_teacher')::int AS teacher_cancelled_sessions
        FROM users u
        LEFT JOIN sessions s
          ON s.teacher_id = u.id
@@ -675,7 +679,7 @@ router.get('/teacher-hours', async (req, res) => {
          AND s.scheduled_at < $2
        WHERE u.role = 'teacher' AND u.is_active = true
        ${req.query.teacher_id ? 'AND u.id = $3' : ''}
-       GROUP BY u.id, u.display_name
+       GROUP BY u.id, u.display_name, u.pay_rate_per_hour, u.pay_currency
        ORDER BY total_minutes DESC, u.display_name ASC`,
       req.query.teacher_id
         ? [startDate.toISOString(), endDate.toISOString(), req.query.teacher_id]
@@ -685,9 +689,49 @@ router.get('/teacher-hours', async (req, res) => {
     const teachers = result.rows.map(r => ({
       ...r,
       total_hours: Math.round((r.total_minutes / 60) * 10) / 10,
+      salary: r.pay_rate_per_hour
+        ? Math.round((r.total_minutes / 60) * parseFloat(r.pay_rate_per_hour) * 100) / 100
+        : null,
     }));
 
     res.json({ month, teachers });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PATCH /admin/teachers/:id/pay-rate
+router.patch('/teachers/:id/pay-rate', async (req, res) => {
+  const { pay_rate_per_hour, pay_currency } = req.body;
+  const { id } = req.params;
+
+  if (pay_rate_per_hour == null || isNaN(parseFloat(pay_rate_per_hour)) || parseFloat(pay_rate_per_hour) < 0)
+    return res.status(400).json({ error: 'pay_rate_per_hour must be a non-negative number' });
+
+  try {
+    const teacherCheck = await pool.query(
+      "SELECT id, display_name FROM users WHERE id = $1 AND role = 'teacher'", [id]
+    );
+    if (teacherCheck.rows.length === 0)
+      return res.status(404).json({ error: 'Teacher not found' });
+
+    const sets = ['pay_rate_per_hour = $1'];
+    const params = [parseFloat(pay_rate_per_hour)];
+    let idx = 2;
+
+    if (pay_currency) {
+      sets.push(`pay_currency = $${idx++}`);
+      params.push(pay_currency);
+    }
+
+    params.push(id);
+    const result = await pool.query(
+      `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, display_name, pay_rate_per_hour, pay_currency`,
+      params
+    );
+
+    res.json({ teacher: result.rows[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

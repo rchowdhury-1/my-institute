@@ -259,4 +259,139 @@ router.patch('/:id/complete', requireRole('teacher', 'admin'), async (req, res) 
   }
 });
 
+// PATCH /sessions/:id/attendance  (teacher within time window, admin/supervisor any time)
+router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supervisor'), async (req, res) => {
+  // Students cannot mark attendance
+  if (req.userRole === 'student')
+    return res.status(403).json({ error: 'Students cannot mark attendance' });
+
+  const { teacher_attended, student_attended } = req.body;
+  const { id } = req.params;
+
+  if (typeof teacher_attended !== 'boolean')
+    return res.status(400).json({ error: 'teacher_attended (boolean) is required' });
+  if (teacher_attended && typeof student_attended !== 'boolean')
+    return res.status(400).json({ error: 'student_attended (boolean) is required when teacher attended' });
+
+  try {
+    const existing = await pool.query('SELECT * FROM sessions WHERE id=$1', [id]);
+    if (existing.rows.length === 0)
+      return res.status(404).json({ error: 'Session not found' });
+
+    const session = existing.rows[0];
+
+    // Teacher can only mark their own sessions
+    if (req.userRole === 'teacher' && session.teacher_id !== req.userId)
+      return res.status(403).json({ error: 'Forbidden' });
+
+    // Time window for teachers: 15 min before to 24h after
+    if (req.userRole === 'teacher') {
+      const sessionStart = new Date(session.scheduled_at);
+      const now = new Date();
+      const windowStart = new Date(sessionStart.getTime() - 15 * 60 * 1000);
+      const windowEnd = new Date(sessionStart.getTime() + 24 * 60 * 60 * 1000);
+
+      if (now < windowStart)
+        return res.status(403).json({
+          error: 'Attendance can only be marked from 15 minutes before the session',
+          code: 'ATTENDANCE_TOO_EARLY',
+        });
+      if (now > windowEnd)
+        return res.status(403).json({
+          error: 'Attendance window has closed (24 hours after session). Contact admin.',
+          code: 'ATTENDANCE_WINDOW_CLOSED',
+        });
+    }
+
+    // Determine status
+    let newStatus;
+    if (!teacher_attended) {
+      newStatus = 'cancelled_teacher';
+    } else if (student_attended) {
+      newStatus = 'completed';
+    } else {
+      newStatus = 'no_show';
+    }
+
+    const result = await pool.query(
+      `UPDATE sessions
+       SET status = $1,
+           teacher_attended = $2,
+           student_attended = $3,
+           attendance_marked_at = NOW(),
+           attendance_marked_by = $4,
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [newStatus, teacher_attended, teacher_attended ? student_attended : null, req.userId, id]
+    );
+
+    const updated = result.rows[0];
+
+    // Decrement lessons_remaining on completion
+    if (newStatus === 'completed') {
+      if (session.schedule_id) {
+        // Schedule-based: decrement weekly_schedules.lessons_remaining
+        await pool.query(
+          `UPDATE weekly_schedules
+           SET lessons_remaining = GREATEST(0, lessons_remaining - 1),
+               updated_at = NOW()
+           WHERE id = $1 AND lessons_remaining IS NOT NULL AND lessons_remaining > 0`,
+          [session.schedule_id]
+        );
+
+        // Check if renewal needed
+        const sched = await pool.query(
+          'SELECT lessons_remaining FROM weekly_schedules WHERE id = $1',
+          [session.schedule_id]
+        );
+        if (sched.rows[0] && sched.rows[0].lessons_remaining !== null && sched.rows[0].lessons_remaining <= 2) {
+          await notify(session.student_id, 'renewal_reminder', 'Renew Your Lessons',
+            `You have ${sched.rows[0].lessons_remaining} lesson${sched.rows[0].lessons_remaining !== 1 ? 's' : ''} remaining. Contact us to renew.`,
+            '/student/sessions');
+          await notifyAdmins('renewal_reminder', 'Student Lesson Renewal',
+            `A student has ${sched.rows[0].lessons_remaining} lessons remaining and needs renewal.`, '/supervisor');
+        }
+      } else {
+        // Legacy: decrement packages.sessions_remaining (existing logic)
+        const pkg = await pool.query(
+          'SELECT * FROM packages WHERE user_id=$1 ORDER BY purchased_at DESC LIMIT 1',
+          [session.student_id]
+        );
+        if (pkg.rows.length > 0 && pkg.rows[0].sessions_remaining !== null) {
+          const remaining = Math.max(0, pkg.rows[0].sessions_remaining - 1);
+          await pool.query('UPDATE packages SET sessions_remaining=$1 WHERE id=$2', [remaining, pkg.rows[0].id]);
+
+          if (remaining <= 2 && !pkg.rows[0].renewal_reminder_sent) {
+            await pool.query('UPDATE packages SET renewal_reminder_sent=true WHERE id=$1', [pkg.rows[0].id]);
+            await notify(session.student_id, 'renewal_reminder', 'Renew Your Package',
+              `You have ${remaining} session${remaining !== 1 ? 's' : ''} remaining. Contact us to renew.`,
+              '/student/sessions');
+            await notifyAdmins('renewal_reminder', 'Student Package Renewal',
+              `A student has ${remaining} sessions remaining and needs renewal.`, '/supervisor');
+          }
+        }
+      }
+    }
+
+    // Notify student of attendance record
+    const dt = formatSessionTime(session.scheduled_at);
+    if (newStatus === 'completed') {
+      await notify(session.student_id, 'attendance_marked', 'Attendance Confirmed',
+        `Attendance confirmed for your session on ${dt}`, '/student/sessions');
+    } else if (newStatus === 'no_show') {
+      await notify(session.student_id, 'attendance_marked', 'Marked as No-Show',
+        `You were marked as absent for the session on ${dt}`, '/student/sessions');
+    } else if (newStatus === 'cancelled_teacher') {
+      await notify(session.student_id, 'attendance_marked', 'Session Cancelled by Teacher',
+        `The session on ${dt} was cancelled by the teacher`, '/student/sessions');
+    }
+
+    res.json({ session: updated });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

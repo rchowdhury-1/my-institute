@@ -57,6 +57,8 @@ app.use('/scholarship-apply', require('./src/routes/scholarship-apply'));
 app.use('/newsfeed',          require('./src/routes/newsfeed'));
 app.use('/revert-apply',      require('./src/routes/revert-apply'));
 app.use('/reschedule-requests', require('./src/routes/reschedule'));
+app.use('/admin/weekly-schedules', require('./src/routes/weekly-schedules'));
+app.use('/cron',                   require('./src/routes/cron'));
 
 // ─── Phase 2B — feature-flagged routes ───────────────────────────────────────
 app.use('/exams',        featureFlag('FEATURE_EXAMS'),                  require('./src/routes/exams'));
@@ -95,6 +97,7 @@ initDb()
   .then(() => {
     const resendKey = process.env.RESEND_API_KEY;
     console.log(`RESEND_API_KEY: ${resendKey ? resendKey.slice(0, 6) + '...' : 'NOT SET — welcome emails disabled'}`);
+    if (!process.env.CRON_SECRET) console.warn('CRON_SECRET not set — cron endpoint will reject all requests');
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
   .catch((err) => {
