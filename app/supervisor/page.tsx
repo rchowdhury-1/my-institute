@@ -8,7 +8,7 @@ import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, C
 import UserSearchInput from "@/components/shared/UserSearchInput";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 import Link from "next/link";
-import { formatSessionTime, formatRelative } from "@/lib/datetime";
+import { formatSessionTime, formatRelative, isSessionStillUpcoming } from "@/lib/datetime";
 
 interface Session {
   id: string;
@@ -1124,7 +1124,7 @@ export default function SupervisorPage() {
                       </h3>
                       <div className="space-y-2">
                         {group.sessions.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()).map((s) => {
-                          const isPast = new Date(s.scheduled_at) < new Date();
+                          const isPast = !isSessionStillUpcoming(s.scheduled_at, s.duration_minutes);
                           const needsAttendance = s.status === "scheduled" && isPast && s.teacher_attended == null;
                           return renderSessionCard(s, isPast, needsAttendance);
                         })}

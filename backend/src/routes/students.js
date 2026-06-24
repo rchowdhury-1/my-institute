@@ -22,7 +22,8 @@ router.get('/me', requireAuth, requireRole('student'), async (req, res) => {
          FROM sessions s
          JOIN users u ON u.id = s.teacher_id
          LEFT JOIN weekly_schedules ws ON ws.id = s.schedule_id
-         WHERE s.student_id = $1 AND s.status = 'scheduled' AND s.scheduled_at >= NOW()
+         WHERE s.student_id = $1 AND s.status = 'scheduled'
+           AND s.scheduled_at + (s.duration_minutes * interval '1 minute') > NOW() - interval '24 hours'
          ORDER BY s.scheduled_at ASC
          LIMIT 5`,
         [req.userId]

@@ -110,7 +110,7 @@ router.get('/:id', async (req, res) => {
        FROM sessions s
        JOIN users u ON u.id = s.student_id
        WHERE s.schedule_id = $1
-         AND s.scheduled_at > NOW()
+         AND s.scheduled_at + (s.duration_minutes * interval '1 minute') > NOW() - interval '24 hours'
          AND s.status = 'scheduled'
        ORDER BY s.scheduled_at ASC`,
       [req.params.id]

@@ -81,10 +81,23 @@ function formatSimpleDate(date) {
   return format(toZonedTime(d, LONDON), "d MMM yyyy");
 }
 
+/**
+ * A session is "still upcoming" until 24 hours after its scheduled end.
+ */
+function isSessionStillUpcoming(scheduledAt, durationMinutes, bufferHours = 24) {
+  if (!scheduledAt) return false;
+  const start = new Date(scheduledAt).getTime();
+  if (isNaN(start)) return false;
+  const sessionEnd = start + durationMinutes * 60 * 1000;
+  const cutoff = Date.now() - bufferHours * 60 * 60 * 1000;
+  return sessionEnd > cutoff;
+}
+
 module.exports = {
   formatSessionTime,
   formatSessionDate,
   formatTimeOnly,
   formatRelative,
   formatSimpleDate,
+  isSessionStillUpcoming,
 };

@@ -479,3 +479,75 @@ test("reschedule approval notification uses dual-timezone format", async ({ requ
   await deleteSession(request, newSessId);
   await deleteSession(request, session.id);
 });
+
+// ─── 24h upcoming buffer tests ──────────────────────────────────────────
+
+// Helper: create a session at an exact time with custom duration
+async function createSessionAt(request: APIRequestContext, scheduledAt: string, durationMinutes: number = 60) {
+  const token = await getAdminToken(request);
+  const res = await request.post(`${API}/sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { student_id: STUDENT_ID, teacher_id: TEACHER_ID, scheduled_at: scheduledAt, duration_minutes: durationMinutes, subject: "quran" },
+  });
+  expect(res.status()).toBe(201);
+  return (await res.json()).session;
+}
+
+test("session at NOW still appears in student upcoming (24h buffer)", async ({ request }) => {
+  const session = await createSessionAt(request, new Date().toISOString());
+  const studentToken = await getStudentToken(request);
+  const res = await request.get(`${API}/sessions`, {
+    headers: { Authorization: `Bearer ${studentToken}` },
+  });
+  expect(res.status()).toBe(200);
+  const sessions = (await res.json()).sessions;
+  const found = sessions.find((s: { id: string }) => s.id === session.id);
+  expect(found).toBeTruthy();
+  await deleteSession(request, session.id);
+});
+
+test("session ended 23h ago still appears as upcoming", async ({ request }) => {
+  // Session started 24h ago with 60-min duration → ended 23h ago
+  const scheduledAt = new Date(Date.now() - 24 * 3600000).toISOString();
+  const session = await createSessionAt(request, scheduledAt, 60);
+  const studentToken = await getStudentToken(request);
+  const res = await request.get(`${API}/sessions`, {
+    headers: { Authorization: `Bearer ${studentToken}` },
+  });
+  expect(res.status()).toBe(200);
+  const sessions = (await res.json()).sessions;
+  const found = sessions.find((s: { id: string }) => s.id === session.id);
+  expect(found).toBeTruthy();
+  await deleteSession(request, session.id);
+});
+
+test("session ended 25h ago does NOT appear as upcoming", async ({ request }) => {
+  // Session started 26h ago with 60-min duration → ended 25h ago
+  const scheduledAt = new Date(Date.now() - 26 * 3600000).toISOString();
+  const session = await createSessionAt(request, scheduledAt, 60);
+  const studentToken = await getStudentToken(request);
+
+  // Check student dashboard upcoming (GET /students/me returns upcoming_lessons)
+  const res = await request.get(`${API}/students/me`, {
+    headers: { Authorization: `Bearer ${studentToken}` },
+  });
+  expect(res.status()).toBe(200);
+  const upcoming = (await res.json()).upcoming_lessons;
+  const found = upcoming.find((s: { id: string }) => s.id === session.id);
+  expect(found).toBeFalsy();
+  await deleteSession(request, session.id);
+});
+
+test("session in progress (started 30min ago, 60-min duration) appears as upcoming", async ({ request }) => {
+  const scheduledAt = new Date(Date.now() - 30 * 60000).toISOString();
+  const session = await createSessionAt(request, scheduledAt, 60);
+  const studentToken = await getStudentToken(request);
+  const res = await request.get(`${API}/sessions`, {
+    headers: { Authorization: `Bearer ${studentToken}` },
+  });
+  expect(res.status()).toBe(200);
+  const sessions = (await res.json()).sessions;
+  const found = sessions.find((s: { id: string }) => s.id === session.id);
+  expect(found).toBeTruthy();
+  await deleteSession(request, session.id);
+});

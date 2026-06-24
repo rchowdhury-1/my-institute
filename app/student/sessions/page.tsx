@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink, MessageCircle, List } from "lucide-react";
-import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate } from "@/lib/datetime";
+import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, isSessionStillUpcoming } from "@/lib/datetime";
 import { BRAND } from "@/lib/content";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 
@@ -196,9 +196,9 @@ export default function StudentSessionsPage() {
   }
 
   const upcoming = sessions.filter(
-    (s) => s.status === "scheduled" && new Date(s.scheduled_at) > new Date()
+    (s) => s.status === "scheduled" && isSessionStillUpcoming(s.scheduled_at, s.duration_minutes)
   );
-  const past = sessions.filter((s) => s.status !== "scheduled" || new Date(s.scheduled_at) <= new Date());
+  const past = sessions.filter((s) => s.status !== "scheduled" || !isSessionStillUpcoming(s.scheduled_at, s.duration_minutes));
 
   const timeOptions = Array.from({ length: 48 }, (_, i) => {
     const h = String(Math.floor(i / 2)).padStart(2, "0");

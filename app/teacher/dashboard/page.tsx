@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink, RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
-import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative } from "@/lib/datetime";
+import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming } from "@/lib/datetime";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 
 interface Lesson {
@@ -212,7 +212,7 @@ export default function TeacherDashboard() {
 
   const todayLessons = lessons.filter((l) => isToday(l.scheduled_at));
   const upcomingLessons = lessons.filter(
-    (l) => l.status === "scheduled" && new Date(l.scheduled_at) > new Date()
+    (l) => l.status === "scheduled" && isSessionStillUpcoming(l.scheduled_at, l.duration_minutes)
   );
 
   return (
@@ -454,7 +454,7 @@ function LessonCard({
   const windowStart = new Date(sessionStart.getTime() - 15 * 60 * 1000);
   const windowEnd = new Date(sessionStart.getTime() + 24 * 60 * 60 * 1000);
   const inWindow = now >= windowStart && now <= windowEnd;
-  const isPast = now > sessionStart;
+  const isPast = !isSessionStillUpcoming(lesson.scheduled_at, lesson.duration_minutes);
 
   const statusLabel: Record<string, string> = {
     completed: "Completed",

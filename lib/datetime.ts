@@ -109,3 +109,21 @@ export function formatSimpleDate(
   if (!d) return "";
   return format(toZonedTime(d, LONDON), "d MMM yyyy");
 }
+
+/**
+ * A session is "still upcoming" until 24 hours after its scheduled end.
+ * This matches Mohammad's requirement: session links stay active for
+ * 24h after the session so late students can still join.
+ */
+export function isSessionStillUpcoming(
+  scheduledAt: Date | string | null | undefined,
+  durationMinutes: number,
+  bufferHours: number = 24
+): boolean {
+  if (!scheduledAt) return false;
+  const start = new Date(scheduledAt).getTime();
+  if (isNaN(start)) return false;
+  const sessionEnd = start + durationMinutes * 60 * 1000;
+  const cutoff = Date.now() - bufferHours * 60 * 60 * 1000;
+  return sessionEnd > cutoff;
+}
