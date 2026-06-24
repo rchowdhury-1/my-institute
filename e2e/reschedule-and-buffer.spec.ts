@@ -170,7 +170,7 @@ test("admin can hit legacy PATCH /sessions/:id/reschedule", async ({ request }) 
 test("admin edits scheduled_at — session updated, last_modified_by set, notifications fired", async ({ request }) => {
   const session = await createTestSession(request, 48);
   const adminToken = await getAdminToken(request);
-  const newTime = "2026-07-25T06:00:00Z"; // unique time unlikely to conflict
+  const newTime = uniqueProposedTime();
 
   const res = await request.patch(`${API}/admin/sessions/${session.id}`, {
     headers: { Authorization: `Bearer ${adminToken}` },
