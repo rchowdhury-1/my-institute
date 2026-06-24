@@ -65,6 +65,7 @@ async function createTestSession(request: APIRequestContext, hoursFromNow: numbe
     headers: { Authorization: `Bearer ${token}` },
     data: { student_id: STUDENT_ID, teacher_id: TEACHER_ID, scheduled_at: time, duration_minutes: 60, subject: "quran" },
   });
+  expect(res.status()).toBe(201);
   return (await res.json()).session;
 }
 
@@ -214,7 +215,10 @@ test("admin edits with notes-only change — no notifications fired", async ({ r
   const notifRes = await request.get(`${API}/notifications`, {
     headers: { Authorization: `Bearer ${studentToken}` },
   });
-  const notifs = (await notifRes.json()).notifications;
+  expect(notifRes.status()).toBe(200);
+  const notifBody = await notifRes.json();
+  expect(notifBody).toHaveProperty('notifications');
+  const notifs = notifBody.notifications;
   const unreadUpdateNotifs = notifs.filter(
     (n: { type: string; read: boolean }) => n.type === "session_updated" && !n.read
   );

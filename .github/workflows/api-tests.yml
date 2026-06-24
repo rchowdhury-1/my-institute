@@ -27,6 +27,20 @@ jobs:
       - name: Install Playwright
         run: npx playwright install --with-deps chromium
 
+      - name: Warm up backend (Render cold start mitigation)
+        run: |
+          echo "Pinging /health to wake backend from cold start..."
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://my-institute-sxjs.onrender.com/health || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Backend warm. Proceeding."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Backend still cold after 5 attempts. Proceeding anyway."
+
       - name: Run API tests against production
         env:
           API_URL: https://my-institute-sxjs.onrender.com
