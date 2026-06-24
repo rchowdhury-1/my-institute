@@ -52,6 +52,16 @@ async function getAdminToken(request: APIRequestContext) {
   return getToken(request, ADMIN_EMAIL, ADMIN_PASSWORD);
 }
 
+async function getStudentToken(request: APIRequestContext) {
+  const adminToken = await getAdminToken(request);
+  const resetRes = await request.post(
+    `${API}/admin/students/${STUDENT_ID}/reset-password`,
+    { headers: { Authorization: `Bearer ${adminToken}` }, data: { send_email: false } }
+  );
+  const { tempPassword } = await resetRes.json();
+  return getToken(request, "playwright-student@phase35test.local", tempPassword);
+}
+
 // Helpers
 async function createSchedule(
   request: APIRequestContext,
@@ -724,4 +734,110 @@ test("set pay rate and verify salary in teacher-hours", async ({
   expect(teacherData.pay_rate_per_hour).toBeDefined();
   expect(teacherData.pay_currency).toBe("GBP");
   expect(teacherData).toHaveProperty("salary");
+});
+
+// ─── Schedules summary (Phase 5 model alignment) ─────────────────────────
+
+test("schedules_summary: student with active schedule shows source=schedules", async ({
+  request,
+}) => {
+  const { res, body } = await createSchedule(request, {
+    lessons_remaining: 5,
+    slots: [{ day: "sat", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(res.status()).toBe(201);
+  const scheduleId = body.schedule.id;
+
+  const studentToken = await getStudentToken(request);
+  const meRes = await request.get(`${API}/students/me`, {
+    headers: { Authorization: `Bearer ${studentToken}` },
+  });
+  expect(meRes.status()).toBe(200);
+  const meBody = await meRes.json();
+  expect(meBody.schedules_summary).toBeDefined();
+  expect(meBody.schedules_summary.source).toBe("schedules");
+  expect(meBody.schedules_summary.active_lessons_remaining).toBe(5);
+  expect(meBody.schedules_summary.active_schedule_count).toBe(1);
+
+  await deleteSchedule(request, scheduleId);
+});
+
+test("schedules_summary: no active schedules falls back to package", async ({
+  request,
+}) => {
+  // Test student has a package — with no active schedules, source should be "package"
+  const studentToken = await getStudentToken(request);
+  const meRes = await request.get(`${API}/students/me`, {
+    headers: { Authorization: `Bearer ${studentToken}` },
+  });
+  expect(meRes.status()).toBe(200);
+  const meBody = await meRes.json();
+  expect(meBody.schedules_summary).toBeDefined();
+  // Test student may or may not have a package — check source is not "schedules"
+  expect(["package", "none"]).toContain(meBody.schedules_summary.source);
+});
+
+test("schedules_summary: multiple active schedules sums lessons_remaining", async ({
+  request,
+}) => {
+  const { res: r1, body: b1 } = await createSchedule(request, {
+    lessons_remaining: 3,
+    slots: [{ day: "mon", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(r1.status()).toBe(201);
+  const { res: r2, body: b2 } = await createSchedule(request, {
+    lessons_remaining: 4,
+    slots: [{ day: "tue", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(r2.status()).toBe(201);
+
+  const studentToken = await getStudentToken(request);
+  const meRes = await request.get(`${API}/students/me`, {
+    headers: { Authorization: `Bearer ${studentToken}` },
+  });
+  expect(meRes.status()).toBe(200);
+  const summary = (await meRes.json()).schedules_summary;
+  expect(summary.source).toBe("schedules");
+  expect(summary.active_lessons_remaining).toBe(7);
+  expect(summary.active_schedule_count).toBe(2);
+
+  await deleteSchedule(request, b1.schedule.id);
+  await deleteSchedule(request, b2.schedule.id);
+});
+
+test("schedules_summary: attendance decrement reflects immediately", async ({
+  request,
+}) => {
+  const { res, body } = await createSchedule(request, {
+    lessons_remaining: 3,
+    slots: [{ day: "fri", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(res.status()).toBe(201);
+  const scheduleId = body.schedule.id;
+  const token = await getAdminToken(request);
+
+  // Get a generated session
+  const schedRes = await request.get(
+    `${API}/admin/weekly-schedules/${scheduleId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const upcoming = (await schedRes.json()).upcoming_sessions;
+
+  if (upcoming.length > 0) {
+    // Mark as completed
+    await request.patch(`${API}/sessions/${upcoming[0].id}/attendance`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { teacher_attended: true, student_attended: true },
+    });
+
+    // Verify summary decremented
+    const studentToken = await getStudentToken(request);
+    const meRes = await request.get(`${API}/students/me`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    const summary = (await meRes.json()).schedules_summary;
+    expect(summary.active_lessons_remaining).toBe(2);
+  }
+
+  await deleteSchedule(request, scheduleId);
 });

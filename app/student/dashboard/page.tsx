@@ -26,6 +26,12 @@ interface Package {
   expires_at?: string;
 }
 
+interface SchedulesSummary {
+  active_schedule_count: number;
+  active_lessons_remaining: number;
+  source: "schedules" | "package" | "none";
+}
+
 interface Me {
   display_name: string;
   email: string;
@@ -35,6 +41,7 @@ interface Me {
 interface DashboardData {
   user: Me;
   package: Package | null;
+  schedules_summary: SchedulesSummary;
   upcoming_lessons: Lesson[];
 }
 
@@ -94,8 +101,7 @@ export default function StudentDashboard() {
     );
   }
 
-  const { user, package: pkg, upcoming_lessons } = data;
-  const lessonsRemaining = pkg ? pkg.total_lessons - pkg.used_lessons : null;
+  const { user, package: pkg, schedules_summary: summary, upcoming_lessons } = data;
   const pastLessons = history.filter((l) => l.status !== "scheduled");
 
   return (
@@ -118,19 +124,41 @@ export default function StudentDashboard() {
           </button>
         </div>
 
-        {/* Package card */}
-        <div className="bg-emerald-primary text-white rounded-2xl p-6 mb-8">
-          <p className="text-white/70 text-xs uppercase tracking-wider mb-1">Current Package</p>
-          {pkg ? (
+        {/* Lessons card */}
+        <div className={`rounded-2xl p-6 mb-8 ${
+          summary.source !== "none" && summary.active_lessons_remaining <= 2
+            ? "bg-amber-50 border border-amber-200"
+            : "bg-emerald-primary text-white"
+        }`}>
+          <p className={`text-xs uppercase tracking-wider mb-1 ${
+            summary.source !== "none" && summary.active_lessons_remaining <= 2
+              ? "text-amber-600 font-semibold" : "text-white/70"
+          }`}>
+            {pkg ? pkg.package_name : "Lessons"}
+          </p>
+          {summary.source !== "none" ? (
             <div className="flex items-end justify-between">
               <div>
-                <h2 className="font-display text-2xl font-bold capitalize">{pkg.package_name}</h2>
-                <p className="text-white/80 text-sm mt-1">
-                  {lessonsRemaining} lesson{lessonsRemaining !== 1 ? "s" : ""} remaining of {pkg.total_lessons}
+                <h2 className={`font-display text-2xl font-bold ${
+                  summary.active_lessons_remaining <= 2 ? "text-amber-800" : ""
+                }`}>
+                  {summary.active_lessons_remaining} lesson{summary.active_lessons_remaining !== 1 ? "s" : ""} remaining
+                </h2>
+                <p className={`text-sm mt-1 ${
+                  summary.active_lessons_remaining <= 2 ? "text-amber-600" : "text-white/80"
+                }`}>
+                  {summary.source === "schedules"
+                    ? summary.active_schedule_count > 1
+                      ? `Across ${summary.active_schedule_count} active schedules`
+                      : "From your current schedule"
+                    : "From your package"}
+                  {summary.active_lessons_remaining <= 2 && " — contact us to renew"}
                 </p>
               </div>
-              {pkg.expires_at && (
-                <p className="text-white/60 text-xs">Expires {formatSimpleDate(pkg.expires_at)}</p>
+              {pkg?.expires_at && (
+                <p className={`text-xs ${
+                  summary.active_lessons_remaining <= 2 ? "text-amber-500" : "text-white/60"
+                }`}>Expires {formatSimpleDate(pkg.expires_at)}</p>
               )}
             </div>
           ) : (

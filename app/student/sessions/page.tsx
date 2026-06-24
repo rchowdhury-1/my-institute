@@ -35,6 +35,12 @@ interface Pkg {
   renewal_reminder_sent: boolean;
 }
 
+interface SchedulesSummary {
+  active_schedule_count: number;
+  active_lessons_remaining: number;
+  source: "schedules" | "package" | "none";
+}
+
 interface Payment {
   id: string;
   amount: string;
@@ -60,6 +66,7 @@ export default function StudentSessionsPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [pkg, setPkg] = useState<Pkg | null>(null);
+  const [summary, setSummary] = useState<SchedulesSummary>({ active_schedule_count: 0, active_lessons_remaining: 0, source: "none" });
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -96,6 +103,7 @@ export default function StudentSessionsPage() {
       .then(([sRes, meRes, payRes, rrRes]) => {
         setSessions(sRes.data.sessions);
         setPkg(meRes.data.package ?? null);
+        setSummary(meRes.data.schedules_summary ?? { active_schedule_count: 0, active_lessons_remaining: 0, source: "none" });
         setPayments(payRes.data.payments ?? []);
         setPendingRequests(rrRes.data.requests ?? []);
       })
@@ -232,38 +240,36 @@ export default function StudentSessionsPage() {
         </div>
         <p className="text-charcoal/50 text-sm mb-8">Manage your upcoming and past sessions</p>
 
-        {/* Package / sessions remaining */}
-        {pkg && (
+        {/* Lessons remaining bar */}
+        {summary.source !== "none" && (
           <div className={`rounded-2xl p-5 mb-6 flex items-center justify-between gap-4 ${
-            pkg.sessions_remaining !== null && pkg.sessions_remaining <= 2
+            summary.active_lessons_remaining <= 2
               ? "bg-amber-50 border border-amber-200"
               : "bg-emerald-primary text-white"
           }`}>
             <div>
               <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${
-                pkg.sessions_remaining !== null && pkg.sessions_remaining <= 2
-                  ? "text-amber-600" : "text-white/70"
+                summary.active_lessons_remaining <= 2 ? "text-amber-600" : "text-white/70"
               }`}>
-                {pkg.sessions_remaining !== null && pkg.sessions_remaining <= 2
-                  ? "⚠ Renewal Reminder" : `Package · ${pkg.package_name}`}
+                {summary.active_lessons_remaining <= 2
+                  ? "⚠ Renewal Reminder"
+                  : pkg ? `Package · ${pkg.package_name}` : "Lessons"}
               </p>
-              {pkg.sessions_remaining !== null ? (
-                <p className={`font-semibold ${
-                  pkg.sessions_remaining <= 2 ? "text-amber-800" : "text-white"
-                }`}>
-                  {pkg.sessions_remaining} session{pkg.sessions_remaining !== 1 ? "s" : ""} remaining
-                  {pkg.sessions_remaining <= 2 && " — contact us to renew"}
-                </p>
-              ) : (
-                <p className="text-white/80 text-sm">{pkg.total_lessons} lessons in package</p>
-              )}
-              {pkg.expires_at && (
-                <p className={`text-xs mt-1 ${pkg.sessions_remaining !== null && pkg.sessions_remaining <= 2 ? "text-amber-600" : "text-white/60"}`}>
-                  Renewal date: {formatSimpleDate(pkg.expires_at)}
-                </p>
-              )}
+              <p className={`font-semibold ${
+                summary.active_lessons_remaining <= 2 ? "text-amber-800" : "text-white"
+              }`}>
+                {summary.active_lessons_remaining} lesson{summary.active_lessons_remaining !== 1 ? "s" : ""} remaining
+                {summary.active_lessons_remaining <= 2 && " — contact us to renew"}
+              </p>
+              <p className={`text-xs mt-1 ${summary.active_lessons_remaining <= 2 ? "text-amber-600" : "text-white/60"}`}>
+                {summary.source === "schedules"
+                  ? summary.active_schedule_count > 1
+                    ? `Across ${summary.active_schedule_count} active schedules`
+                    : "From your current schedule"
+                  : "From your package"}
+              </p>
             </div>
-            {pkg.sessions_remaining !== null && pkg.sessions_remaining <= 2 && (
+            {summary.active_lessons_remaining <= 2 && (
               <AlertTriangle className="text-amber-500 shrink-0" size={24} />
             )}
           </div>

@@ -7,7 +7,7 @@ const router = express.Router();
 // GET /students/me — profile + active package + upcoming sessions
 router.get('/me', requireAuth, requireRole('student'), async (req, res) => {
   try {
-    const [userResult, packageResult, sessionsResult] = await Promise.all([
+    const [userResult, packageResult, sessionsResult, schedulesResult] = await Promise.all([
       pool.query(
         'SELECT id, display_name, email, phone, created_at FROM users WHERE id = $1',
         [req.userId]
@@ -28,11 +28,44 @@ router.get('/me', requireAuth, requireRole('student'), async (req, res) => {
          LIMIT 5`,
         [req.userId]
       ),
+      pool.query(
+        `SELECT COUNT(*)::int AS active_schedule_count,
+                COALESCE(SUM(lessons_remaining), 0)::int AS total_lessons_remaining,
+                bool_or(lessons_remaining IS NOT NULL) AS has_lessons_set
+         FROM weekly_schedules
+         WHERE student_id = $1 AND is_active = true`,
+        [req.userId]
+      ),
     ]);
+
+    const pkg = packageResult.rows[0] || null;
+    const sched = schedulesResult.rows[0];
+
+    let schedules_summary;
+    if (sched.active_schedule_count > 0 && sched.has_lessons_set) {
+      schedules_summary = {
+        active_schedule_count: sched.active_schedule_count,
+        active_lessons_remaining: sched.total_lessons_remaining,
+        source: 'schedules',
+      };
+    } else if (pkg && pkg.sessions_remaining !== null && pkg.sessions_remaining > 0) {
+      schedules_summary = {
+        active_schedule_count: 0,
+        active_lessons_remaining: pkg.sessions_remaining,
+        source: 'package',
+      };
+    } else {
+      schedules_summary = {
+        active_schedule_count: 0,
+        active_lessons_remaining: 0,
+        source: 'none',
+      };
+    }
 
     res.json({
       user: userResult.rows[0],
-      package: packageResult.rows[0] || null,
+      package: pkg,
+      schedules_summary,
       upcoming_lessons: sessionsResult.rows,
     });
   } catch (err) {

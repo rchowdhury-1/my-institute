@@ -235,8 +235,10 @@ router.patch('/:id/reschedule', requireRole('admin', 'supervisor'), async (req, 
   }
 });
 
-// PATCH /sessions/:id/complete  (teacher / admin)
+// DEPRECATED: replaced by PATCH /sessions/:id/attendance in Phase 4.3
+// Kept for backward compatibility — remove after 2026-08-01
 router.patch('/:id/complete', requireRole('teacher', 'admin'), async (req, res) => {
+  res.set('Deprecation', 'true');
   const { id } = req.params;
 
   try {
