@@ -506,6 +506,15 @@ On the Supervisor Dashboard (Sessions tab), past sessions without attendance sho
 - Supervisor dashboard shows colour-coded badges: green (5+), amber (1-4), red (0), grey (null).
 - If session is legacy (no schedule), `packages.sessions_remaining` is decremented (existing behaviour).
 
+### Student-facing display priority
+
+The student dashboard and sessions page show a single "lessons remaining" number resolved from:
+1. **Active schedules** (sum of `weekly_schedules.lessons_remaining` where `is_active = true`) — used when the student has any active schedule with `lessons_remaining` set
+2. **Package fallback** (`packages.sessions_remaining`) — used when no active schedules exist but a package does
+3. **None** — no schedules and no package
+
+This is computed at the backend in `GET /students/me` as `schedules_summary.active_lessons_remaining` with a `source` field for debugging. The frontend reads this single resolved field — no priority logic in the frontend. The `package` field remains in the response for billing context (package name, expiry date).
+
 ---
 
 ## 24. Teacher Salaries (Phase 4)
