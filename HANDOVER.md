@@ -457,6 +457,14 @@ Mohammad sets up **weekly recurring schedules** instead of creating sessions one
 - **Slot times are London time** (`Europe/London`). The system converts to UTC automatically, including across DST changes.
 - **Manual trigger**: `POST /cron/generate-sessions` (requires admin/supervisor JWT auth) can be called to force generation for all schedules.
 
+### 24-hour session accessibility window
+
+Sessions remain in the "upcoming" view on student and teacher dashboards until **24 hours after their scheduled end** (`scheduled_at + duration_minutes + 24h`). This matches Mohammad's requirement: session links stay active so late students can still join, and sessions aren't hidden the instant they start.
+
+The `isSessionStillUpcoming()` utility in `lib/datetime.ts` and `backend/src/lib/datetime.js` centralises this logic. The `bufferHours` parameter defaults to 24 but can be overridden per call if needed.
+
+Destructive operations (deleting future sessions on schedule edit/deactivation, teacher deactivation checks) use strict `scheduled_at > NOW()` — they are not buffered.
+
 ### Legacy sessions
 
 Sessions created before Phase 4 have `schedule_id = NULL`. They continue to work normally. A yellow warning banner appears on the Schedules tab if any exist.
