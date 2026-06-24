@@ -551,3 +551,50 @@ test("session in progress (started 30min ago, 60-min duration) appears as upcomi
   expect(found).toBeTruthy();
   await deleteSession(request, session.id);
 });
+
+// ─── Production bug fixes ────────────────────────────────────────────────
+
+test("delete session with reschedule child succeeds (FK handled)", async ({ request }) => {
+  const session = await createTestSession(request, 48);
+  const adminToken = await getAdminToken(request);
+
+  // Reschedule: creates a new session and marks original as 'rescheduled'
+  const newTime = uniqueProposedTime();
+  const reschedRes = await request.patch(`${API}/sessions/${session.id}/reschedule`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    data: { scheduled_at: newTime },
+  });
+  expect(reschedRes.status()).toBe(201);
+  const newSession = (await reschedRes.json()).session;
+
+  // Delete the original (rescheduled) session — should not FK-crash
+  const delRes = await request.delete(`${API}/sessions/${session.id}`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  expect(delRes.status()).toBe(200);
+
+  // Child should still exist with rescheduled_from = null
+  const checkRes = await request.get(`${API}/sessions`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  const child = (await checkRes.json()).sessions.find((s: { id: string }) => s.id === newSession.id);
+  expect(child).toBeTruthy();
+  expect(child.rescheduled_from).toBeNull();
+
+  await deleteSession(request, newSession.id);
+});
+
+test("duplicate login requests don't crash (refresh token idempotency)", async ({ request }) => {
+  const [r1, r2] = await Promise.all([
+    request.post(`${API}/auth/login`, {
+      data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+    }),
+    request.post(`${API}/auth/login`, {
+      data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+    }),
+  ]);
+  expect(r1.status()).toBe(200);
+  expect(r2.status()).toBe(200);
+  expect((await r1.json()).accessToken).toBeTruthy();
+  expect((await r2.json()).accessToken).toBeTruthy();
+});

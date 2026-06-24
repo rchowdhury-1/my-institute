@@ -97,7 +97,9 @@ router.post('/login', async (req, res) => {
     const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
     await pool.query(
-      'INSERT INTO refresh_tokens (id, token, user_id, expires_at, created_at) VALUES ($1,$2,$3,$4,$5)',
+      `INSERT INTO refresh_tokens (id, token, user_id, expires_at, created_at)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (token) DO NOTHING`,
       [refreshId, refreshToken, user.id, refreshExpiry, now]
     );
 

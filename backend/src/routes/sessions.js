@@ -137,7 +137,11 @@ router.delete('/:id', requireRole('admin', 'supervisor'), async (req, res) => {
     const existing = await pool.query('SELECT * FROM sessions WHERE id=$1', [id]);
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const session = existing.rows[0];
+    // Atomic: nullify reschedule children then delete (prevents FK violation)
+    await pool.query('BEGIN');
+    await pool.query('UPDATE sessions SET rescheduled_from = NULL WHERE rescheduled_from = $1', [id]);
     await pool.query('DELETE FROM sessions WHERE id=$1', [id]);
+    await pool.query('COMMIT');
     const dt = formatSessionTime(session.scheduled_at);
     await notify(session.student_id, 'session_cancelled', 'Session Removed',
       `Your session on ${dt} has been removed by admin`, '/student/sessions');
