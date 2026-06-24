@@ -392,6 +392,10 @@ Still feature-flagged off (`FEATURE_MESSAGING` on Render, `NEXT_PUBLIC_FEATURE_M
 
 ## 19. Known Limitations
 
+- **Refresh token INSERT is idempotent.** Two simultaneous login requests for the same user within the same second produce identical JWT refresh tokens. The INSERT uses `ON CONFLICT (token) DO NOTHING` so both requests succeed. No action needed from admin.
+
+- **Session delete handles reschedule chains.** Deleting a session that was rescheduled (and has a child session referencing it via `rescheduled_from`) now works — the FK is set to `ON DELETE SET NULL` (migration 019), and the delete handler atomically nullifies children before deleting. The child session remains with `rescheduled_from = null`.
+
 - **Password reset does not immediately log out other devices.** When an admin resets a teacher or student's password, any existing login sessions for that person remain valid until their access tokens expire naturally (within 15 minutes). There is no forced logout across all devices on password reset. Strict session invalidation is a future improvement.
 
 - **Welcome email rendering tested in Gmail only.** Outlook and iCloud rendering should be verified before adding teachers or students who use those providers.
