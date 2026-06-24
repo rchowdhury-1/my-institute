@@ -134,7 +134,7 @@ export default function StudentDashboard() {
             summary.source !== "none" && summary.active_lessons_remaining <= 2
               ? "text-amber-600 font-semibold" : "text-white/70"
           }`}>
-            {pkg ? pkg.package_name : "Lessons"}
+            {summary.source === "package" && pkg ? pkg.package_name : "Lessons"}
           </p>
           {summary.source !== "none" ? (
             <div className="flex items-end justify-between">
