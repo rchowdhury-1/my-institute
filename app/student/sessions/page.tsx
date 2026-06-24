@@ -27,14 +27,6 @@ interface RescheduleRequest {
   status: "pending" | "approved" | "rejected" | "cancelled_by_student";
 }
 
-interface Pkg {
-  package_name: string;
-  sessions_remaining: number | null;
-  total_lessons: number;
-  expires_at?: string;
-  renewal_reminder_sent: boolean;
-}
-
 interface SchedulesSummary {
   active_schedule_count: number;
   active_lessons_remaining: number;
@@ -65,7 +57,6 @@ const statusStyle: Record<string, string> = {
 export default function StudentSessionsPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [pkg, setPkg] = useState<Pkg | null>(null);
   const [summary, setSummary] = useState<SchedulesSummary>({ active_schedule_count: 0, active_lessons_remaining: 0, source: "none" });
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +93,6 @@ export default function StudentSessionsPage() {
     ])
       .then(([sRes, meRes, payRes, rrRes]) => {
         setSessions(sRes.data.sessions);
-        setPkg(meRes.data.package ?? null);
         setSummary(meRes.data.schedules_summary ?? { active_schedule_count: 0, active_lessons_remaining: 0, source: "none" });
         setPayments(payRes.data.payments ?? []);
         setPendingRequests(rrRes.data.requests ?? []);
@@ -253,7 +243,7 @@ export default function StudentSessionsPage() {
               }`}>
                 {summary.active_lessons_remaining <= 2
                   ? "⚠ Renewal Reminder"
-                  : pkg ? `Package · ${pkg.package_name}` : "Lessons"}
+                  : "Lessons"}
               </p>
               <p className={`font-semibold ${
                 summary.active_lessons_remaining <= 2 ? "text-amber-800" : "text-white"
