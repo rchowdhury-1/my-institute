@@ -189,7 +189,7 @@ export default function StudentDashboard() {
                       <p className="text-charcoal/55 text-sm">{formatTimeOnly(l.scheduled_at)}</p>
                     </div>
                   </div>
-                  {l.schedule_lessons_remaining === 0 ? (
+                  {summary.active_lessons_remaining === 0 || l.schedule_lessons_remaining === 0 ? (
                     <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200">
                       <p className="text-red-700 text-sm font-medium">Your lesson balance is 0. Please contact admin to renew.</p>
                       <a

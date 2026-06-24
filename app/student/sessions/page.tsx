@@ -334,7 +334,7 @@ export default function StudentSessionsPage() {
                   )}
 
                   {/* Join Class button — gated by lesson balance */}
-                  {s.schedule_lessons_remaining === 0 ? (
+                  {summary.active_lessons_remaining === 0 || s.schedule_lessons_remaining === 0 ? (
                     <div className="mb-3 p-3 rounded-xl bg-red-50 border border-red-200">
                       <p className="text-red-700 text-sm font-medium">Your lesson balance is 0. Please contact admin to renew.</p>
                       <a
