@@ -111,14 +111,13 @@ export function formatSimpleDate(
 }
 
 /**
- * A session is "still upcoming" until 24 hours after its scheduled end.
- * This matches Mohammad's requirement: session links stay active for
- * 24h after the session so late students can still join.
+ * A session is "still upcoming" until 3 hours after its scheduled end.
+ * Sessions stay visible so late students can still join.
  */
 export function isSessionStillUpcoming(
   scheduledAt: Date | string | null | undefined,
   durationMinutes: number,
-  bufferHours: number = 24
+  bufferHours: number = 3
 ): boolean {
   if (!scheduledAt) return false;
   const start = new Date(scheduledAt).getTime();

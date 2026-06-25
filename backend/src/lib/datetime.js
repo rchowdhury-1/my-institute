@@ -82,9 +82,9 @@ function formatSimpleDate(date) {
 }
 
 /**
- * A session is "still upcoming" until 24 hours after its scheduled end.
+ * A session is "still upcoming" until 3 hours after its scheduled end.
  */
-function isSessionStillUpcoming(scheduledAt, durationMinutes, bufferHours = 24) {
+function isSessionStillUpcoming(scheduledAt, durationMinutes, bufferHours = 3) {
   if (!scheduledAt) return false;
   const start = new Date(scheduledAt).getTime();
   if (isNaN(start)) return false;

@@ -493,7 +493,7 @@ async function createSessionAt(request: APIRequestContext, scheduledAt: string, 
   return (await res.json()).session;
 }
 
-test("session at NOW still appears in student upcoming (24h buffer)", async ({ request }) => {
+test("session at NOW still appears in student upcoming (3h buffer)", async ({ request }) => {
   const session = await createSessionAt(request, new Date().toISOString());
   const studentToken = await getStudentToken(request);
   const res = await request.get(`${API}/sessions`, {
@@ -506,9 +506,9 @@ test("session at NOW still appears in student upcoming (24h buffer)", async ({ r
   await deleteSession(request, session.id);
 });
 
-test("session ended 23h ago still appears as upcoming", async ({ request }) => {
-  // Session started 24h ago with 60-min duration → ended 23h ago
-  const scheduledAt = new Date(Date.now() - 24 * 3600000).toISOString();
+test("session ended 2h ago still appears as upcoming", async ({ request }) => {
+  // Session started 3h ago with 60-min duration → ended 2h ago
+  const scheduledAt = new Date(Date.now() - 3 * 3600000).toISOString();
   const session = await createSessionAt(request, scheduledAt, 60);
   const studentToken = await getStudentToken(request);
   const res = await request.get(`${API}/sessions`, {
@@ -521,9 +521,9 @@ test("session ended 23h ago still appears as upcoming", async ({ request }) => {
   await deleteSession(request, session.id);
 });
 
-test("session ended 25h ago does NOT appear as upcoming", async ({ request }) => {
-  // Session started 26h ago with 60-min duration → ended 25h ago
-  const scheduledAt = new Date(Date.now() - 26 * 3600000).toISOString();
+test("session ended 4h ago does NOT appear as upcoming", async ({ request }) => {
+  // Session started 5h ago with 60-min duration → ended 4h ago
+  const scheduledAt = new Date(Date.now() - 5 * 3600000).toISOString();
   const session = await createSessionAt(request, scheduledAt, 60);
   const studentToken = await getStudentToken(request);
 
