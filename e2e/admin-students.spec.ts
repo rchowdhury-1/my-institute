@@ -278,6 +278,38 @@ test.describe("Admin Students Page", () => {
     await expect(card.locator('[data-testid="btn-edit"]')).not.toBeVisible();
   });
 
+  // T11b: Reactivate — turn deactivated student back on
+  test("T11b: reactivate student restores Active badge and action buttons", async ({ page }) => {
+    await loginAndNavigate(page);
+    const email = uniqueEmail("t11b");
+
+    // Create and deactivate
+    await safeClick(page, '[data-testid="btn-add-student"]');
+    await page.fill('[data-testid="input-display-name"]', "T11b Reactivate Student");
+    await page.fill('[data-testid="input-email"]', email);
+    await page.fill('[data-testid="input-hourly-rate"]', "25");
+    await page.click('[data-testid="btn-generate-password"]');
+    await page.click('[data-testid="btn-submit-create"]');
+    await expect(page.locator('[data-testid="success-banner"]')).toBeVisible({ timeout: 15_000 });
+    await page.locator('[data-testid="btn-dismiss-success"]').click();
+
+    const card = page.locator(".space-y-4 > div").filter({ hasText: "T11b Reactivate Student" }).first();
+    await card.scrollIntoViewIfNeeded();
+    await card.locator('[data-testid="btn-deactivate"]').click();
+    await card.locator('[data-testid="btn-deactivate-confirm"]').click();
+    await expect(card.locator('[data-testid="badge-turned-off"]')).toBeVisible({ timeout: 8_000 });
+
+    // Reactivate
+    await expect(card.locator('[data-testid="btn-reactivate"]')).toBeVisible();
+    await card.locator('[data-testid="btn-reactivate"]').click();
+    await expect(card.locator('[data-testid="reactivate-confirm-panel"]')).toBeVisible();
+    await card.locator('[data-testid="btn-reactivate-confirm"]').click();
+
+    await expect(card.locator('[data-testid="badge-active"]')).toBeVisible({ timeout: 8_000 });
+    await expect(card.locator('[data-testid="btn-edit"]')).toBeVisible();
+    await expect(card.locator('[data-testid="btn-deactivate"]')).toBeVisible();
+  });
+
   // ── Student-specific criteria ─────────────────────────────────────────────
 
   // T12: Create with prepaid bundle — bundle pill renders correctly

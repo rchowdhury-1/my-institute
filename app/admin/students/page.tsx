@@ -14,6 +14,7 @@ import {
   Pencil,
   KeyRound,
   UserX,
+  UserCheck,
   Copy,
   Check,
 } from "lucide-react";
@@ -162,6 +163,9 @@ export default function AdminStudentsPage() {
   const [deactivateConfirmId, setDeactivateConfirmId] = useState<string | null>(null);
   const [deactivateLoading, setDeactivateLoading] = useState(false);
   const [deactivateError, setDeactivateError] = useState<{ id: string; message: string } | null>(null);
+
+  const [reactivateConfirmId, setReactivateConfirmId] = useState<string | null>(null);
+  const [reactivateLoading, setReactivateLoading] = useState(false);
 
   // ── Auth guard ────────────────────────────────────────────────────────────
 
@@ -434,6 +438,27 @@ export default function AdminStudentsPage() {
       });
     } finally {
       setDeactivateLoading(false);
+    }
+  };
+
+  // ── Reactivate ───────────────────────────────────────────────────────────
+
+  const handleReactivate = async (student: Student) => {
+    setReactivateLoading(true);
+    try {
+      await api.patch(
+        `/admin/students/${student.id}`,
+        { is_active: true },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setStudents((prev) =>
+        prev.map((s) => (s.id === student.id ? { ...s, is_active: true } : s))
+      );
+      setReactivateConfirmId(null);
+    } catch {
+      // Reactivation has no blocking conditions
+    } finally {
+      setReactivateLoading(false);
     }
   };
 
@@ -765,6 +790,11 @@ export default function AdminStudentsPage() {
                 onDeactivateStart={() => { setDeactivateConfirmId(student.id); setDeactivateError(null); setResetConfirmId(null); setEditingId(null); }}
                 onDeactivateConfirm={() => handleDeactivate(student)}
                 onDeactivateCancel={() => { setDeactivateConfirmId(null); setDeactivateError(null); }}
+                reactivateConfirm={reactivateConfirmId === student.id}
+                reactivateLoading={reactivateLoading}
+                onReactivateStart={() => { setReactivateConfirmId(student.id); setDeactivateConfirmId(null); setResetConfirmId(null); setEditingId(null); }}
+                onReactivateConfirm={() => handleReactivate(student)}
+                onReactivateCancel={() => setReactivateConfirmId(null)}
                 inputClass={inputClass}
               />
             ))}
@@ -799,6 +829,11 @@ interface CardProps {
   onDeactivateStart: () => void;
   onDeactivateConfirm: () => void;
   onDeactivateCancel: () => void;
+  reactivateConfirm: boolean;
+  reactivateLoading: boolean;
+  onReactivateStart: () => void;
+  onReactivateConfirm: () => void;
+  onReactivateCancel: () => void;
   inputClass: string;
 }
 
@@ -824,6 +859,11 @@ function StudentCard({
   onDeactivateStart,
   onDeactivateConfirm,
   onDeactivateCancel,
+  reactivateConfirm,
+  reactivateLoading,
+  onReactivateStart,
+  onReactivateConfirm,
+  onReactivateCancel,
   inputClass,
 }: CardProps) {
   const assignedTeacher = teachers.find((t) => t.id === student.teacher_id);
@@ -984,7 +1024,7 @@ function StudentCard({
             </div>
 
             {/* Action buttons */}
-            {student.is_active && (
+            {student.is_active ? (
               <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                 <button data-testid="btn-edit" onClick={onEditStart}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-black/10 text-charcoal/60 text-xs hover:border-black/20 transition-colors">
@@ -997,6 +1037,13 @@ function StudentCard({
                 <button data-testid="btn-deactivate" onClick={onDeactivateStart}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 text-red-500 text-xs hover:bg-red-50 transition-colors">
                   <UserX size={13} /> Turn off access
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button data-testid="btn-reactivate" onClick={onReactivateStart}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-200 text-emerald-600 text-xs hover:bg-emerald-50 transition-colors">
+                  <UserCheck size={13} /> Turn on access
                 </button>
               </div>
             )}
@@ -1036,6 +1083,25 @@ function StudentCard({
                   {deactivateLoading ? "Turning off…" : "Yes, turn off"}
                 </button>
                 <button data-testid="btn-deactivate-cancel" onClick={onDeactivateCancel}
+                  className="px-4 py-1.5 rounded-full border border-black/10 text-charcoal/60 text-xs hover:border-black/20 transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Reactivate confirm panel */}
+          {reactivateConfirm && (
+            <div data-testid="reactivate-confirm-panel" className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+              <p className="text-sm text-charcoal mb-3">
+                Turn on {student.display_name}&apos;s access? They will be able to log in again.
+              </p>
+              <div className="flex gap-2">
+                <button data-testid="btn-reactivate-confirm" onClick={onReactivateConfirm} disabled={reactivateLoading}
+                  className="px-4 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600 disabled:opacity-60 transition-colors">
+                  {reactivateLoading ? "Turning on\u2026" : "Yes, turn on"}
+                </button>
+                <button data-testid="btn-reactivate-cancel" onClick={onReactivateCancel}
                   className="px-4 py-1.5 rounded-full border border-black/10 text-charcoal/60 text-xs hover:border-black/20 transition-colors">
                   Cancel
                 </button>
