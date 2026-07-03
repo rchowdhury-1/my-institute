@@ -43,7 +43,7 @@ The live website is at: **https://my-institute-eight.vercel.app**
 
 1. Go to `/login` on the live site.
 2. Email: `razwanul712@gmail.com`
-3. Password: see Step 3 below — the default `changeme123` **must be rotated before going live**.
+3. Password: stored in the team password manager. It is **not** committed anywhere. If lost, rotate it (Step 3 below).
 
 After logging in you will be taken to the Supervisor Dashboard at `/supervisor`.
 
@@ -51,7 +51,7 @@ After logging in you will be taken to the Supervisor Dashboard at `/supervisor`.
 
 ## 3. Rotating the Admin Password
 
-**Do this before going live.** The default password is `changeme123`.
+**Rotate any time the password may have been exposed.** Never commit the password to the repo or paste it into test files — store it only in the team password manager and CI secrets.
 
 **Via the Neon console (recommended)**
 

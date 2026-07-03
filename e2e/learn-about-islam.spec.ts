@@ -4,14 +4,18 @@
  * Prerequisites:
  *   - Next.js dev server on http://localhost:3000
  *   - Backend on http://localhost:5001
- *   - Admin credentials: razwanul712@gmail.com / Test12345
  */
 
 import { test, expect, Page } from "@playwright/test";
 
 const BASE = "http://localhost:3000";
-const ADMIN_EMAIL = "razwanul712@gmail.com";
-const ADMIN_PASSWORD = "Test12345";
+const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  throw new Error(
+    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running these tests.",
+  );
+}
 
 async function loginAsAdmin(page: Page) {
   await page.goto(`${BASE}/login`);

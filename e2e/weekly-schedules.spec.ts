@@ -11,8 +11,13 @@
 import { test, expect, APIRequestContext } from "@playwright/test";
 
 const API = process.env.API_URL || "http://localhost:5001";
-const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || "razwanul712@gmail.com";
-const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || "Test12345";
+const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  throw new Error(
+    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running these tests.",
+  );
+}
 
 const STUDENT_ID = "3de0a33b-93bf-4041-9ae0-770a290626d9";
 const TEACHER_ID = "c084e832-ebdb-4152-83f6-ba923e5655db";

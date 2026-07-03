@@ -11,14 +11,22 @@ import { test, expect } from "@playwright/test";
 const BASE = "http://localhost:3000";
 const API = "http://localhost:5001";
 
+const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  throw new Error(
+    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running these tests.",
+  );
+}
+
 // Helper: login as admin and get token
 async function getAdminToken(): Promise<string> {
   const res = await fetch(`${API}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      email: "razwanul712@gmail.com",
-      password: "Test12345",
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
     }),
   });
   const data = await res.json();
@@ -28,8 +36,8 @@ async function getAdminToken(): Promise<string> {
 // Helper: login in browser
 async function loginAsAdmin(page: import("@playwright/test").Page) {
   await page.goto(`${BASE}/login`);
-  await page.fill('input[type="email"]', "razwanul712@gmail.com");
-  await page.fill('input[type="password"]', "Test12345");
+  await page.fill('input[type="email"]', ADMIN_EMAIL);
+  await page.fill('input[type="password"]', ADMIN_PASSWORD);
   await page.click('button[type="submit"]');
   await page.waitForURL("**/supervisor");
 }
@@ -103,7 +111,7 @@ test.describe.serial("Teacher Hours page", () => {
       body: JSON.stringify({
         display_name: "E2E Hours Teacher",
         email: `hours-teacher-${Date.now()}@test.com`,
-        password: "Test12345",
+        password: ADMIN_PASSWORD,
         send_email: false,
       }),
     });
@@ -120,7 +128,7 @@ test.describe.serial("Teacher Hours page", () => {
       body: JSON.stringify({
         display_name: "E2E Hours Student",
         email: `hours-student-${Date.now()}@test.com`,
-        password: "Test12345",
+        password: ADMIN_PASSWORD,
         send_email: false,
         hourly_rate: 10,
         teacher_id: teacherId,
