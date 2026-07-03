@@ -1,12 +1,13 @@
 name: API Tests
 
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
-  schedule:
-    - cron: '0 8 * * *' # Daily at 8 AM UTC
+  # WARNING: this suite runs against PRODUCTION and creates real sessions using
+  # the seeded test student (rizwantest). The specs have no afterEach teardown,
+  # so any FAILED test leaves its session orphaned in the live admin dashboard.
+  # The scheduled run had been failing 100% for weeks, littering production daily.
+  # Auto + scheduled triggers disabled 2026-07-03. Re-enable ONLY after the suite
+  # is (a) pointed at a non-production backend and (b) given fail-safe cleanup.
+  workflow_dispatch: {} # manual trigger only
 
 jobs:
   api-tests:
