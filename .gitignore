@@ -37,3 +37,9 @@ next-env.d.ts
 
 # Deployment env files — contain secrets, never commit
 deploy/
+
+# Playwright artifacts
+/test-results/
+
+# stray backend build output
+/backend/.next/
