@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink, RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
-import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming } from "@/lib/datetime";
+import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart } from "@/lib/datetime";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 
 interface Lesson {
@@ -409,7 +409,7 @@ export default function TeacherDashboard() {
                         <p className="text-charcoal/55 text-sm">{formatTimeOnly(l.scheduled_at)}</p>
                       </div>
                     </div>
-                    {l.zoom_link && (
+                    {l.zoom_link && isSessionJoinable(l.scheduled_at) && (
                       <a
                         href={l.zoom_link}
                         target="_blank"
@@ -421,9 +421,15 @@ export default function TeacherDashboard() {
                         <ExternalLink size={12} />
                       </a>
                     )}
-                    {l.schedule_lessons_remaining === 0 && (
+                    {l.zoom_link && isSessionBeforeStart(l.scheduled_at) && (
+                      <p className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium">
+                        <Video size={14} />
+                        Starts at {formatTimeOnly(l.scheduled_at)}
+                      </p>
+                    )}
+                    {l.schedule_lessons_remaining != null && l.schedule_lessons_remaining <= 0 && (
                       <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                        Student&apos;s lesson balance is 0 — renewal needed
+                        Student has no hours remaining — renewal needed
                       </p>
                     )}
                   </div>
@@ -502,7 +508,7 @@ function LessonCard({
         )}
       </div>
 
-      {!done && lesson.zoom_link && (
+      {!done && lesson.zoom_link && isSessionJoinable(lesson.scheduled_at) && (
         <a
           href={lesson.zoom_link}
           target="_blank"
@@ -515,9 +521,16 @@ function LessonCard({
         </a>
       )}
 
-      {!done && lesson.schedule_lessons_remaining === 0 && (
+      {!done && lesson.zoom_link && isSessionBeforeStart(lesson.scheduled_at) && (
+        <p className="mb-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium">
+          <Video size={14} />
+          Starts at {formatTimeOnly(lesson.scheduled_at)}
+        </p>
+      )}
+
+      {!done && lesson.schedule_lessons_remaining != null && lesson.schedule_lessons_remaining <= 0 && (
         <p className="mb-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-          Student&apos;s lesson balance is 0 — renewal needed
+          Student has no hours remaining — renewal needed
         </p>
       )}
 

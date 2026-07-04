@@ -23,14 +23,14 @@ router.get('/me', requireAuth, requireRole('student'), async (req, res) => {
          JOIN users u ON u.id = s.teacher_id
          LEFT JOIN weekly_schedules ws ON ws.id = s.schedule_id
          WHERE s.student_id = $1 AND s.status = 'scheduled'
-           AND s.scheduled_at + (s.duration_minutes * interval '1 minute') > NOW() - interval '24 hours'
+           AND s.scheduled_at + (s.duration_minutes * interval '1 minute') > NOW() - interval '3 hours'
          ORDER BY s.scheduled_at ASC
          LIMIT 5`,
         [req.userId]
       ),
       pool.query(
         `SELECT COUNT(*)::int AS active_schedule_count,
-                COALESCE(SUM(lessons_remaining), 0)::int AS total_lessons_remaining,
+                COALESCE(SUM(lessons_remaining), 0) AS total_lessons_remaining,
                 bool_or(lessons_remaining IS NOT NULL) AS has_lessons_set
          FROM weekly_schedules
          WHERE student_id = $1 AND is_active = true`,

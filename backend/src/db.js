@@ -1,6 +1,10 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 const fs = require('fs');
 const path = require('path');
+
+// NUMERIC columns (hours balances, rates, amounts) arrive as strings by
+// default; parse to number so comparisons and JSON payloads keep their type.
+types.setTypeParser(types.builtins.NUMERIC, (v) => (v === null ? null : parseFloat(v)));
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

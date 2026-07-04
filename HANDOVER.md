@@ -448,7 +448,7 @@ Mohammad sets up **weekly recurring schedules** instead of creating sessions one
 3. Click **Add Schedule**.
 4. Search for a student (typeahead) and teacher.
 5. Enter subject, default duration, and check the days with start times.
-6. Optionally set "Lessons remaining" — this gates student access (see Section 23). Sessions still generate regardless, but students with balance 0 cannot join.
+6. Set "Hours Remaining" (**required**, steps of 0.5) — the student's hours balance. It gates student access (see Section 23). Sessions still generate regardless, but students with 0 hours cannot join. A confirmation step shows "set balance to X hours" before saving — the field sets the balance absolutely, it does not add to it.
 7. Optionally paste a **Zoom link** — all generated sessions inherit this link. Students see "Join Session" / "Join Class" buttons automatically. Each session's link can be overridden later via the session edit modal if needed.
 8. Click **Create Schedule**. Sessions for the next 4 weeks are generated immediately.
 
@@ -466,6 +466,8 @@ Mohammad sets up **weekly recurring schedules** instead of creating sessions one
 Sessions remain in the "upcoming" view on student and teacher dashboards until **3 hours after their scheduled end** (`scheduled_at + duration_minutes + 3h`). This gives late students time to join without sessions lingering for a full day.
 
 The `isSessionStillUpcoming()` utility in `lib/datetime.ts` and `backend/src/lib/datetime.js` centralises this logic. The `bufferHours` parameter defaults to 3 but can be overridden per call if needed.
+
+**Join window (separate rule):** the Join Session / Join Class button is only live from the session's **start time until 3 hours after the start** (`isSessionJoinable()` in `lib/datetime.ts`). Before the start the student/teacher sees "Starts at [time]"; after the window the button disappears even if the session is still listed as upcoming. Visibility (end + 3h) and joinability (start → start + 3h) are deliberately independent.
 
 Destructive operations (deleting future sessions on schedule edit/deactivation, teacher deactivation checks) use strict `scheduled_at > NOW()` — they are not buffered.
 
@@ -498,24 +500,24 @@ Replaces the old "Mark Completed" button on the teacher dashboard.
 
 On the Supervisor Dashboard (Sessions tab), past sessions without attendance show a **Mark Attendance** button. Admin can mark at any time (no time window restriction).
 
-### Lessons remaining (access gate)
+### Hours remaining (access gate)
 
-`lessons_remaining` on the schedule **gates student access** to sessions:
-- **Decrement on `completed`**: teacher and student both attended — lesson consumed.
-- **Decrement on `no_show`**: teacher attended but student didn't — lesson slot was consumed.
-- **No decrement on `cancelled_teacher`**: teacher didn't attend — lesson not consumed.
-- **Balance = 0**: student sees "Your lesson balance is 0. Please contact admin to renew" + WhatsApp button instead of "Join Session". Schedule continues generating sessions but student cannot join.
-- **Balance = null**: no limit set — student can always join.
-- **Admin notified** when balance hits 0 (notification fires once on the decrement).
-- Supervisor dashboard shows colour-coded badges: green (5+), amber (1-4), red (0), grey (null).
-- If session is legacy (no schedule), `packages.sessions_remaining` is decremented (existing behaviour).
+`lessons_remaining` on the schedule holds an **hours balance** (decimal — the column is NUMERIC, migration 020) and **gates student access** to sessions. Each attended session subtracts its own duration in hours: a 30-minute session subtracts 0.5, a 90-minute session 1.5.
+- **Decrement on `completed`**: teacher and student both attended — hours consumed.
+- **Decrement on `no_show`**: teacher attended but student didn't — the slot's hours were consumed.
+- **No decrement on `cancelled_teacher`**: teacher didn't attend — hours not consumed.
+- **Balance ≤ 0**: student sees "You have no hours remaining. Please contact admin to renew" + WhatsApp button instead of "Join Session". Schedule continues generating sessions but student cannot join.
+- **Balance = null**: legacy "no limit" schedules created before the hours model — student can always join. New schedules must have a value; editing a legacy schedule forces one.
+- **Admin notified** when balance hits 0 (fires on the decrement that lands on 0).
+- Supervisor dashboard shows colour-coded badges: green (>4h), amber (≤4h), red (0h), grey (null).
+- If session is legacy (no schedule), `packages.sessions_remaining` is decremented as a session count (existing behaviour, unchanged).
 
 ### Student-facing display priority
 
-The student dashboard and sessions page show a single "lessons remaining" number resolved from:
-1. **Active schedules** (sum of `weekly_schedules.lessons_remaining` where `is_active = true`) — used when the student has any active schedule with `lessons_remaining` set
-2. **Package fallback** (`packages.sessions_remaining`) — used when no active schedules exist but a package does
-3. **None** — no schedules and no package
+The student dashboard and sessions page show a single balance number resolved from:
+1. **Active schedules** (sum of `weekly_schedules.lessons_remaining` where `is_active = true`) — used when the student has any active schedule with a balance set. Displayed as "**X hours remaining**".
+2. **Package fallback** (`packages.sessions_remaining`) — used when no active schedules exist but a package does. Still a session count, so it displays as "**X lessons remaining**" (the label follows the source).
+3. **None** — no schedules and no package.
 
 This is computed at the backend in `GET /students/me` as `schedules_summary.active_lessons_remaining` with a `source` field for debugging. The frontend reads this single resolved field — no priority logic in the frontend. The `package` field remains in the response for billing context (package name, expiry date).
 

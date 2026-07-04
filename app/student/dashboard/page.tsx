@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink, MessageCircle } from "lucide-react";
-import { formatSessionDate, formatTimeOnly, formatSimpleDate } from "@/lib/datetime";
+import { formatSessionDate, formatTimeOnly, formatSimpleDate, formatHours, isSessionJoinable, isSessionBeforeStart } from "@/lib/datetime";
 import { BRAND } from "@/lib/content";
 
 interface Lesson {
@@ -104,6 +104,15 @@ export default function StudentDashboard() {
   const { user, package: pkg, schedules_summary: summary, upcoming_lessons } = data;
   const pastLessons = history.filter((l) => l.status !== "scheduled");
 
+  // Balance unit: schedules hold hours; legacy packages still count lessons
+  const unit = summary.source === "package" ? "lesson" : "hour";
+  const balanceEmptyMsg = unit === "hour"
+    ? "You have no hours remaining. Please contact admin to renew."
+    : "Your lesson balance is 0. Please contact admin to renew.";
+  const balanceEmptyWa = unit === "hour"
+    ? "Hi, I have no hours remaining. I'd like to renew."
+    : "Hi, my lesson balance has reached 0. I'd like to renew.";
+
   return (
     <main className="min-h-screen bg-cream">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
@@ -134,7 +143,7 @@ export default function StudentDashboard() {
             summary.source !== "none" && summary.active_lessons_remaining <= 2
               ? "text-amber-600 font-semibold" : "text-white/70"
           }`}>
-            Lessons
+            {unit === "hour" ? "Hours" : "Lessons"}
           </p>
           {summary.source !== "none" ? (
             <div className="flex items-end justify-between">
@@ -142,7 +151,7 @@ export default function StudentDashboard() {
                 <h2 className={`font-display text-2xl font-bold ${
                   summary.active_lessons_remaining <= 2 ? "text-amber-800" : ""
                 }`}>
-                  {summary.active_lessons_remaining} lesson{summary.active_lessons_remaining !== 1 ? "s" : ""} remaining
+                  {formatHours(summary.active_lessons_remaining)} {unit}{summary.active_lessons_remaining !== 1 ? "s" : ""} remaining
                 </h2>
                 <p className={`text-sm mt-1 ${
                   summary.active_lessons_remaining <= 2 ? "text-amber-600" : "text-white/80"
@@ -189,11 +198,11 @@ export default function StudentDashboard() {
                       <p className="text-charcoal/55 text-sm">{formatTimeOnly(l.scheduled_at)}</p>
                     </div>
                   </div>
-                  {summary.active_lessons_remaining === 0 || l.schedule_lessons_remaining === 0 ? (
+                  {summary.active_lessons_remaining <= 0 || (l.schedule_lessons_remaining != null && l.schedule_lessons_remaining <= 0) ? (
                     <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200">
-                      <p className="text-red-700 text-sm font-medium">Your lesson balance is 0. Please contact admin to renew.</p>
+                      <p className="text-red-700 text-sm font-medium">{balanceEmptyMsg}</p>
                       <a
-                        href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent("Hi, my lesson balance has reached 0. I'd like to renew.")}`}
+                        href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(balanceEmptyWa)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors"
@@ -202,7 +211,7 @@ export default function StudentDashboard() {
                         WhatsApp Admin
                       </a>
                     </div>
-                  ) : l.zoom_link ? (
+                  ) : l.zoom_link && isSessionJoinable(l.scheduled_at) ? (
                     <a
                       href={l.zoom_link}
                       target="_blank"
@@ -213,6 +222,11 @@ export default function StudentDashboard() {
                       Join Session
                       <ExternalLink size={12} />
                     </a>
+                  ) : l.zoom_link && isSessionBeforeStart(l.scheduled_at) ? (
+                    <p className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium">
+                      <Video size={14} />
+                      Starts at {formatTimeOnly(l.scheduled_at)}
+                    </p>
                   ) : null}
                 </div>
               ))}

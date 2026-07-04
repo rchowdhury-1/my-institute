@@ -1,11 +1,14 @@
 /**
  * Phase 4.1 acceptance tests — weekly schedules, session generation, attendance, salary
  *
+ * Hours model (2026-07): lessons_remaining holds HOURS (NUMERIC), decrements
+ * by duration_minutes / 60 per attended session, and is required on create.
+ *
  * Prerequisites:
  *   - Backend running (local or production)
  *   - Admin credentials
  *   - Test student + teacher accounts exist
- *   - Migrations 014-016 applied
+ *   - Migrations 014-016 + 020 applied
  */
 
 import { test, expect, APIRequestContext } from "@playwright/test";
@@ -486,13 +489,13 @@ test("cron endpoint works with admin JWT", async ({ request }) => {
 
 // ─── Lessons remaining gate (Phase 4.5) ──────────────────────────────────
 
-test("no_show decrements lessons_remaining", async ({ request }) => {
+test("no_show decrements hours balance by session duration (30 min = 0.5)", async ({ request }) => {
   const token = await getAdminToken(request);
 
-  // Create schedule with lessons_remaining = 3
+  // Create schedule with a 3-hour balance and a 30-minute slot
   const { res, body: created } = await createSchedule(request, {
     lessons_remaining: 3,
-    slots: [{ day: "fri", time: uniqueSlotTime(), duration: 60 }],
+    slots: [{ day: "fri", time: uniqueSlotTime(), duration: 30 }],
   });
   expect(res.status()).toBe(201);
   const scheduleId = created.schedule.id;
@@ -533,13 +536,13 @@ test("no_show decrements lessons_remaining", async ({ request }) => {
     expect(attRes.status()).toBe(200);
     expect((await attRes.json()).session.status).toBe("no_show");
 
-    // Check balance decremented
+    // Check balance decremented by the session's duration in hours (30 min = 0.5)
     const checkRes = await request.get(
       `${API}/admin/weekly-schedules/${scheduleId}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
     const updated = (await checkRes.json()).schedule;
-    expect(updated.lessons_remaining).toBe(2);
+    expect(updated.lessons_remaining).toBe(2.5);
   }
 
   // Clean up the manual session
@@ -588,6 +591,69 @@ test("cancelled_teacher does NOT decrement lessons_remaining", async ({
   await deleteSchedule(request, scheduleId);
 });
 
+// ─── Hours validation (required field, 0.5 steps) ────────────────────────
+
+test("create schedule without hours is rejected (required field)", async ({
+  request,
+}) => {
+  const token = await getAdminToken(request);
+  const res = await request.post(`${API}/admin/weekly-schedules`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      student_id: STUDENT_ID,
+      teacher_id: TEACHER_ID,
+      subject: "quran",
+      default_duration: 60,
+      slots: [{ day: "mon", time: uniqueSlotTime(), duration: 60 }],
+      // lessons_remaining deliberately omitted
+    },
+  });
+  expect(res.status()).toBe(400);
+  expect((await res.json()).error).toContain("required");
+});
+
+test("create schedule with off-step hours is rejected", async ({
+  request,
+}) => {
+  const { res } = await createSchedule(request, { lessons_remaining: 2.3 });
+  expect(res.status()).toBe(400);
+});
+
+test("edit cannot set hours back to null (unlimited retired)", async ({
+  request,
+}) => {
+  const { res, body: created } = await createSchedule(request, {
+    lessons_remaining: 4,
+    slots: [{ day: "tue", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(res.status()).toBe(201);
+  const token = await getAdminToken(request);
+
+  const editRes = await request.patch(
+    `${API}/admin/weekly-schedules/${created.schedule.id}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { lessons_remaining: null },
+    }
+  );
+  expect(editRes.status()).toBe(400);
+
+  await deleteSchedule(request, created.schedule.id);
+});
+
+test("create schedule accepts half-hour balance (2.5)", async ({
+  request,
+}) => {
+  const { res, body } = await createSchedule(request, {
+    lessons_remaining: 2.5,
+    slots: [{ day: "wed", time: uniqueSlotTime(), duration: 60 }],
+  });
+  expect(res.status()).toBe(201);
+  expect(body.schedule.lessons_remaining).toBe(2.5);
+
+  await deleteSchedule(request, body.schedule.id);
+});
+
 test("GET /sessions includes schedule_lessons_remaining", async ({
   request,
 }) => {
@@ -612,6 +678,8 @@ test("GET /sessions includes schedule_lessons_remaining", async ({
     (s: Record<string, unknown>) => s.schedule_id === scheduleId
   );
   if (linkedSession) {
+    // Must be a JSON number, not a string — guards the NUMERIC type parser
+    expect(typeof linkedSession.schedule_lessons_remaining).toBe("number");
     expect(linkedSession.schedule_lessons_remaining).toBe(7);
   }
 

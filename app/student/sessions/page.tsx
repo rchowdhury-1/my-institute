@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink, MessageCircle, List } from "lucide-react";
-import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, isSessionStillUpcoming } from "@/lib/datetime";
+import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart } from "@/lib/datetime";
 import { BRAND } from "@/lib/content";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 
@@ -196,6 +196,15 @@ export default function StudentSessionsPage() {
   const upcoming = sessions.filter(
     (s) => s.status === "scheduled" && isSessionStillUpcoming(s.scheduled_at, s.duration_minutes)
   );
+
+  // Balance unit: schedules hold hours; legacy packages still count lessons
+  const unit = summary.source === "package" ? "lesson" : "hour";
+  const balanceEmptyMsg = unit === "hour"
+    ? "You have no hours remaining. Please contact admin to renew."
+    : "Your lesson balance is 0. Please contact admin to renew.";
+  const balanceEmptyWa = unit === "hour"
+    ? "Hi, I have no hours remaining. I'd like to renew."
+    : "Hi, my lesson balance has reached 0. I'd like to renew.";
   const past = sessions.filter((s) => s.status !== "scheduled" || !isSessionStillUpcoming(s.scheduled_at, s.duration_minutes));
 
   const timeOptions = Array.from({ length: 48 }, (_, i) => {
@@ -243,12 +252,12 @@ export default function StudentSessionsPage() {
               }`}>
                 {summary.active_lessons_remaining <= 2
                   ? "⚠ Renewal Reminder"
-                  : "Lessons"}
+                  : unit === "hour" ? "Hours" : "Lessons"}
               </p>
               <p className={`font-semibold ${
                 summary.active_lessons_remaining <= 2 ? "text-amber-800" : "text-white"
               }`}>
-                {summary.active_lessons_remaining} lesson{summary.active_lessons_remaining !== 1 ? "s" : ""} remaining
+                {formatHours(summary.active_lessons_remaining)} {unit}{summary.active_lessons_remaining !== 1 ? "s" : ""} remaining
                 {summary.active_lessons_remaining <= 2 && " — contact us to renew"}
               </p>
               <p className={`text-xs mt-1 ${summary.active_lessons_remaining <= 2 ? "text-amber-600" : "text-white/60"}`}>
@@ -333,12 +342,12 @@ export default function StudentSessionsPage() {
                     </div>
                   )}
 
-                  {/* Join Class button — gated by lesson balance */}
-                  {summary.active_lessons_remaining === 0 || s.schedule_lessons_remaining === 0 ? (
+                  {/* Join Class button — gated by hours balance + join window (start → start+3h) */}
+                  {summary.active_lessons_remaining <= 0 || (s.schedule_lessons_remaining != null && s.schedule_lessons_remaining <= 0) ? (
                     <div className="mb-3 p-3 rounded-xl bg-red-50 border border-red-200">
-                      <p className="text-red-700 text-sm font-medium">Your lesson balance is 0. Please contact admin to renew.</p>
+                      <p className="text-red-700 text-sm font-medium">{balanceEmptyMsg}</p>
                       <a
-                        href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent("Hi, my lesson balance has reached 0. I'd like to renew.")}`}
+                        href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(balanceEmptyWa)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors w-fit"
@@ -347,7 +356,7 @@ export default function StudentSessionsPage() {
                         WhatsApp Admin
                       </a>
                     </div>
-                  ) : s.zoom_link ? (
+                  ) : s.zoom_link && isSessionJoinable(s.scheduled_at) ? (
                     <a
                       href={s.zoom_link}
                       target="_blank"
@@ -358,6 +367,11 @@ export default function StudentSessionsPage() {
                       Join Class
                       <ExternalLink size={12} />
                     </a>
+                  ) : s.zoom_link && isSessionBeforeStart(s.scheduled_at) ? (
+                    <p className="mb-3 flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium w-fit">
+                      <Video size={14} />
+                      Starts at {formatTimeOnly(s.scheduled_at)}
+                    </p>
                   ) : null}
 
                   {/* Actions — check 12h buffer */}

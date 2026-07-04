@@ -32,6 +32,15 @@ function validateSlots(slots) {
   return null;
 }
 
+// Hours balance: required on create, steps of 0.5, minimum 0.5.
+function validateHours(value) {
+  const hours = parseFloat(value);
+  if (value == null || isNaN(hours)) return 'lessons_remaining (hours) is required';
+  if (hours < 0.5 || hours > 1000 || !Number.isInteger(hours * 2))
+    return 'Hours must be in steps of 0.5 (minimum 0.5)';
+  return null;
+}
+
 // GET /admin/weekly-schedules
 router.get('/', async (req, res) => {
   try {
@@ -110,7 +119,7 @@ router.get('/:id', async (req, res) => {
        FROM sessions s
        JOIN users u ON u.id = s.student_id
        WHERE s.schedule_id = $1
-         AND s.scheduled_at + (s.duration_minutes * interval '1 minute') > NOW() - interval '24 hours'
+         AND s.scheduled_at + (s.duration_minutes * interval '1 minute') > NOW() - interval '3 hours'
          AND s.status = 'scheduled'
        ORDER BY s.scheduled_at ASC`,
       [req.params.id]
@@ -132,6 +141,9 @@ router.post('/', async (req, res) => {
 
   const slotError = validateSlots(slots);
   if (slotError) return res.status(400).json({ error: slotError });
+
+  const hoursError = validateHours(lessons_remaining);
+  if (hoursError) return res.status(400).json({ error: hoursError });
 
   const dur = parseInt(default_duration) || 60;
   if (dur % 30 !== 0 || dur < 30)
@@ -165,7 +177,7 @@ router.post('/', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
       [student_id, teacher_id, subject || 'quran', dur, JSON.stringify(slots),
-       lessons_remaining != null ? parseInt(lessons_remaining) : null,
+       parseFloat(lessons_remaining),
        cleanZoomLink]
     );
 
@@ -240,8 +252,11 @@ router.patch('/:id', async (req, res) => {
     if (default_duration !== undefined) { sets.push(`default_duration = $${idx++}`); params.push(parseInt(default_duration)); }
     if (slots !== undefined) { sets.push(`slots = $${idx++}`); params.push(JSON.stringify(slots)); }
     if (lessons_remaining !== undefined) {
+      // A schedule can no longer be moved back to unlimited (null)
+      const hoursError = validateHours(lessons_remaining);
+      if (hoursError) return res.status(400).json({ error: hoursError });
       sets.push(`lessons_remaining = $${idx++}`);
-      params.push(lessons_remaining != null ? parseInt(lessons_remaining) : null);
+      params.push(parseFloat(lessons_remaining));
     }
     if (teacher_id !== undefined) { sets.push(`teacher_id = $${idx++}`); params.push(teacher_id); }
     if (zoom_link !== undefined) {

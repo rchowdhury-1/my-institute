@@ -350,17 +350,18 @@ router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supe
 
     const updated = result.rows[0];
 
-    // Decrement lessons_remaining on completed or no_show (lesson slot was consumed)
-    // cancelled_teacher does NOT decrement (lesson wasn't consumed)
+    // Decrement hours balance on completed or no_show (the slot was consumed).
+    // Subtracts the session's own duration in hours (30 min = 0.5).
+    // cancelled_teacher does NOT decrement (the slot wasn't consumed).
     if (newStatus === 'completed' || newStatus === 'no_show') {
       if (session.schedule_id) {
-        // Schedule-based: decrement weekly_schedules.lessons_remaining
+        // Schedule-based: decrement weekly_schedules.lessons_remaining (hours)
         await pool.query(
           `UPDATE weekly_schedules
-           SET lessons_remaining = GREATEST(0, lessons_remaining - 1),
+           SET lessons_remaining = GREATEST(0, lessons_remaining - $2::numeric / 60),
                updated_at = NOW()
            WHERE id = $1 AND lessons_remaining IS NOT NULL AND lessons_remaining > 0`,
-          [session.schedule_id]
+          [session.schedule_id, session.duration_minutes]
         );
 
         // Check balance and notify
@@ -370,20 +371,20 @@ router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supe
         );
         const balance = sched.rows[0]?.lessons_remaining;
         if (balance !== null && balance !== undefined) {
-          if (balance === 0) {
+          if (balance <= 0) {
             // Balance just hit zero — notify student + admins
             const studentName = (await pool.query('SELECT display_name FROM users WHERE id=$1', [session.student_id])).rows[0]?.display_name || 'A student';
-            await notify(session.student_id, 'lesson_balance_zero', 'Lesson Balance Empty',
-              'Your lesson balance has reached 0. Please contact admin to renew.',
+            await notify(session.student_id, 'lesson_balance_zero', 'Hours Balance Empty',
+              'You have no hours remaining. Please contact admin to renew.',
               '/student/sessions');
-            await notifyAdmins('lesson_balance_zero', 'Student Lesson Balance Empty',
-              `${studentName}'s lesson balance has reached 0 and needs renewal.`, '/supervisor');
+            await notifyAdmins('lesson_balance_zero', 'Student Hours Balance Empty',
+              `${studentName} has no hours remaining and needs renewal.`, '/supervisor');
           } else if (balance <= 2) {
-            await notify(session.student_id, 'renewal_reminder', 'Renew Your Lessons',
-              `You have ${balance} lesson${balance !== 1 ? 's' : ''} remaining. Contact us to renew.`,
+            await notify(session.student_id, 'renewal_reminder', 'Renew Your Hours',
+              `You have ${balance} hour${balance !== 1 ? 's' : ''} remaining. Contact us to renew.`,
               '/student/sessions');
-            await notifyAdmins('renewal_reminder', 'Student Lesson Renewal',
-              `A student has ${balance} lessons remaining and needs renewal.`, '/supervisor');
+            await notifyAdmins('renewal_reminder', 'Student Hours Renewal',
+              `A student has ${balance} hour${balance !== 1 ? 's' : ''} remaining and needs renewal.`, '/supervisor');
           }
         }
       } else {

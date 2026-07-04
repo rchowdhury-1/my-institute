@@ -111,6 +111,43 @@ export function formatSimpleDate(
 }
 
 /**
+ * The Join button is active from the session's start time until
+ * `joinWindowHours` after the start (default 3h).
+ *
+ * Distinct from isSessionStillUpcoming: that predicate anchors on the
+ * session END (+3h) and controls list visibility; this one anchors on the
+ * START and controls only whether the join link is live. A session can be
+ * visible in "upcoming" while its join window is closed — that is intended.
+ */
+export function isSessionJoinable(
+  scheduledAt: Date | string | null | undefined,
+  joinWindowHours: number = 3
+): boolean {
+  if (!scheduledAt) return false;
+  const start = new Date(scheduledAt).getTime();
+  if (isNaN(start)) return false;
+  const now = Date.now();
+  return now >= start && now <= start + joinWindowHours * 60 * 60 * 1000;
+}
+
+/** True while the session has not started yet (join window not open). */
+export function isSessionBeforeStart(
+  scheduledAt: Date | string | null | undefined
+): boolean {
+  if (!scheduledAt) return false;
+  const start = new Date(scheduledAt).getTime();
+  if (isNaN(start)) return false;
+  return Date.now() < start;
+}
+
+/**
+ * Format an hours balance for display: "2.5", "2", "0.5" (no trailing zeros).
+ */
+export function formatHours(hours: number): string {
+  return String(Math.round(hours * 100) / 100);
+}
+
+/**
  * A session is "still upcoming" until 3 hours after its scheduled end.
  * Sessions stay visible so late students can still join.
  */

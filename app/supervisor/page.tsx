@@ -8,7 +8,7 @@ import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, C
 import UserSearchInput from "@/components/shared/UserSearchInput";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 import Link from "next/link";
-import { formatSessionTime, formatRelative, isSessionStillUpcoming } from "@/lib/datetime";
+import { formatSessionTime, formatRelative, formatHours, isSessionStillUpcoming } from "@/lib/datetime";
 
 interface Session {
   id: string;
@@ -343,6 +343,7 @@ export default function SupervisorPage() {
   });
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleError, setScheduleError] = useState("");
+  const [scheduleConfirm, setScheduleConfirm] = useState(false);
   const [scheduleGenResult, setScheduleGenResult] = useState<ScheduleGeneration | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [scheduleActioning, setScheduleActioning] = useState<string | null>(null);
@@ -412,12 +413,37 @@ export default function SupervisorPage() {
     }
     setScheduleError("");
     setScheduleGenResult(null);
+    setScheduleConfirm(false);
     setShowScheduleModal(true);
+  }
+
+  function validateScheduleForm(): boolean {
+    const slots = ALL_DAYS.filter(d => scheduleForm.slots[d]?.enabled);
+    if (slots.length === 0) { setScheduleError("Select at least one day"); return false; }
+    if (!editingSchedule && (!scheduleForm.student_id || !scheduleForm.teacher_id)) {
+      setScheduleError("Select a student and teacher"); return false;
+    }
+    const hours = parseFloat(scheduleForm.lessons_remaining);
+    if (!scheduleForm.lessons_remaining || isNaN(hours) || hours < 0.5 || !Number.isInteger(hours * 2)) {
+      setScheduleError("Enter the hours for this package (steps of 0.5, minimum 0.5)."); return false;
+    }
+    setScheduleError("");
+    return true;
+  }
+
+  // Save click: validate, then confirm when the hours balance is being set or changed.
+  function handleScheduleSaveClick() {
+    if (!validateScheduleForm()) return;
+    const hours = parseFloat(scheduleForm.lessons_remaining);
+    const hoursChanged = !editingSchedule || hours !== editingSchedule.lessons_remaining;
+    if (hoursChanged) { setScheduleConfirm(true); return; }
+    handleSaveSchedule();
   }
 
   async function handleSaveSchedule() {
     const token = localStorage.getItem("accessToken");
     if (!token) return;
+    setScheduleConfirm(false);
 
     const slots = ALL_DAYS
       .filter(d => scheduleForm.slots[d]?.enabled)
@@ -427,11 +453,6 @@ export default function SupervisorPage() {
         ...(scheduleForm.slots[d].duration ? { duration: parseInt(scheduleForm.slots[d].duration) } : {}),
       }));
 
-    if (slots.length === 0) { setScheduleError("Select at least one day"); return; }
-    if (!editingSchedule && (!scheduleForm.student_id || !scheduleForm.teacher_id)) {
-      setScheduleError("Select a student and teacher"); return;
-    }
-
     setScheduleSaving(true);
     setScheduleError("");
     try {
@@ -440,7 +461,7 @@ export default function SupervisorPage() {
           subject: scheduleForm.subject,
           default_duration: parseInt(scheduleForm.default_duration),
           slots,
-          lessons_remaining: scheduleForm.lessons_remaining ? parseInt(scheduleForm.lessons_remaining) : null,
+          lessons_remaining: parseFloat(scheduleForm.lessons_remaining),
           teacher_id: scheduleForm.teacher_id !== editingSchedule.teacher_id ? scheduleForm.teacher_id : undefined,
           zoom_link: scheduleForm.zoom_link || null,
         }, { headers: { Authorization: `Bearer ${token}` } });
@@ -457,7 +478,7 @@ export default function SupervisorPage() {
           subject: scheduleForm.subject,
           default_duration: parseInt(scheduleForm.default_duration),
           slots,
-          lessons_remaining: scheduleForm.lessons_remaining ? parseInt(scheduleForm.lessons_remaining) : null,
+          lessons_remaining: parseFloat(scheduleForm.lessons_remaining),
           zoom_link: scheduleForm.zoom_link || null,
         }, { headers: { Authorization: `Bearer ${token}` } });
 
@@ -1199,17 +1220,17 @@ export default function SupervisorPage() {
                         </p>
                         {sched.lessons_remaining != null ? (
                           <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                            sched.lessons_remaining === 0
+                            sched.lessons_remaining <= 0
                               ? "bg-red-100 text-red-700"
                               : sched.lessons_remaining <= 4
                                 ? "bg-amber-100 text-amber-700"
                                 : "bg-emerald-100 text-emerald-700"
                           }`}>
-                            {sched.lessons_remaining} lesson{sched.lessons_remaining !== 1 ? "s" : ""} remaining
+                            {formatHours(sched.lessons_remaining)} hour{sched.lessons_remaining !== 1 ? "s" : ""} remaining
                           </span>
                         ) : (
                           <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-                            No lesson limit set
+                            No hours limit set
                           </span>
                         )}
                         {sched.zoom_link && (
@@ -1481,17 +1502,20 @@ export default function SupervisorPage() {
                 <p className="text-[10px] text-charcoal/30 mt-1">Used for all sessions in this schedule. Each session&apos;s link can still be overridden later if needed.</p>
               </div>
 
-              {/* Lessons remaining */}
+              {/* Hours remaining */}
               <div>
-                <label className="block text-xs text-charcoal/60 mb-1">Lessons Remaining (optional)</label>
+                <label className="block text-xs text-charcoal/60 mb-1">Hours Remaining <span className="text-red-500">*</span></label>
                 <input
                   type="number"
-                  min="0"
+                  min="0.5"
+                  step="0.5"
+                  required
                   value={scheduleForm.lessons_remaining}
                   onChange={(e) => setScheduleForm(p => ({ ...p, lessons_remaining: e.target.value }))}
-                  placeholder="Leave blank for unlimited"
+                  placeholder="e.g. 10"
                   className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
                 />
+                <p className="text-[10px] text-charcoal/30 mt-1">The student&apos;s hours balance. Each attended session subtracts its duration (30 min = 0.5).</p>
               </div>
 
               {/* Day/Time grid */}
@@ -1559,9 +1583,35 @@ export default function SupervisorPage() {
               </div>
             )}
 
+            {/* Hours confirmation — the field sets the balance absolutely */}
+            {scheduleConfirm ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mt-4">
+                <p className="text-charcoal text-sm font-medium mb-3">
+                  {editingSchedule
+                    ? <>You&apos;re changing this schedule&apos;s balance from <strong>{editingSchedule.lessons_remaining != null ? `${formatHours(editingSchedule.lessons_remaining)} hours` : "unlimited"}</strong> to <strong>{scheduleForm.lessons_remaining} hours</strong>. Save?</>
+                    : <>This will set <strong>{students.find(s => s.id === scheduleForm.student_id)?.display_name ?? "this student"}</strong>&apos;s balance to <strong>{scheduleForm.lessons_remaining} hours</strong> for this schedule. Create it?</>}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveSchedule}
+                    disabled={scheduleSaving}
+                    className="px-5 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors"
+                  >
+                    {scheduleSaving ? "Saving…" : "Confirm"}
+                  </button>
+                  <button
+                    onClick={() => setScheduleConfirm(false)}
+                    disabled={scheduleSaving}
+                    className="px-5 py-2 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-black/20 transition-colors"
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div className="flex gap-2 mt-4">
               <button
-                onClick={handleSaveSchedule}
+                onClick={handleScheduleSaveClick}
                 disabled={scheduleSaving}
                 className="px-5 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors"
               >
@@ -1574,6 +1624,7 @@ export default function SupervisorPage() {
                 {scheduleGenResult ? "Done" : "Cancel"}
               </button>
             </div>
+            )}
           </div>
         </div>
       )}
