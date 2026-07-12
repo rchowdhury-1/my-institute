@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Video, ExternalLink, MessageCircle } from "lucide-react";
+import { Video, ExternalLink, MessageCircle, ClipboardList } from "lucide-react";
 import { formatSessionDate, formatTimeOnly, formatSimpleDate, formatHours, isSessionJoinable, isSessionBeforeStart } from "@/lib/datetime";
-import { BRAND } from "@/lib/content";
+import { BRAND, EXAM_PORTAL_URL } from "@/lib/content";
 
 interface Lesson {
   id: string;
@@ -173,6 +173,25 @@ export default function StudentDashboard() {
           ) : (
             <p className="text-white/80">No active package. Contact us to enrol.</p>
           )}
+        </div>
+
+        {/* Exam portal */}
+        <div className="bg-white rounded-2xl border border-black/5 p-5 mb-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="font-semibold text-charcoal">Exams</p>
+            <p className="text-charcoal/55 text-sm mt-0.5">Take your assessments on the MY Institute exam platform.</p>
+          </div>
+          <a
+            href={EXAM_PORTAL_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Student Exam Portal (opens in a new tab)"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors shrink-0 self-start sm:self-auto"
+          >
+            <ClipboardList size={14} />
+            Student Exam Portal
+            <ExternalLink size={12} />
+          </a>
         </div>
 
         {/* Upcoming lessons */}

@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { X } from "lucide-react";
+import { X, ExternalLink } from "lucide-react";
 import { useEffect } from "react";
 import { BRAND } from "@/lib/content";
 
 interface MobileMenuProps {
   isOpen: boolean;
   onClose: () => void;
-  links: { href: string; label: string }[];
+  links: { href: string; label: string; external?: boolean }[];
   loggedIn?: boolean | null;
   dashboardHref?: string;
 }
@@ -50,16 +50,31 @@ export default function MobileMenu({ isOpen, onClose, links, loggedIn, dashboard
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={onClose}
-              className="block px-6 py-3 text-charcoal font-medium hover:bg-emerald-primary/5 hover:text-emerald-primary transition-colors"
-            >
-              {link.label}
-            </Link>
-          ))}
+          {links.map((link) =>
+            link.external ? (
+              <a
+                key={link.href}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${link.label} (opens in a new tab)`}
+                onClick={onClose}
+                className="flex items-center gap-1.5 px-6 py-3 text-charcoal font-medium hover:bg-emerald-primary/5 hover:text-emerald-primary transition-colors"
+              >
+                {link.label}
+                <ExternalLink size={14} />
+              </a>
+            ) : (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={onClose}
+                className="block px-6 py-3 text-charcoal font-medium hover:bg-emerald-primary/5 hover:text-emerald-primary transition-colors"
+              >
+                {link.label}
+              </Link>
+            )
+          )}
 
           <div className="mx-6 my-3 border-t border-gray-100" />
 

@@ -14,6 +14,9 @@ export const BRAND: BrandInfo = {
   },
 };
 
+// External student exam portal, built and hosted by Mohammad
+export const EXAM_PORTAL_URL = "https://mohammad69850.github.io/my-institute-exam";
+
 export const SERVICES: Service[] = [
   {
     title: "Islamic Religion",

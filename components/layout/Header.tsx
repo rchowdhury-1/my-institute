@@ -3,15 +3,17 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
-import { Menu } from "lucide-react";
+import { Menu, ExternalLink } from "lucide-react";
 import MobileMenu from "./MobileMenu";
 import NotificationBell from "./NotificationBell";
+import { EXAM_PORTAL_URL } from "@/lib/content";
 
-const NAV_LINKS = [
+const NAV_LINKS: { href: string; label: string; external?: boolean }[] = [
   { href: "/about", label: "About" },
   { href: "/packages", label: "Packages" },
   { href: "/learn-about-islam", label: "Reverts" },
   { href: "/community", label: "Community" },
+  { href: EXAM_PORTAL_URL, label: "Student Exam Portal", external: true },
 ];
 
 export default function Header() {
@@ -55,19 +57,37 @@ export default function Header() {
               </Link>
 
               <nav className="hidden lg:flex items-center gap-7">
-                {NAV_LINKS.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`text-sm font-medium transition-colors ${
-                      scrolled
-                        ? "text-charcoal hover:text-emerald-primary"
-                        : "text-cream hover:text-white"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
+                {NAV_LINKS.map((link) =>
+                  link.external ? (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`${link.label} (opens in a new tab)`}
+                      className={`inline-flex items-center gap-1 text-sm font-medium transition-colors ${
+                        scrolled
+                          ? "text-charcoal hover:text-emerald-primary"
+                          : "text-cream hover:text-white"
+                      }`}
+                    >
+                      {link.label}
+                      <ExternalLink size={12} />
+                    </a>
+                  ) : (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className={`text-sm font-medium transition-colors ${
+                        scrolled
+                          ? "text-charcoal hover:text-emerald-primary"
+                          : "text-cream hover:text-white"
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  )
+                )}
               </nav>
             </div>
 
