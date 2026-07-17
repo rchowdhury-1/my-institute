@@ -432,6 +432,9 @@ test("teacher homework on unrelated student → NOT_YOUR_STUDENT", async ({ requ
 });
 
 test("teacher CAN create homework for their own student", async ({ request }) => {
+  // The ownership check requires a session linking this teacher and student —
+  // create one rather than depending on whatever production data holds
+  const session = await createTestSession(request, 48);
   const adminToken = await getAdminToken(request);
   const resetRes = await request.post(`${API}/admin/teachers/${TEACHER_ID}/reset-password`, {
     headers: { Authorization: `Bearer ${adminToken}` },
@@ -444,6 +447,7 @@ test("teacher CAN create homework for their own student", async ({ request }) =>
     data: { student_id: STUDENT_ID, title: "_TEST_ related hw" },
   });
   expect(res.status()).toBe(201);
+  await deleteSession(request, session.id);
 });
 
 test("admin can grade any homework (previously 404)", async ({ request }) => {
