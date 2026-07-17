@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink, MessageCircle, ClipboardList } from "lucide-react";
-import { formatSessionDate, formatTimeOnly, formatSimpleDate, formatHours, isSessionJoinable, isSessionBeforeStart } from "@/lib/datetime";
+import { formatSessionDate, formatTimeOnly, formatSimpleDate, formatHours, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
 import { BRAND, EXAM_PORTAL_URL } from "@/lib/content";
 
 interface Lesson {
@@ -54,6 +54,7 @@ export default function StudentDashboard() {
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [history, setHistory] = useState<Lesson[]>([]);
+  const [skewMs, setSkewMs] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -70,6 +71,7 @@ export default function StudentDashboard() {
       .then(([meRes, lessonsRes]) => {
         setData(meRes.data);
         setHistory(lessonsRes.data.lessons);
+        setSkewMs(computeClockSkew(lessonsRes.data.server_time));
       })
       .catch(() => setError("Failed to load dashboard. Please sign in again."))
       .finally(() => setLoading(false));
@@ -230,7 +232,7 @@ export default function StudentDashboard() {
                         WhatsApp Admin
                       </a>
                     </div>
-                  ) : l.zoom_link && isSessionJoinable(l.scheduled_at) ? (
+                  ) : l.zoom_link && isSessionJoinable(l.scheduled_at, 3, { skewMs }) ? (
                     <a
                       href={l.zoom_link}
                       target="_blank"
@@ -241,7 +243,7 @@ export default function StudentDashboard() {
                       Join Session
                       <ExternalLink size={12} />
                     </a>
-                  ) : l.zoom_link && isSessionBeforeStart(l.scheduled_at) ? (
+                  ) : l.zoom_link && isSessionBeforeStart(l.scheduled_at, skewMs) ? (
                     <p className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium">
                       <Video size={14} />
                       Starts at {formatTimeOnly(l.scheduled_at)}

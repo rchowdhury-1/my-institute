@@ -458,8 +458,8 @@ Mohammad sets up **weekly recurring schedules** instead of creating sessions one
 - **On edit**: If you change the days/times or teacher, all future `scheduled` sessions are deleted and regenerated.
 - **Deactivate**: Moves the schedule to "Archived" and removes future sessions. Can be reactivated later.
 - **Generate Now**: Button on each schedule card to manually trigger generation.
-- **Slot times are London time** (`Europe/London`). The system converts to UTC automatically, including across DST changes.
-- **Manual trigger**: `POST /cron/generate-sessions` (requires admin/supervisor JWT auth) can be called to force generation for all schedules.
+- **Slot times are `OPERATIONAL_TZ` wall-clock** — a single constant, currently `Africa/Cairo` (Egypt time), defined in `backend/src/lib/schedule-generator.js` and mirrored in `lib/datetime.ts` (they must stay in sync). The system converts to UTC automatically, including across DST changes. All admin time inputs (slots, one-off session create/edit) are labelled with this zone and show a live equivalent in the other zone. **Changing `OPERATIONAL_TZ` changes the meaning of every stored slot time** — immediately run `POST /cron/regenerate-all` afterwards, or on-demand generation will create duplicate sessions at the shifted instants.
+- **Manual trigger**: `POST /cron/generate-sessions` (requires admin/supervisor JWT auth) can be called to force generation for all schedules. `POST /cron/regenerate-all` (same auth) wipes and regenerates future sessions for all active schedules — only needed after an `OPERATIONAL_TZ` change.
 
 ### 3-hour session accessibility window
 
@@ -467,7 +467,7 @@ Sessions remain in the "upcoming" view on student and teacher dashboards until *
 
 The `isSessionStillUpcoming()` utility in `lib/datetime.ts` and `backend/src/lib/datetime.js` centralises this logic. The `bufferHours` parameter defaults to 3 but can be overridden per call if needed.
 
-**Join window (separate rule):** the Join Session / Join Class button is only live from the session's **start time until 3 hours after the start** (`isSessionJoinable()` in `lib/datetime.ts`). Before the start the student/teacher sees "Starts at [time]"; after the window the button disappears even if the session is still listed as upcoming. Visibility (end + 3h) and joinability (start → start + 3h) are deliberately independent.
+**Join window (separate rule):** the Join Session / Join Class button is live from **15 minutes before the session's start until 3 hours after the start** (`isSessionJoinable()` in `lib/datetime.ts` — the early margin matches the backend attendance window). Before the window opens the student/teacher sees "Starts at [time]"; after it the button disappears even if the session is still listed as upcoming. Visibility (end + 3h) and joinability (start − 15 min → start + 3h) are deliberately independent. The gates apply a **server-time skew correction**: lessons/sessions API responses include `server_time`, and `computeClockSkew()` neutralises mis-set device clocks.
 
 Destructive operations (deleting future sessions on schedule edit/deactivation, teacher deactivation checks) use strict `scheduled_at > NOW()` — they are not buffered.
 

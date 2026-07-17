@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink, RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
-import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart } from "@/lib/datetime";
+import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 
 interface Lesson {
@@ -58,6 +58,7 @@ export default function TeacherDashboard() {
   const router = useRouter();
   const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [skewMs, setSkewMs] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
@@ -85,6 +86,7 @@ export default function TeacherDashboard() {
       .then(([meRes, lessonsRes, rrRes]) => {
         setTeacher(meRes.data.user);
         setLessons(lessonsRes.data.lessons);
+        setSkewMs(computeClockSkew(lessonsRes.data.server_time));
         setRescheduleRequests(rrRes.data.requests ?? []);
       })
       .catch(() => setError("Failed to load dashboard. Please sign in again."))
@@ -375,6 +377,7 @@ export default function TeacherDashboard() {
                 <LessonCard
                   key={l.id}
                   lesson={l}
+                  skewMs={skewMs}
                   noteInput={noteInputs[l.id] ?? l.notes ?? ""}
                   saving={saving === l.id}
                   onNoteChange={(val) => setNoteInputs((p) => ({ ...p, [l.id]: val }))}
@@ -409,7 +412,7 @@ export default function TeacherDashboard() {
                         <p className="text-charcoal/55 text-sm">{formatTimeOnly(l.scheduled_at)}</p>
                       </div>
                     </div>
-                    {l.zoom_link && isSessionJoinable(l.scheduled_at) && (
+                    {l.zoom_link && isSessionJoinable(l.scheduled_at, 3, { skewMs }) && (
                       <a
                         href={l.zoom_link}
                         target="_blank"
@@ -421,7 +424,7 @@ export default function TeacherDashboard() {
                         <ExternalLink size={12} />
                       </a>
                     )}
-                    {l.zoom_link && isSessionBeforeStart(l.scheduled_at) && (
+                    {l.zoom_link && isSessionBeforeStart(l.scheduled_at, skewMs) && (
                       <p className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium">
                         <Video size={14} />
                         Starts at {formatTimeOnly(l.scheduled_at)}
@@ -444,9 +447,10 @@ export default function TeacherDashboard() {
 }
 
 function LessonCard({
-  lesson, noteInput, saving, onNoteChange, onAttendance, onCancel,
+  lesson, skewMs, noteInput, saving, onNoteChange, onAttendance, onCancel,
 }: {
   lesson: Lesson;
+  skewMs: number;
   noteInput: string;
   saving: boolean;
   onNoteChange: (v: string) => void;
@@ -455,10 +459,10 @@ function LessonCard({
 }) {
   const [attendanceStep, setAttendanceStep] = useState<null | "teacher" | "student">(null);
   const done = lesson.status !== "scheduled";
-  const now = new Date();
+  const now = Date.now() + skewMs;
   const sessionStart = new Date(lesson.scheduled_at);
-  const windowStart = new Date(sessionStart.getTime() - 15 * 60 * 1000);
-  const windowEnd = new Date(sessionStart.getTime() + 24 * 60 * 60 * 1000);
+  const windowStart = sessionStart.getTime() - 15 * 60 * 1000;
+  const windowEnd = sessionStart.getTime() + 24 * 60 * 60 * 1000;
   const inWindow = now >= windowStart && now <= windowEnd;
   const isPast = !isSessionStillUpcoming(lesson.scheduled_at, lesson.duration_minutes);
 
@@ -508,7 +512,7 @@ function LessonCard({
         )}
       </div>
 
-      {!done && lesson.zoom_link && isSessionJoinable(lesson.scheduled_at) && (
+      {!done && lesson.zoom_link && isSessionJoinable(lesson.scheduled_at, 3, { skewMs }) && (
         <a
           href={lesson.zoom_link}
           target="_blank"
@@ -521,7 +525,7 @@ function LessonCard({
         </a>
       )}
 
-      {!done && lesson.zoom_link && isSessionBeforeStart(lesson.scheduled_at) && (
+      {!done && lesson.zoom_link && isSessionBeforeStart(lesson.scheduled_at, skewMs) && (
         <p className="mb-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium">
           <Video size={14} />
           Starts at {formatTimeOnly(lesson.scheduled_at)}

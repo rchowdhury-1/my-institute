@@ -9,6 +9,13 @@ import {
   formatTimeOnly,
   formatRelative,
   formatSimpleDate,
+  isSessionJoinable,
+  isSessionBeforeStart,
+  computeClockSkew,
+  zonedInputToISO,
+  isoToZonedInput,
+  otherZoneHint,
+  OPERATIONAL_TZ,
 } from "./datetime";
 
 let passed = 0;
@@ -90,6 +97,82 @@ test("formatRelative — past date shows 'X ago'", () => {
   const past = new Date(Date.now() - 3 * 3600_000).toISOString();
   const result = formatRelative(past);
   assert.ok(result.endsWith(" ago"), `Expected '... ago', got '${result}'`);
+});
+
+// ── join gate: early window + skew ──
+test("isSessionJoinable — opens 15 min before start", () => {
+  const start = new Date(Date.now() + 10 * 60_000).toISOString(); // starts in 10 min
+  assert.equal(isSessionJoinable(start), true);
+});
+
+test("isSessionJoinable — closed 20 min before start", () => {
+  const start = new Date(Date.now() + 20 * 60_000).toISOString();
+  assert.equal(isSessionJoinable(start), false);
+});
+
+test("isSessionJoinable — closes after joinWindowHours", () => {
+  const start = new Date(Date.now() - 4 * 3_600_000).toISOString(); // started 4h ago
+  assert.equal(isSessionJoinable(start, 3), false);
+  assert.equal(isSessionJoinable(start, 5), true);
+});
+
+test("isSessionJoinable — skew corrects a slow device clock", () => {
+  const start = new Date(Date.now() + 60 * 60_000).toISOString(); // starts in 1h (true time)
+  // device clock 2h behind → without skew the gate thinks start is 1h away: closed
+  assert.equal(isSessionJoinable(start, 3, { skewMs: 0 }), false);
+  // skew says server is ~65 min ahead of device → now + skew is inside the window
+  assert.equal(isSessionJoinable(start, 3, { skewMs: 65 * 60_000 }), true);
+});
+
+test("isSessionBeforeStart — false once early window opens", () => {
+  const start = new Date(Date.now() + 10 * 60_000).toISOString();
+  assert.equal(isSessionBeforeStart(start), false); // within 15-min early window
+  const farStart = new Date(Date.now() + 60 * 60_000).toISOString();
+  assert.equal(isSessionBeforeStart(farStart), true);
+  assert.equal(isSessionBeforeStart(farStart, 50 * 60_000), false); // skewed past the window opening
+});
+
+// ── computeClockSkew ──
+test("computeClockSkew — server ahead gives positive skew", () => {
+  const skew = computeClockSkew(new Date(Date.now() + 120_000).toISOString());
+  assert.ok(skew > 115_000 && skew < 125_000, `Expected ~120000, got ${skew}`);
+});
+
+test("computeClockSkew — missing/garbage input gives 0", () => {
+  assert.equal(computeClockSkew(undefined), 0);
+  assert.equal(computeClockSkew(null), 0);
+  assert.equal(computeClockSkew(""), 0);
+  assert.equal(computeClockSkew("not-a-date"), 0);
+});
+
+// ── operational-zone form parsing (expectations assume Africa/Cairo) ──
+test("OPERATIONAL_TZ is a known zone", () => {
+  assert.ok(["Africa/Cairo", "Europe/London"].includes(OPERATIONAL_TZ));
+});
+
+test("zonedInputToISO — Cairo summer (EEST, UTC+3)", () => {
+  assert.equal(zonedInputToISO("2026-07-20T19:00"), "2026-07-20T16:00:00.000Z");
+});
+
+test("zonedInputToISO — Cairo winter (EET, UTC+2)", () => {
+  assert.equal(zonedInputToISO("2027-01-18T19:00"), "2027-01-18T17:00:00.000Z");
+});
+
+test("isoToZonedInput — inverse of zonedInputToISO", () => {
+  assert.equal(isoToZonedInput("2026-07-20T16:00:00.000Z"), "2026-07-20T19:00");
+  assert.equal(isoToZonedInput(zonedInputToISO("2027-01-18T09:30")), "2027-01-18T09:30");
+});
+
+test("otherZoneHint — July: 19:00 Egypt = 17:00 UK", () => {
+  assert.equal(otherZoneHint("2026-07-20T19:00"), "= 17:00 UK");
+});
+
+test("otherZoneHint — January: 19:00 Egypt = 17:00 UK (both off DST)", () => {
+  assert.equal(otherZoneHint("2027-01-18T19:00"), "= 17:00 UK");
+});
+
+test("otherZoneHint — empty/garbage gives empty string", () => {
+  assert.equal(otherZoneHint(""), "");
 });
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);

@@ -1,8 +1,22 @@
 import { format } from "date-fns";
-import { toZonedTime } from "date-fns-tz";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 
 const LONDON = "Europe/London";
 const CAIRO = "Africa/Cairo";
+
+/**
+ * The single timezone admin-entered wall-clock times are anchored to
+ * (schedule slots, one-off session create/edit). Must stay in sync with
+ * OPERATIONAL_TZ in backend/src/lib/schedule-generator.js. If this value
+ * changes, all active schedules must be wiped and regenerated
+ * (POST /cron/regenerate-all).
+ */
+export const OPERATIONAL_TZ = CAIRO;
+/** Human label for OPERATIONAL_TZ, shown on time inputs. */
+export const OPERATIONAL_TZ_LABEL = OPERATIONAL_TZ === CAIRO ? "Egypt time" : "UK time";
+/** The "other" zone shown as a live hint next to time inputs. */
+const HINT_TZ = OPERATIONAL_TZ === CAIRO ? LONDON : CAIRO;
+const HINT_TZ_LABEL = OPERATIONAL_TZ === CAIRO ? "UK" : "Cairo";
 
 function toDate(input: Date | string | null | undefined): Date | null {
   if (input == null) return null;
@@ -111,8 +125,23 @@ export function formatSimpleDate(
 }
 
 /**
- * The Join button is active from the session's start time until
+ * Device-clock skew against the server, in ms. Positive = device clock is
+ * behind the server. Returns 0 for missing/invalid input so pages work
+ * unchanged while the backend field rolls out.
+ */
+export function computeClockSkew(serverTimeIso?: string | null): number {
+  if (!serverTimeIso) return 0;
+  const serverMs = Date.parse(serverTimeIso);
+  return isNaN(serverMs) ? 0 : serverMs - Date.now();
+}
+
+/**
+ * The Join button is active from `earlyMinutes` before the session's start
+ * (default 15, matching the backend attendance window) until
  * `joinWindowHours` after the start (default 3h).
+ *
+ * Pass `skewMs` (from computeClockSkew) so the check uses server time
+ * rather than trusting the device clock.
  *
  * Distinct from isSessionStillUpcoming: that predicate anchors on the
  * session END (+3h) and controls list visibility; this one anchors on the
@@ -121,23 +150,63 @@ export function formatSimpleDate(
  */
 export function isSessionJoinable(
   scheduledAt: Date | string | null | undefined,
-  joinWindowHours: number = 3
+  joinWindowHours: number = 3,
+  opts: { earlyMinutes?: number; skewMs?: number } = {}
 ): boolean {
+  const { earlyMinutes = 15, skewMs = 0 } = opts;
   if (!scheduledAt) return false;
   const start = new Date(scheduledAt).getTime();
   if (isNaN(start)) return false;
-  const now = Date.now();
-  return now >= start && now <= start + joinWindowHours * 60 * 60 * 1000;
+  const now = Date.now() + skewMs;
+  return (
+    now >= start - earlyMinutes * 60 * 1000 &&
+    now <= start + joinWindowHours * 60 * 60 * 1000
+  );
 }
 
-/** True while the session has not started yet (join window not open). */
+/** True while the session's join window has not opened yet (start − 15 min). */
 export function isSessionBeforeStart(
-  scheduledAt: Date | string | null | undefined
+  scheduledAt: Date | string | null | undefined,
+  skewMs: number = 0,
+  earlyMinutes: number = 15
 ): boolean {
   if (!scheduledAt) return false;
   const start = new Date(scheduledAt).getTime();
   if (isNaN(start)) return false;
-  return Date.now() < start;
+  return Date.now() + skewMs < start - earlyMinutes * 60 * 1000;
+}
+
+/**
+ * Parse a datetime-local input value ("YYYY-MM-DDTHH:mm") as OPERATIONAL_TZ
+ * wall-clock and return the UTC ISO instant. Deterministic — the admin's
+ * device timezone plays no part.
+ */
+export function zonedInputToISO(value: string): string {
+  return fromZonedTime(value, OPERATIONAL_TZ).toISOString();
+}
+
+/**
+ * Format a UTC instant as an OPERATIONAL_TZ wall-clock datetime-local value
+ * ("YYYY-MM-DDTHH:mm") for filling an input. Inverse of zonedInputToISO.
+ */
+export function isoToZonedInput(iso: Date | string): string {
+  return format(toZonedTime(iso, OPERATIONAL_TZ), "yyyy-MM-dd'T'HH:mm");
+}
+
+/**
+ * Live hint for a time entered in OPERATIONAL_TZ: the equivalent wall-clock
+ * in the other audience's zone, e.g. "= 17:00 UK". `value` is either a
+ * datetime-local string or a bare "HH:mm" (resolved against `onDate`,
+ * default today) as used by schedule slot inputs.
+ */
+export function otherZoneHint(value: string, onDate?: string): string {
+  if (!value) return "";
+  const dateTime = value.includes("T")
+    ? value
+    : `${onDate ?? format(new Date(), "yyyy-MM-dd")}T${value}`;
+  const instant = fromZonedTime(dateTime, OPERATIONAL_TZ);
+  if (isNaN(instant.getTime())) return "";
+  return `= ${format(toZonedTime(instant, HINT_TZ), "HH:mm")} ${HINT_TZ_LABEL}`;
 }
 
 /**

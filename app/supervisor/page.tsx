@@ -8,7 +8,7 @@ import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, C
 import UserSearchInput from "@/components/shared/UserSearchInput";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 import Link from "next/link";
-import { formatSessionTime, formatRelative, formatHours, isSessionStillUpcoming } from "@/lib/datetime";
+import { formatSessionTime, formatRelative, formatHours, isSessionStillUpcoming, zonedInputToISO, isoToZonedInput, otherZoneHint, OPERATIONAL_TZ_LABEL } from "@/lib/datetime";
 
 interface Session {
   id: string;
@@ -561,7 +561,7 @@ export default function SupervisorPage() {
         {
           student_id: sessionForm.student_id,
           teacher_id: sessionForm.teacher_id,
-          scheduled_at: new Date(sessionForm.scheduled_at).toISOString(),
+          scheduled_at: zonedInputToISO(sessionForm.scheduled_at),
           duration_minutes: parseInt(sessionForm.duration_minutes) || 30,
           subject: sessionForm.subject,
           zoom_link: sessionForm.zoom_link || undefined,
@@ -681,11 +681,8 @@ export default function SupervisorPage() {
 
   function openEditModal(s: Session) {
     setEditSession(s);
-    const dt = new Date(s.scheduled_at);
-    const dateStr = dt.toISOString().slice(0, 10);
-    const timeStr = dt.toISOString().slice(11, 16);
     setEditForm({
-      scheduled_at: `${dateStr}T${timeStr}`,
+      scheduled_at: isoToZonedInput(s.scheduled_at),
       duration_minutes: String(s.duration_minutes),
       subject: s.subject || "quran",
       teacher_id: s.teacher_id || "",
@@ -712,7 +709,7 @@ export default function SupervisorPage() {
     try {
       const body: Record<string, unknown> = {};
       const orig = editSession;
-      const newDt = new Date(editForm.scheduled_at).toISOString();
+      const newDt = zonedInputToISO(editForm.scheduled_at);
       if (newDt !== new Date(orig.scheduled_at).toISOString()) body.scheduled_at = newDt;
       if (parseInt(editForm.duration_minutes) !== orig.duration_minutes) body.duration_minutes = parseInt(editForm.duration_minutes);
       if (editForm.subject !== (orig.subject || "quran")) body.subject = editForm.subject;
@@ -880,12 +877,18 @@ export default function SupervisorPage() {
                     onChange={(id) => setSessionForm((p) => ({ ...p, teacher_id: id }))}
                     placeholder="Search teacher…"
                   />
-                  <input
-                    type="datetime-local"
-                    value={sessionForm.scheduled_at}
-                    onChange={(e) => setSessionForm((p) => ({ ...p, scheduled_at: e.target.value }))}
-                    className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
-                  />
+                  <div>
+                    <input
+                      type="datetime-local"
+                      value={sessionForm.scheduled_at}
+                      onChange={(e) => setSessionForm((p) => ({ ...p, scheduled_at: e.target.value }))}
+                      aria-label={`Date and time (${OPERATIONAL_TZ_LABEL})`}
+                      className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
+                    />
+                    <p className="text-[10px] text-charcoal/40 mt-1">
+                      {OPERATIONAL_TZ_LABEL}{sessionForm.scheduled_at ? ` · ${otherZoneHint(sessionForm.scheduled_at)}` : ""}
+                    </p>
+                  </div>
                   <select
                     value={sessionForm.duration_minutes}
                     onChange={(e) => setSessionForm((p) => ({ ...p, duration_minutes: e.target.value }))}
@@ -1520,7 +1523,7 @@ export default function SupervisorPage() {
 
               {/* Day/Time grid */}
               <div>
-                <label className="block text-xs text-charcoal/60 mb-2">Select Days & Times</label>
+                <label className="block text-xs text-charcoal/60 mb-2">Select Days & Times ({OPERATIONAL_TZ_LABEL})</label>
                 <div className="space-y-2">
                   {ALL_DAYS.map(day => {
                     const slot = scheduleForm.slots[day] || { enabled: false, time: "16:00", duration: "" };
@@ -1547,8 +1550,12 @@ export default function SupervisorPage() {
                                 ...p,
                                 slots: { ...p.slots, [day]: { ...slot, time: e.target.value } },
                               }))}
+                              aria-label={`${DAY_LABELS[day]} time (${OPERATIONAL_TZ_LABEL})`}
                               className="px-2 py-1 rounded-lg border border-black/10 bg-white text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
                             />
+                            {slot.time && (
+                              <span className="text-[10px] text-charcoal/40 whitespace-nowrap">{otherZoneHint(slot.time)}</span>
+                            )}
                             <select
                               value={slot.duration}
                               onChange={(e) => setScheduleForm(p => ({
@@ -1637,10 +1644,13 @@ export default function SupervisorPage() {
             <p className="text-charcoal/50 text-xs mb-4">{editSession.student_name} ↔ {editSession.teacher_name}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-charcoal/60 mb-1">Date &amp; Time</label>
+                <label className="block text-xs text-charcoal/60 mb-1">Date &amp; Time ({OPERATIONAL_TZ_LABEL})</label>
                 <input type="datetime-local" value={editForm.scheduled_at}
                   onChange={(e) => setEditForm((p) => ({ ...p, scheduled_at: e.target.value }))}
                   className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30" />
+                {editForm.scheduled_at && (
+                  <p className="text-[10px] text-charcoal/40 mt-1">{otherZoneHint(editForm.scheduled_at)}</p>
+                )}
               </div>
               <div>
                 <label className="block text-xs text-charcoal/60 mb-1">Duration</label>

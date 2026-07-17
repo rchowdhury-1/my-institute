@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink, MessageCircle, List } from "lucide-react";
-import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart } from "@/lib/datetime";
+import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
 import { BRAND } from "@/lib/content";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 
@@ -57,6 +57,7 @@ const statusStyle: Record<string, string> = {
 export default function StudentSessionsPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [skewMs, setSkewMs] = useState(0);
   const [summary, setSummary] = useState<SchedulesSummary>({ active_schedule_count: 0, active_lessons_remaining: 0, source: "none" });
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +94,7 @@ export default function StudentSessionsPage() {
     ])
       .then(([sRes, meRes, payRes, rrRes]) => {
         setSessions(sRes.data.sessions);
+        setSkewMs(computeClockSkew(sRes.data.server_time));
         setSummary(meRes.data.schedules_summary ?? { active_schedule_count: 0, active_lessons_remaining: 0, source: "none" });
         setPayments(payRes.data.payments ?? []);
         setPendingRequests(rrRes.data.requests ?? []);
@@ -356,7 +358,7 @@ export default function StudentSessionsPage() {
                         WhatsApp Admin
                       </a>
                     </div>
-                  ) : s.zoom_link && isSessionJoinable(s.scheduled_at) ? (
+                  ) : s.zoom_link && isSessionJoinable(s.scheduled_at, 3, { skewMs }) ? (
                     <a
                       href={s.zoom_link}
                       target="_blank"
@@ -367,7 +369,7 @@ export default function StudentSessionsPage() {
                       Join Class
                       <ExternalLink size={12} />
                     </a>
-                  ) : s.zoom_link && isSessionBeforeStart(s.scheduled_at) ? (
+                  ) : s.zoom_link && isSessionBeforeStart(s.scheduled_at, skewMs) ? (
                     <p className="mb-3 flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium w-fit">
                       <Video size={14} />
                       Starts at {formatTimeOnly(s.scheduled_at)}
