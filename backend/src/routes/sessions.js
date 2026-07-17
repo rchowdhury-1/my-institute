@@ -57,7 +57,7 @@ router.get('/', async (req, res) => {
          ORDER BY s.scheduled_at DESC`
       );
     }
-    res.json({ sessions: result.rows });
+    res.json({ sessions: result.rows, server_time: new Date().toISOString() });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

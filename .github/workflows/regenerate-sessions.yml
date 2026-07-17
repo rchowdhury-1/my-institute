@@ -1,0 +1,52 @@
+name: Regenerate Sessions
+
+# Manual-only maintenance job: wipes and regenerates future sessions for ALL
+# active schedules via POST /cron/regenerate-all. Required once after any
+# OPERATIONAL_TZ change (see backend/src/lib/schedule-generator.js) —
+# otherwise on-demand generation duplicates sessions at the shifted instants.
+on:
+  workflow_dispatch:
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Warm up backend (Render cold start mitigation)
+        run: |
+          for i in 1 2 3 4 5 6; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://my-institute-sxjs.onrender.com/health || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Backend warm."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Backend did not wake up"
+          exit 1
+
+      - name: Login and regenerate all schedules
+        env:
+          TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
+          TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+        run: |
+          API=https://my-institute-sxjs.onrender.com
+          TOKEN=$(curl -s -X POST "$API/auth/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"$TEST_ADMIN_EMAIL\",\"password\":\"$TEST_ADMIN_PASSWORD\"}" | jq -r .accessToken)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Admin login failed"
+            exit 1
+          fi
+          RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/cron/regenerate-all" \
+            -H "Authorization: Bearer $TOKEN")
+          CODE=$(echo "$RESP" | tail -1)
+          BODY=$(echo "$RESP" | sed '$d')
+          echo "HTTP $CODE"
+          echo "$BODY" | jq '{operational_tz, schedules_processed, total_removed, total_created, problems: [.results[]? | select(.error or ((.conflicts // []) | length > 0))]}'
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Regeneration failed"
+            exit 1
+          fi

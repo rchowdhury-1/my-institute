@@ -1,7 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { generateAllSchedules } = require('../lib/schedule-generator');
+const { generateAllSchedules, wipeAndRegenerate, OPERATIONAL_TZ } = require('../lib/schedule-generator');
 
 const router = express.Router();
 
@@ -36,6 +36,48 @@ router.post('/generate-sessions', requireAuth, requireRole('admin', 'supervisor'
   } catch (err) {
     console.error('[CRON] Error:', err);
     res.status(500).json({ error: 'Generation failed', message: err.message });
+  }
+});
+
+// POST /cron/regenerate-all — wipe + regenerate future sessions for ALL active
+// schedules (admin/supervisor only). Required once after any OPERATIONAL_TZ
+// change: existing future sessions sit at instants computed under the old
+// anchor, so plain generation would duplicate rather than replace them.
+router.post('/regenerate-all', requireAuth, requireRole('admin', 'supervisor'), async (req, res) => {
+  try {
+    console.log(`[CRON] Wipe-and-regenerate for all active schedules (anchor: ${OPERATIONAL_TZ})`);
+
+    const schedules = await pool.query(
+      `SELECT id FROM weekly_schedules WHERE is_active = true`
+    );
+
+    const results = [];
+    let totalRemoved = 0;
+    let totalCreated = 0;
+
+    for (const { id } of schedules.rows) {
+      try {
+        const gen = await wipeAndRegenerate(id);
+        totalRemoved += gen.sessions_removed;
+        totalCreated += gen.created;
+        results.push({ schedule_id: id, removed: gen.sessions_removed, created: gen.created, conflicts: gen.conflicts });
+      } catch (err) {
+        results.push({ schedule_id: id, error: err.message });
+      }
+    }
+
+    console.log(`[CRON] Regenerate-all done — ${schedules.rows.length} schedules, ${totalRemoved} removed, ${totalCreated} created`);
+
+    res.json({
+      operational_tz: OPERATIONAL_TZ,
+      schedules_processed: schedules.rows.length,
+      total_removed: totalRemoved,
+      total_created: totalCreated,
+      results,
+    });
+  } catch (err) {
+    console.error('[CRON] Regenerate-all error:', err);
+    res.status(500).json({ error: 'Regeneration failed', message: err.message });
   }
 });
 

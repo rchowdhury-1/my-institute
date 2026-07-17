@@ -87,7 +87,7 @@ router.get('/lessons', requireAuth, requireRole('student'), async (req, res) => 
        ORDER BY s.scheduled_at DESC`,
       [req.userId]
     );
-    res.json({ lessons: result.rows });
+    res.json({ lessons: result.rows, server_time: new Date().toISOString() });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

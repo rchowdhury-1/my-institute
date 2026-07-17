@@ -1,16 +1,23 @@
 /**
  * Session generation engine for weekly schedules.
  *
- * Slot times are stored as London time (Europe/London).
- * The generator converts to UTC before inserting sessions.
- * DST transitions are handled by date-fns-tz automatically.
+ * Slot times are wall-clock times in OPERATIONAL_TZ — the single timezone
+ * the admin thinks in when entering schedule times. The generator converts
+ * to UTC before inserting sessions. DST transitions are handled by
+ * date-fns-tz automatically.
+ *
+ * OPERATIONAL_TZ must stay in sync with the frontend constant in
+ * lib/datetime.ts. Changing it changes the meaning of every stored slot
+ * time — all active schedules must be wiped and regenerated afterwards
+ * (POST /cron/regenerate-all), otherwise on-demand generation creates
+ * duplicate sessions at the shifted instants.
  */
 const { pool } = require('../db');
 const { fromZonedTime } = require('date-fns-tz');
 const { addDays, startOfDay, format } = require('date-fns');
 const { v4: uuidv4 } = require('uuid');
 
-const LONDON = 'Europe/London';
+const OPERATIONAL_TZ = 'Africa/Cairo';
 const HORIZON_DAYS = 28; // 4-week rolling window
 const VALID_SUBJECTS = ['quran', 'arabic', 'islamic_studies'];
 
@@ -39,15 +46,17 @@ function getMatchingDates(dayStr, fromDate, toDate) {
 }
 
 /**
- * Convert a London-time HH:MM on a specific date to a UTC Date object.
+ * Convert an OPERATIONAL_TZ wall-clock HH:MM on a specific date to a UTC Date.
  */
-function londonToUTC(date, timeStr) {
+function slotToUTC(date, timeStr) {
   const [hours, minutes] = timeStr.split(':').map(Number);
-  // Build a date string in London time
   const dateStr = format(date, 'yyyy-MM-dd');
-  const londonDateTime = new Date(`${dateStr}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`);
-  // fromZonedTime converts a "wall clock" time in a zone to UTC
-  return fromZonedTime(londonDateTime, LONDON);
+  // Pass the string straight to fromZonedTime — a Date intermediate would be
+  // parsed in the server's own zone before reinterpretation
+  return fromZonedTime(
+    `${dateStr}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`,
+    OPERATIONAL_TZ
+  );
 }
 
 /**
@@ -82,7 +91,7 @@ async function generateSessionsForSchedule(schedule) {
     const dates = getMatchingDates(slot.day, today, horizon);
 
     for (const targetDate of dates) {
-      const sessionTimeUTC = londonToUTC(targetDate, slot.time);
+      const sessionTimeUTC = slotToUTC(targetDate, slot.time);
 
       // Skip if in the past
       if (sessionTimeUTC <= now) {
@@ -91,13 +100,13 @@ async function generateSessionsForSchedule(schedule) {
       }
 
       // Idempotency check: any session (any status except nothing excluded) at this
-      // schedule + London date + London time already exists?
+      // schedule + operational-zone date + operational-zone time already exists?
       const existing = await pool.query(
         `SELECT id FROM sessions
          WHERE schedule_id = $1
-           AND DATE(scheduled_at AT TIME ZONE 'Europe/London') = $2
-           AND TO_CHAR(scheduled_at AT TIME ZONE 'Europe/London', 'HH24:MI') = $3`,
-        [schedule.id, format(targetDate, 'yyyy-MM-dd'), slot.time]
+           AND DATE(scheduled_at AT TIME ZONE $4) = $2
+           AND TO_CHAR(scheduled_at AT TIME ZONE $4, 'HH24:MI') = $3`,
+        [schedule.id, format(targetDate, 'yyyy-MM-dd'), slot.time, OPERATIONAL_TZ]
       );
 
       if (existing.rows.length > 0) {
@@ -235,7 +244,8 @@ module.exports = {
   generateAllSchedules,
   wipeAndRegenerate,
   wipeFutureSessions,
+  OPERATIONAL_TZ,
   // Exported for testing
   getMatchingDates,
-  londonToUTC,
+  slotToUTC,
 };
