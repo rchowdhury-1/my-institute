@@ -232,25 +232,26 @@ test.describe("Admin Students Page", () => {
   test("T10: reset password shows confirm panel then success banner", async ({ page }) => {
     await loginAndNavigate(page);
 
-    // Ensure a student exists
-    const listVisible = await page.locator(".space-y-4").isVisible().catch(() => false);
-    if (!listVisible) {
-      await safeClick(page, '[data-testid="btn-add-student"]');
-      await page.fill('[data-testid="input-display-name"]', "T10 Reset Student");
-      await page.fill('[data-testid="input-email"]', uniqueEmail("t10"));
-      await page.fill('[data-testid="input-hourly-rate"]', "20");
-      await page.click('[data-testid="btn-generate-password"]');
-      await page.click('[data-testid="btn-submit-create"]');
-      await expect(page.locator('[data-testid="success-banner"]')).toBeVisible({ timeout: 15_000 });
-      await page.locator('[data-testid="btn-dismiss-success"]').click();
-    }
+    // Always create our own disposable student for this test — never assume
+    // the list is empty and fall back to "first card", which (with real
+    // students already in production) would reset a real student's password.
+    const email = uniqueEmail("t10");
+    await safeClick(page, '[data-testid="btn-add-student"]');
+    await page.fill('[data-testid="input-display-name"]', "T10 Reset Student");
+    await page.fill('[data-testid="input-email"]', email);
+    await page.fill('[data-testid="input-hourly-rate"]', "20");
+    await page.click('[data-testid="btn-generate-password"]');
+    await page.click('[data-testid="btn-submit-create"]');
+    await expect(page.locator('[data-testid="success-banner"]')).toBeVisible({ timeout: 15_000 });
+    await page.locator('[data-testid="btn-dismiss-success"]').click();
 
-    const firstCard = page.locator(".space-y-4 > div").first();
-    await firstCard.scrollIntoViewIfNeeded();
-    await firstCard.locator('[data-testid="btn-reset-password"]').click();
+    // Scope every action to this specific student's card, not ".first()"
+    const card = page.locator('[data-testid^="student-card-"]').filter({ hasText: email });
+    await card.scrollIntoViewIfNeeded();
+    await card.locator('[data-testid="btn-reset-password"]').click();
 
-    await expect(firstCard.locator('[data-testid="reset-confirm-panel"]')).toBeVisible();
-    await firstCard.locator('[data-testid="btn-reset-confirm"]').click();
+    await expect(card.locator('[data-testid="reset-confirm-panel"]')).toBeVisible();
+    await card.locator('[data-testid="btn-reset-confirm"]').click();
 
     await expect(page.locator('[data-testid="reset-banner"]')).toBeVisible({ timeout: 10_000 });
     const newPw = await page.locator('[data-testid="reset-temp-password"]').textContent();
