@@ -23,7 +23,7 @@ if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
 }
 
 const STUDENT_ID = "3de0a33b-93bf-4041-9ae0-770a290626d9";
-const TEACHER_ID = "c084e832-ebdb-4152-83f6-ba923e5655db";
+const TEST_TEACHER_EMAIL = "playwright-teacher@phase35test.local";
 
 // Random slot times using a wide range (00:00-23:59) with random base.
 // Uses a prime-number step (97 minutes) to spread across the full day
@@ -70,17 +70,64 @@ async function getStudentToken(request: APIRequestContext) {
   return getToken(request, "playwright-student@phase35test.local", tempPassword);
 }
 
+// Dedicated disposable teacher fixture, found-or-created by email — mirrors
+// the playwright-student pattern. Must NEVER be a real teacher's id/email:
+// resetting a fixture's password/pay-rate is safe, doing so to a real
+// teacher's account (as earlier revisions of this suite did) locks a real
+// person out of their account and overwrites their real salary rate on
+// every CI run.
+let testTeacherIdCache: string | null = null;
+async function getTestTeacherId(request: APIRequestContext): Promise<string> {
+  if (testTeacherIdCache) return testTeacherIdCache;
+
+  const adminToken = await getAdminToken(request);
+  const findExisting = async () => {
+    const listRes = await request.get(`${API}/admin/teachers`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const { teachers } = await listRes.json();
+    return teachers.find((t: { id: string; email: string }) => t.email === TEST_TEACHER_EMAIL);
+  };
+
+  let teacher = await findExisting();
+  if (!teacher) {
+    const createRes = await request.post(`${API}/admin/teachers`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      data: {
+        display_name: "Playwright Test Teacher",
+        email: TEST_TEACHER_EMAIL,
+        send_email: false,
+      },
+    });
+    teacher = createRes.status() === 409 ? await findExisting() : (await createRes.json()).teacher;
+  }
+  testTeacherIdCache = teacher.id;
+  return teacher.id;
+}
+
+async function getTeacherToken(request: APIRequestContext): Promise<string> {
+  const teacherId = await getTestTeacherId(request);
+  const adminToken = await getAdminToken(request);
+  const resetRes = await request.post(`${API}/admin/teachers/${teacherId}/reset-password`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    data: { send_email: false },
+  });
+  const { tempPassword } = await resetRes.json();
+  return getToken(request, TEST_TEACHER_EMAIL, tempPassword);
+}
+
 // Helpers
 async function createSchedule(
   request: APIRequestContext,
   overrides: Record<string, any> = {}
 ) {
   const token = await getAdminToken(request);
+  const teacherId = await getTestTeacherId(request);
   const t1 = uniqueSlotTime();
   const t2 = uniqueSlotTime();
   const data = {
     student_id: STUDENT_ID,
-    teacher_id: TEACHER_ID,
+    teacher_id: teacherId,
     subject: "quran",
     default_duration: 60,
     slots: [
@@ -296,12 +343,13 @@ test("attendance: teacher+student attended → completed", async ({
   request,
 }) => {
   const token = await getAdminToken(request);
+  const teacherId = await getTestTeacherId(request);
   const sessionTime = uniqueAttendanceTime();
   const createRes = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
       student_id: STUDENT_ID,
-      teacher_id: TEACHER_ID,
+      teacher_id: teacherId,
       scheduled_at: sessionTime,
       duration_minutes: 60,
       subject: "quran",
@@ -331,12 +379,13 @@ test("attendance: teacher attended, student didn't → no_show", async ({
   request,
 }) => {
   const token = await getAdminToken(request);
+  const teacherId = await getTestTeacherId(request);
   const sessionTime = uniqueAttendanceTime();
   const createRes = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
       student_id: STUDENT_ID,
-      teacher_id: TEACHER_ID,
+      teacher_id: teacherId,
       scheduled_at: sessionTime,
       duration_minutes: 60,
       subject: "quran",
@@ -362,12 +411,13 @@ test("attendance: teacher didn't attend → cancelled_teacher", async ({
   request,
 }) => {
   const token = await getAdminToken(request);
+  const teacherId = await getTestTeacherId(request);
   const sessionTime = uniqueAttendanceTime();
   const createRes = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
       student_id: STUDENT_ID,
-      teacher_id: TEACHER_ID,
+      teacher_id: teacherId,
       scheduled_at: sessionTime,
       duration_minutes: 60,
       subject: "quran",
@@ -393,13 +443,14 @@ test("teacher cannot mark attendance too early (ATTENDANCE_TOO_EARLY)", async ({
   request,
 }) => {
   const token = await getAdminToken(request);
+  const teacherId = await getTestTeacherId(request);
   // Session 48h in the future — teacher can't mark yet
   const sessionTime = new Date(Date.now() + 48 * 3600000).toISOString();
   const createRes = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
       student_id: STUDENT_ID,
-      teacher_id: TEACHER_ID,
+      teacher_id: teacherId,
       scheduled_at: sessionTime,
       duration_minutes: 60,
       subject: "quran",
@@ -408,40 +459,8 @@ test("teacher cannot mark attendance too early (ATTENDANCE_TOO_EARLY)", async ({
   expect(createRes.status()).toBe(201);
   const session = (await createRes.json()).session;
 
-  // Get teacher token
   const adminToken = token;
-  const resetRes = await request.post(
-    `${API}/admin/teachers/${TEACHER_ID}/reset-password`,
-    {
-      headers: { Authorization: `Bearer ${adminToken}` },
-      data: { send_email: false },
-    }
-  );
-  const resetBody = await resetRes.json();
-  if (!resetBody.tempPassword) {
-    // Teacher password reset not supported — skip test
-    await deleteSession(request, session.id);
-    test.skip();
-    return;
-  }
-
-  // Get teacher email
-  const teachersRes = await request.get(`${API}/admin/teachers`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-  });
-  const teachers = (await teachersRes.json()).teachers || [];
-  const teacher = teachers.find((t: any) => t.id === TEACHER_ID);
-  if (!teacher) {
-    await deleteSession(request, session.id);
-    test.skip();
-    return;
-  }
-
-  const teacherToken = await getToken(
-    request,
-    teacher.email,
-    resetBody.tempPassword
-  );
+  const teacherToken = await getTeacherToken(request);
 
   const attRes = await request.patch(
     `${API}/sessions/${session.id}/attendance`,
@@ -501,12 +520,13 @@ test("no_show decrements hours balance by session duration (30 min = 0.5)", asyn
   const scheduleId = created.schedule.id;
 
   // Create a manual session linked to this schedule (far future for admin marking)
+  const teacherId = await getTestTeacherId(request);
   const sessionTime = uniqueAttendanceTime();
   const createRes = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
       student_id: STUDENT_ID,
-      teacher_id: TEACHER_ID,
+      teacher_id: teacherId,
       scheduled_at: sessionTime,
       duration_minutes: 60,
       subject: "quran",
@@ -597,11 +617,12 @@ test("create schedule without hours is rejected (required field)", async ({
   request,
 }) => {
   const token = await getAdminToken(request);
+  const teacherId = await getTestTeacherId(request);
   const res = await request.post(`${API}/admin/weekly-schedules`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
       student_id: STUDENT_ID,
-      teacher_id: TEACHER_ID,
+      teacher_id: teacherId,
       subject: "quran",
       default_duration: 60,
       slots: [{ day: "mon", time: uniqueSlotTime(), duration: 60 }],
@@ -783,9 +804,10 @@ test("set pay rate and verify salary in teacher-hours", async ({
   request,
 }) => {
   const token = await getAdminToken(request);
+  const teacherId = await getTestTeacherId(request);
 
   const payRes = await request.patch(
-    `${API}/admin/teachers/${TEACHER_ID}/pay-rate`,
+    `${API}/admin/teachers/${teacherId}/pay-rate`,
     {
       headers: { Authorization: `Bearer ${token}` },
       data: { pay_rate_per_hour: 15.0, pay_currency: "GBP" },
@@ -797,7 +819,7 @@ test("set pay rate and verify salary in teacher-hours", async ({
   expect(payBody.teacher.pay_currency).toBe("GBP");
 
   const hoursRes = await request.get(
-    `${API}/admin/teacher-hours?teacher_id=${TEACHER_ID}`,
+    `${API}/admin/teacher-hours?teacher_id=${teacherId}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   expect(hoursRes.status()).toBe(200);

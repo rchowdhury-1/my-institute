@@ -309,28 +309,28 @@ test.describe("Admin Teachers Page", () => {
   }) => {
     await loginAndNavigate(page);
 
-    // Ensure a teacher exists
-    const listVisible = await page.locator(".space-y-4").isVisible().catch(() => false);
-    if (!listVisible) {
-      await safeClick(page, "text=Add Teacher");
-      await page.fill('[data-testid="input-display-name"]', "T10 Reset Teacher");
-      await page.fill('[data-testid="input-email"]', uniqueEmail("t10"));
-      await page.click('[data-testid="btn-generate-password"]');
-      await page.click('[data-testid="btn-submit-create"]');
-      await expect(page.locator('[data-testid="success-banner"]')).toBeVisible({ timeout: 10_000 });
-      await page.locator('[data-testid="success-banner"] button').click();
-    }
+    // Always create our own disposable teacher for this test — never assume
+    // the list is empty and fall back to "first card", which (with real
+    // teachers already in production) would reset a real teacher's password
+    // and lock them out of their account.
+    const email = uniqueEmail("t10");
+    await safeClick(page, "text=Add Teacher");
+    await page.fill('[data-testid="input-display-name"]', "T10 Reset Teacher");
+    await page.fill('[data-testid="input-email"]', email);
+    await page.click('[data-testid="btn-generate-password"]');
+    await page.click('[data-testid="btn-submit-create"]');
+    await expect(page.locator('[data-testid="success-banner"]')).toBeVisible({ timeout: 10_000 });
+    await page.locator('[data-testid="success-banner"] button').click();
 
-    // Click Reset password on first card
-    await page.locator('[data-testid="btn-reset-password"]').first().click();
+    // Scope every action to this specific teacher's card, not ".first()"
+    const teacherCard = page.locator('[data-testid^="teacher-card-"]').filter({ hasText: email });
+    await teacherCard.locator('[data-testid="btn-reset-password"]').click();
 
     // Confirm panel appears
-    await expect(
-      page.locator('[data-testid="reset-confirm-panel"]').first()
-    ).toBeVisible();
+    await expect(teacherCard.locator('[data-testid="reset-confirm-panel"]')).toBeVisible();
 
     // Confirm
-    await page.locator('[data-testid="btn-reset-confirm"]').first().click();
+    await teacherCard.locator('[data-testid="btn-reset-confirm"]').click();
 
     // Reset banner appears
     await expect(page.locator('[data-testid="reset-banner"]')).toBeVisible({

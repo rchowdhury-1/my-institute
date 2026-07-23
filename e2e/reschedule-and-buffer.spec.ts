@@ -6,6 +6,9 @@
  * Prerequisites:
  *   - Backend running on http://localhost:5001
  *   - A seeded test student account (see STUDENT_ID below)
+ *   - Dedicated test teacher fixtures are found-or-created automatically
+ *     (see getTestTeacherId) — tests must never reset a real teacher's
+ *     password or reuse a real teacher's account as a login fixture.
  */
 
 import { test, expect, APIRequestContext } from "@playwright/test";
@@ -20,7 +23,8 @@ if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
 }
 
 const STUDENT_ID = "3de0a33b-93bf-4041-9ae0-770a290626d9";
-const TEACHER_ID = "c084e832-ebdb-4152-83f6-ba923e5655db";
+const TEST_TEACHER_EMAIL = "playwright-teacher@phase35test.local";
+const TEST_TEACHER2_EMAIL = "playwright-teacher2@phase35test.local";
 
 async function getToken(request: APIRequestContext, email: string, password: string): Promise<string> {
   const res = await request.post(`${API}/auth/login`, { data: { email, password } });
@@ -40,6 +44,56 @@ async function getStudentToken(request: APIRequestContext) {
   });
   const { tempPassword } = await resetRes.json();
   return getToken(request, "playwright-student@phase35test.local", tempPassword);
+}
+
+// Dedicated disposable teacher fixtures, found-or-created by email — mirrors
+// the playwright-student pattern. Tests must NEVER hardcode a real teacher's
+// id/email here: resetting a fixture's password is safe, resetting a real
+// teacher's password (as earlier revisions of this suite did) locks a real
+// person out of their account on every CI run.
+const testTeacherIdCache = new Map<string, string>();
+async function getTestTeacherId(
+  request: APIRequestContext,
+  email: string = TEST_TEACHER_EMAIL,
+  displayName: string = "Playwright Test Teacher"
+): Promise<string> {
+  const cached = testTeacherIdCache.get(email);
+  if (cached) return cached;
+
+  const adminToken = await getAdminToken(request);
+  const findExisting = async () => {
+    const listRes = await request.get(`${API}/admin/teachers`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const { teachers } = await listRes.json();
+    return teachers.find((t: { email: string }) => t.email === email);
+  };
+
+  let teacher = await findExisting();
+  if (!teacher) {
+    const createRes = await request.post(`${API}/admin/teachers`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      data: { display_name: displayName, email, send_email: false },
+    });
+    teacher = createRes.status() === 409 ? await findExisting() : (await createRes.json()).teacher;
+  }
+  testTeacherIdCache.set(email, teacher.id);
+  return teacher.id;
+}
+
+async function getTeacherToken(
+  request: APIRequestContext,
+  email: string = TEST_TEACHER_EMAIL,
+  displayName: string = "Playwright Test Teacher"
+): Promise<string> {
+  const teacherId = await getTestTeacherId(request, email, displayName);
+  const adminToken = await getAdminToken(request);
+  const resetRes = await request.post(`${API}/admin/teachers/${teacherId}/reset-password`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    data: { send_email: false },
+  });
+  const { tempPassword } = await resetRes.json();
+  return getToken(request, email, tempPassword);
 }
 
 // Random offset generator — avoids collisions between repeated test runs.
@@ -65,9 +119,10 @@ async function createTestSession(request: APIRequestContext, hoursFromNow: numbe
   } else {
     time = new Date(Date.now() + hoursFromNow * 3600000).toISOString();
   }
+  const teacherId = await getTestTeacherId(request);
   const res = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: { student_id: STUDENT_ID, teacher_id: TEACHER_ID, scheduled_at: time, duration_minutes: 60, subject: "quran" },
+    data: { student_id: STUDENT_ID, teacher_id: teacherId, scheduled_at: time, duration_minutes: 60, subject: "quran" },
   });
   expect(res.status()).toBe(201);
   return (await res.json()).session;
@@ -97,9 +152,10 @@ test("student gets SESSION_PAST for an already-passed session", async ({ request
   // Create a session 2 days ago (still marked scheduled)
   const token = await getAdminToken(request);
   const pastTime = new Date(Date.now() - 48 * 3600000).toISOString();
+  const teacherId = await getTestTeacherId(request);
   const res = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: { student_id: STUDENT_ID, teacher_id: TEACHER_ID, scheduled_at: pastTime, duration_minutes: 60, subject: "quran" },
+    data: { student_id: STUDENT_ID, teacher_id: teacherId, scheduled_at: pastTime, duration_minutes: 60, subject: "quran" },
   });
   const session = (await res.json()).session;
 
@@ -375,9 +431,10 @@ test("student cancels own pending request → cancelled_by_student", async ({ re
 
 test("student cannot create request for someone else's session", async ({ request }) => {
   const adminToken = await getAdminToken(request);
+  const teacherId = await getTestTeacherId(request);
   const sessRes = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${adminToken}` },
-    data: { student_id: "bf4b7e99-548d-4a09-834c-656bb6ca83bc", teacher_id: TEACHER_ID,
+    data: { student_id: "bf4b7e99-548d-4a09-834c-656bb6ca83bc", teacher_id: teacherId,
             scheduled_at: "2026-07-29T05:00:00Z", duration_minutes: 60, subject: "quran" },
   });
   const session = (await sessRes.json()).session;
@@ -398,15 +455,10 @@ test("teacher cannot approve another teacher's session request", async ({ reques
     data: { session_id: session.id, proposed_at: uniqueProposedTime() },
   });
   const reqId = (await createRes.json()).request.id;
-  // Login as Miss Abla (different teacher)
-  const adminToken = await getAdminToken(request);
-  const resetRes = await request.post(`${API}/admin/teachers/0570342b-3f2d-40ea-9cde-8ea58a4f14ff/reset-password`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    data: { send_email: false },
-  });
-  if (resetRes.status() !== 200) { await deleteSession(request, session.id); return; }
-  const { tempPassword } = await resetRes.json();
-  const otherToken = await getToken(request, "msabla.myinstitute@gmail.com", tempPassword);
+  // Login as a second, distinct dedicated test teacher (different from the
+  // one linked to the session) — proves cross-teacher authorization denial
+  // without touching any real teacher's account.
+  const otherToken = await getTeacherToken(request, TEST_TEACHER2_EMAIL, "Playwright Test Teacher 2");
   const approveRes = await request.patch(`${API}/reschedule-requests/${reqId}/approve`, {
     headers: { Authorization: `Bearer ${otherToken}` },
     data: {},
@@ -416,13 +468,7 @@ test("teacher cannot approve another teacher's session request", async ({ reques
 });
 
 test("teacher homework on unrelated student → NOT_YOUR_STUDENT", async ({ request }) => {
-  const adminToken = await getAdminToken(request);
-  const resetRes = await request.post(`${API}/admin/teachers/${TEACHER_ID}/reset-password`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    data: { send_email: false },
-  });
-  const { tempPassword } = await resetRes.json();
-  const teacherToken = await getToken(request, "mohamedebnyousef20@gmail.com", tempPassword);
+  const teacherToken = await getTeacherToken(request);
   const res = await request.post(`${API}/homework`, {
     headers: { Authorization: `Bearer ${teacherToken}` },
     data: { student_id: "61337f84-75f4-4365-85bb-ab89c7046f3f", title: "_TEST_ unrelated" },
@@ -435,13 +481,7 @@ test("teacher CAN create homework for their own student", async ({ request }) =>
   // The ownership check requires a session linking this teacher and student —
   // create one rather than depending on whatever production data holds
   const session = await createTestSession(request, 48);
-  const adminToken = await getAdminToken(request);
-  const resetRes = await request.post(`${API}/admin/teachers/${TEACHER_ID}/reset-password`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    data: { send_email: false },
-  });
-  const { tempPassword } = await resetRes.json();
-  const teacherToken = await getToken(request, "mohamedebnyousef20@gmail.com", tempPassword);
+  const teacherToken = await getTeacherToken(request);
   const res = await request.post(`${API}/homework`, {
     headers: { Authorization: `Bearer ${teacherToken}` },
     data: { student_id: STUDENT_ID, title: "_TEST_ related hw" },
@@ -493,9 +533,10 @@ test("reschedule approval notification uses dual-timezone format", async ({ requ
 // Helper: create a session at an exact time with custom duration
 async function createSessionAt(request: APIRequestContext, scheduledAt: string, durationMinutes: number = 60) {
   const token = await getAdminToken(request);
+  const teacherId = await getTestTeacherId(request);
   const res = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: { student_id: STUDENT_ID, teacher_id: TEACHER_ID, scheduled_at: scheduledAt, duration_minutes: durationMinutes, subject: "quran" },
+    data: { student_id: STUDENT_ID, teacher_id: teacherId, scheduled_at: scheduledAt, duration_minutes: durationMinutes, subject: "quran" },
   });
   expect(res.status()).toBe(201);
   return (await res.json()).session;
