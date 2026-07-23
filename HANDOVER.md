@@ -376,6 +376,8 @@ Still feature-flagged off (`FEATURE_MESSAGING` on Render, `NEXT_PUBLIC_FEATURE_M
 
 **DO NOT DELETE the test student account** `playwright-student@phase35test.local` (display name: "rizwantest", ID: `3de0a33b-...`). It is used by the Playwright test suite. Deleting it will break CI.
 
+**DO NOT DELETE the test teacher accounts** `playwright-teacher@phase35test.local` and `playwright-teacher2@phase35test.local`. Added 2026-07-23 after discovering the suite had been resetting a real teacher's password and pay rate on every CI run (see change log 8.4) — these disposable fixtures are found-or-created automatically by the tests and take their place. Never hardcode a real teacher's id/email as a test fixture; use `getTestTeacherId`/`getTeacherToken` in the relevant spec instead.
+
 **Test coverage scope:**
 - API-level tests: 21 tests covering reschedule requests, cancellation buffer, admin edit, legacy route gate, homework auth, notification format. These run in CI and catch backend regressions.
 - Frontend rendering (modals, WhatsApp buttons, buffer UX): tested manually. No automated browser-level tests.
