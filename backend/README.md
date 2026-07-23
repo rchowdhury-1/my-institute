@@ -1,702 +1,147 @@
-# FreelancerCRM — Backend API
+# MY Institute — Backend API
 
-Node.js + Express REST API powering the FreelancerCRM application. Handles authentication, client/project/invoice management, Stripe payments, PDF generation, and email delivery.
-
----
+Express REST API for the MY Institute tutoring platform. Deployed on Render, backed by Neon PostgreSQL. Consumed by the Next.js frontend in the repo root — see the [root README](../README.md) for the platform overview and [`../HANDOVER.md`](../HANDOVER.md) for day-to-day operations.
 
 ## Overview
 
-- **Runtime:** Node.js with Express
-- **Database:** PostgreSQL via `pg` (connection pooling via Supabase Transaction Pooler)
-- **Auth:** JWT access tokens (15 min) + refresh tokens (7 days, httpOnly cookie)
-- **Payments:** Stripe Checkout + webhook signature verification
-- **Email:** Resend with HTML emails and PDF attachments
-- **PDF:** PDFKit — generates styled A4 invoices in memory
+- **Runtime:** Node.js 18+ / Express 4
+- **Database:** PostgreSQL via `pg` (Neon pooler URL)
+- **Auth:** JWT — 15-min access tokens (Bearer header) + 7-day refresh tokens (httpOnly cookie, stored server-side in `refresh_tokens`)
+- **Email:** Resend (verification, credentials, notifications) with a circuit breaker (`src/lib/email-guard.js`, max 20 sends/60s) as a runaway-loop backstop
+- **Errors:** Sentry (active only when `SENTRY_DSN` is set); global handler returns generic 500s, never stack traces
 
----
-
-## Running Locally
-
-### Prerequisites
-
-- Node.js 18+
-- A PostgreSQL database (Supabase free tier recommended)
-
-### Steps
+## Running locally
 
 ```bash
 cd backend
-cp .env.example .env
-# Fill in your .env values
 npm install
-npm run dev
+cp .env.example .env   # fill in values
+npm run dev            # nodemon, http://localhost:5000
 ```
 
-Server starts on `http://localhost:5000` (or `PORT` from `.env`).
+`GET /health` reports server + DB status.
 
-On startup, `initDb()` runs `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements automatically — no separate migration step needed.
+### Migrations
 
----
+`initDb()` runs before the server listens: it applies every `backend/migrations/*.sql` file not yet recorded in the `migrations_applied` table, in filename order. There is no separate migrate command — a deploy applies pending migrations automatically. 20 migrations to date; `migrations_applied` is the source of truth for what has run.
 
-## Environment Variables
+### Seeding the first admin
+
+```bash
+SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... node seed-admin.js
+```
+
+Credentials come from env vars only — nothing is hardcoded. The seeded admin has `must_change_password` set.
+
+## Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `PORT` | No | Port to listen on. Defaults to 5000 |
-| `NODE_ENV` | Yes | `development` or `production`. Controls SSL and cookie settings |
-| `DATABASE_URL` | Yes | Full PostgreSQL connection string. Use Supabase Transaction Pooler URL on port **6543** |
-| `JWT_SECRET` | Yes | Secret for signing JWT access tokens. Generate: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
-| `REFRESH_SECRET` | Yes | Secret for signing refresh tokens. Generate separately from JWT_SECRET |
-| `STRIPE_SECRET_KEY` | Yes | Stripe secret key (`sk_test_...` or `sk_live_...`) |
-| `STRIPE_WEBHOOK_SECRET` | Yes | Stripe webhook signing secret (`whsec_...`) |
-| `RESEND_API_KEY` | Yes | Resend API key (`re_...`) |
-| `EMAIL_FROM` | No | Sender address. Defaults to `onboarding@resend.dev` |
-| `BACKEND_URL` | Yes | Full URL of this server — no trailing slash. Used in verification email links |
-| `CLIENT_URL` | Yes | Full frontend URL — no trailing slash. Used for CORS and post-verification redirects |
+| `DATABASE_URL` | Yes | Neon PostgreSQL connection string (pooler URL) |
+| `JWT_SECRET` | Yes | Access-token secret — `openssl rand -hex 32` |
+| `JWT_REFRESH_SECRET` | Yes | Refresh-token secret — generate separately |
+| `CLIENT_URL` | Yes | Frontend URL — CORS allow-list + email redirects |
+| `FRONTEND_URL` | No | Additional CORS origin (e.g. the www domain) |
+| `BACKEND_URL` | Yes | This server's public URL — used in verification links |
+| `RESEND_API_KEY` | No | Resend key; without it, emails are disabled (logged at boot). Sender address is hardcoded in `src/email.js` (`noreply@my-institute.com`) |
+| `CONTACT_EMAIL` | No | Admin recipient for notification emails |
+| `WHATSAPP_NUMBER` | No | Institute WhatsApp number (fallback in `src/lib/brand.js`) |
+| `PORT` | No | Defaults to `5000` |
+| `SENTRY_DSN` | No | Enables Sentry error tracking |
+| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | seed only | Required by `seed-admin.js` |
+| `FEATURE_EXAMS`, `FEATURE_TEACHER_SALARY`, `FEATURE_MESSAGING`, `FEATURE_RECORDED_COURSES`, `FEATURE_SCHOLARSHIP_SPONSORSHIP` | No | Feature flags — the route tree 404s unless set to `'true'` |
 
----
+## Auth & authorization
 
-## Database Schema
+`src/middleware/auth.js` provides `requireAuth` (verifies the Bearer token) and `requireRole(...roles)`. Every protected router mounts them; ownership checks (a teacher can only touch their own sessions/students, a student their own data) are enforced per-handler in the session, homework, and reschedule flows. Roles: `student`, `teacher`, `admin`, `supervisor`. Refresh re-reads the role from the DB, so a demoted user loses privilege within 15 minutes.
 
-All tables are created automatically on first startup via `initDb()` in `src/db.js`.
+## API reference
 
-### `users`
+Feature-flagged mounts are marked ⚑ — they 404 unless their flag is `'true'`.
 
-| Column | Type | Notes |
+### `/auth`
+| Method | Route | Description |
 |---|---|---|
-| `id` | TEXT | UUID primary key |
-| `name` | TEXT | Required |
-| `email` | TEXT | Unique |
-| `password_hash` | TEXT | bcrypt hash |
-| `created_at` | TEXT | ISO timestamp |
-| `email_verified` | BOOLEAN | Defaults to `false`. Must be `true` to log in |
-| `verification_token` | TEXT | Cleared after email is verified |
+| POST | `/auth/register` | Registration — public callers get `student`; `teacher`/`admin`/`supervisor` requires an admin JWT |
+| POST | `/auth/login` | Login → access token in body, refresh cookie set |
+| GET | `/auth/verify-email` | Email verification link target |
+| POST | `/auth/refresh` | New access token from refresh cookie |
+| POST | `/auth/logout` | Revoke refresh token |
+| POST | `/auth/change-password` | Change own password (clears `must_change_password`) |
+| GET | `/auth/me` | Current user profile |
 
-### `refresh_tokens`
-
-| Column | Type | Notes |
+### `/students`, `/teachers` (self-service)
+| Method | Route | Description |
 |---|---|---|
-| `id` | TEXT | UUID primary key |
-| `token` | TEXT | Unique. The JWT refresh token value |
-| `user_id` | TEXT | FK → users |
-| `expires_at` | TEXT | ISO timestamp |
-| `created_at` | TEXT | ISO timestamp |
+| GET | `/students/me` | Profile + `schedules_summary` (hours balance) + upcoming lessons |
+| GET | `/students/lessons` | Full session history (includes `server_time` for clock-skew correction) |
+| GET | `/students/payments` | Own payment records |
+| GET | `/teachers/me` | Teacher profile |
+| GET | `/teachers/students` | The teacher's students |
+| GET | `/teachers/lessons` | Full schedule (includes `server_time`) |
+| PATCH | `/teachers/lessons/:id` | Update lesson status / notes |
 
-### `clients`
-
-| Column | Type | Notes |
+### `/sessions`
+| Method | Route | Description |
 |---|---|---|
-| `id` | TEXT | UUID primary key |
-| `user_id` | TEXT | FK → users (cascade delete) |
-| `name` | TEXT | Required |
-| `email` | TEXT | Optional |
-| `phone` | TEXT | Optional |
-| `company` | TEXT | Optional |
-| `notes` | TEXT | Optional |
-| `created_at` | TEXT | ISO timestamp |
+| GET | `/sessions` | List sessions (role-scoped; triggers on-demand generation) |
+| POST | `/sessions` | Create a one-off session (admin/supervisor) |
+| PATCH | `/sessions/:id` | Edit session (time, zoom link override) |
+| DELETE | `/sessions/:id` | Delete (nullifies reschedule children first) |
+| PATCH | `/sessions/:id/cancel` | Cancel |
+| PATCH | `/sessions/:id/reschedule` | Direct reschedule |
+| PATCH | `/sessions/:id/attendance` | Two-axis attendance check-in — **decrements the schedule's hours balance** by `duration_minutes / 60` on `completed` / `no_show` |
+| PATCH | `/sessions/:id/complete` | Legacy (deprecated, pre-attendance; decrements package counters only) |
 
-### `projects`
-
-| Column | Type | Notes |
+### `/admin/weekly-schedules`
+| Method | Route | Description |
 |---|---|---|
-| `id` | TEXT | UUID primary key |
-| `user_id` | TEXT | FK → users (cascade delete) |
-| `client_id` | TEXT | FK → clients (set null on delete) |
-| `title` | TEXT | Required |
-| `description` | TEXT | Optional |
-| `status` | TEXT | `not_started` / `in_progress` / `completed` |
-| `rate` | NUMERIC | Optional |
-| `rate_type` | TEXT | `hourly` or `fixed` |
-| `deadline` | TEXT | ISO date string, optional |
-| `created_at` | TEXT | ISO timestamp |
+| GET | `/` , `/:id` | List / detail (triggers on-demand generation) |
+| POST | `/` | Create schedule — `lessons_remaining` (hours) is **required**, min 0.5, steps of 0.5 |
+| PATCH | `/:id` | Edit (slot/zoom changes wipe + regenerate future sessions) |
+| DELETE | `/:id` | Deactivate (soft — archived, future sessions wiped) |
+| POST | `/:id/reactivate` | Reactivate + regenerate |
+| POST | `/:id/generate` | Manual generation for one schedule |
 
-### `invoices`
+### `/admin`
+Account provisioning and operations. Students/teachers: list, create (temp password returned once), `PATCH /:id` (edit, deactivate/reactivate via `is_active`), `POST /:id/reset-password`; `PATCH /teachers/:id/pay-rate`. Plus packages (`POST/PATCH /packages`), student payments (`GET/POST /payments/student`), free trials and scholarship applications (list + status PATCH), revert applications, sessions overview (`GET /sessions`, `POST /lessons`, `PATCH /sessions/:id`), newsfeed CRUD, and salary data (`GET /teacher-hours`).
 
-| Column | Type | Notes |
+### `/reschedule-requests`
+Student-proposed reschedules: `POST /` (propose), `GET /` (list, role-scoped), `PATCH /:id/approve`, `PATCH /:id/reject`, `DELETE /:id` (withdraw). One pending request per session (partial unique index).
+
+### `/cron`
+| Method | Route | Description |
 |---|---|---|
-| `id` | TEXT | UUID primary key |
-| `user_id` | TEXT | FK → users (cascade delete) |
-| `client_id` | TEXT | FK → clients (set null on delete) |
-| `project_id` | TEXT | FK → projects (set null on delete) |
-| `invoice_number` | TEXT | Auto-generated: `INV-YYYYMM-XXXX` |
-| `status` | TEXT | `draft` / `sent` / `paid` / `overdue` |
-| `due_date` | TEXT | ISO date string, optional |
-| `total` | NUMERIC | Computed from line items on create/update |
-| `created_at` | TEXT | ISO timestamp |
+| POST | `/cron/generate-sessions` | Manual generation sweep (admin/supervisor JWT) |
+| POST | `/cron/regenerate-all` | Wipe + regenerate future sessions for **all** active schedules — destructive; only needed after an `OPERATIONAL_TZ` change (run via the "Regenerate Sessions" GitHub workflow) |
 
-### `invoice_items`
+Despite the name, no cron job calls these — generation is on-demand (see below).
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT | UUID primary key |
-| `invoice_id` | TEXT | FK → invoices (cascade delete) |
-| `description` | TEXT | Required |
-| `quantity` | NUMERIC | Required |
-| `unit_price` | NUMERIC | Required |
+### Other mounts
+- `/homework` — create, list, submissions, `POST /:id/submit`, `PATCH /:id/grade`
+- `/notifications` — list, `PATCH /:id/read`, `PATCH /read-all`
+- `/newsfeed` (public read), `/cms` (homepage sections; admin write)
+- `/scholarship-apply`, `/revert-apply` — public form intake (unauthenticated POST)
+- ⚑ `/exams` — create/list/assign/start/submit/results (`FEATURE_EXAMS`)
+- ⚑ `/payments` — teacher salary statements (`FEATURE_TEACHER_SALARY`)
+- ⚑ `/messages` — conversations/DMs (`FEATURE_MESSAGING`)
+- ⚑ `/courses` — recorded courses + enrollment (`FEATURE_RECORDED_COURSES`)
+- ⚑ `/scholarships` — sponsor matching (`FEATURE_SCHOLARSHIP_SPONSORSHIP`)
 
-### `payments`
+## Key implementation notes
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT | UUID primary key |
-| `invoice_id` | TEXT | FK → invoices (cascade delete) |
-| `amount` | NUMERIC | Amount paid in USD |
-| `stripe_session_id` | TEXT | Stripe Checkout session ID |
-| `paid_at` | TEXT | ISO timestamp |
+**Session generation** (`src/lib/schedule-generator.js`). Sessions materialize from weekly-schedule slots over a rolling 4-week window. Generation runs lazily inside `GET /sessions` and the weekly-schedule reads — idempotent (dedup by schedule + slot-local date/time), self-healing, no scheduler infrastructure. Per-slot `duration` overrides the schedule default and is stamped onto `sessions.duration_minutes`.
 
----
+**`OPERATIONAL_TZ`** (top of `schedule-generator.js`, currently `'Africa/Cairo'`). Slot wall-clock times and the dedup query are anchored to this zone; storage is always UTC `TIMESTAMPTZ`. The frontend has a matching constant in `lib/datetime.ts` — **change both together**, then run `POST /cron/regenerate-all` immediately after deploy, or on-demand generation will duplicate every future session at the shifted instants.
 
-## API Reference
+**Hours balance.** `weekly_schedules.lessons_remaining` is `NUMERIC(6,2)` **hours** (legacy column name kept deliberately — renaming would break the deployed frontend's API contract). The attendance handler decrements by `duration_minutes / 60`, clamped at 0; hitting 0 notifies the admin, ≤ 2 hours triggers a renewal reminder.
 
-All protected routes require an `Authorization: Bearer <accessToken>` header.
+**pg NUMERIC parsing.** `src/db.js` registers a global type parser converting `NUMERIC` columns to JS numbers (node-postgres returns them as strings by default). All numeric API fields are real JSON numbers; a CI test guards this.
 
----
+**Notifications** (`src/lib/notify.js`) fan out in-app rows (and email where configured) on session/schedule events. Generation errors inside listing routes are caught and logged rather than failing the request — surfaced via Sentry when configured.
 
-### Auth — `/auth`
+**Schema.** 25 tables. Money is `DECIMAL`, statuses have CHECK constraints, FKs index every hot path; `sessions.rescheduled_from` is `ON DELETE SET NULL` (migration 019). The legacy `lessons` table was dropped in migration 017.
 
-#### `POST /auth/register`
+## Tests
 
-Register a new user. Sends a verification email — user cannot log in until verified.
-
-**Auth required:** No
-
-**Request body:**
-```json
-{
-  "name": "Jane Smith",
-  "email": "jane@example.com",
-  "password": "mypassword123"
-}
-```
-
-**Response `201`:**
-```json
-{
-  "message": "Registration successful. Please check your email to verify your account."
-}
-```
-
-**Errors:** `400` missing fields or password too short, `409` email already registered
-
----
-
-#### `GET /auth/verify-email?token=<token>`
-
-Verifies the user's email using the token from the verification email. Redirects to the frontend login page with `?verified=true` or `?verified=invalid`.
-
-**Auth required:** No
-
----
-
-#### `POST /auth/login`
-
-Log in with email and password. Returns an access token and sets a refresh token cookie.
-
-**Auth required:** No
-
-**Request body:**
-```json
-{
-  "email": "jane@example.com",
-  "password": "mypassword123"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "accessToken": "<jwt>",
-  "user": {
-    "id": "uuid",
-    "name": "Jane Smith",
-    "email": "jane@example.com"
-  }
-}
-```
-
-Sets `refreshToken` httpOnly cookie (7 days).
-
-**Errors:** `401` invalid credentials, `403` email not verified
-
----
-
-#### `POST /auth/refresh`
-
-Exchange the refresh token cookie for a new access token.
-
-**Auth required:** No (uses httpOnly cookie automatically)
-
-**Response `200`:**
-```json
-{
-  "accessToken": "<new-jwt>"
-}
-```
-
-**Errors:** `401` missing, invalid, or expired refresh token
-
----
-
-#### `POST /auth/logout`
-
-Invalidates the refresh token and clears the cookie.
-
-**Auth required:** No
-
-**Response `200`:**
-```json
-{ "message": "Logged out" }
-```
-
----
-
-#### `GET /auth/me`
-
-Get the currently authenticated user's profile.
-
-**Auth required:** Yes
-
-**Response `200`:**
-```json
-{
-  "user": {
-    "id": "uuid",
-    "name": "Jane Smith",
-    "email": "jane@example.com",
-    "created_at": "2024-01-01T00:00:00.000Z"
-  }
-}
-```
-
----
-
-#### `PUT /auth/profile`
-
-Update the authenticated user's name and/or email.
-
-**Auth required:** Yes
-
-**Request body:**
-```json
-{
-  "name": "Jane Updated",
-  "email": "jane.updated@example.com"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "user": {
-    "id": "uuid",
-    "name": "Jane Updated",
-    "email": "jane.updated@example.com",
-    "created_at": "2024-01-01T00:00:00.000Z"
-  }
-}
-```
-
-**Errors:** `409` email already in use by another account
-
----
-
-#### `PUT /auth/password`
-
-Change the authenticated user's password.
-
-**Auth required:** Yes
-
-**Request body:**
-```json
-{
-  "currentPassword": "oldpassword",
-  "newPassword": "newpassword123"
-}
-```
-
-**Response `200`:**
-```json
-{ "message": "Password updated" }
-```
-
-**Errors:** `401` current password incorrect, `400` new password too short
-
----
-
-### Clients — `/clients`
-
-All routes require auth. Users only see and modify their own clients.
-
-#### `GET /clients`
-
-**Response `200`:**
-```json
-{
-  "clients": [
-    {
-      "id": "uuid",
-      "user_id": "uuid",
-      "name": "Acme Corp",
-      "email": "contact@acme.com",
-      "phone": "+1 555 0100",
-      "company": "Acme Corp",
-      "notes": "Key account",
-      "created_at": "2024-01-01T00:00:00.000Z"
-    }
-  ]
-}
-```
-
----
-
-#### `POST /clients`
-
-**Request body:**
-```json
-{
-  "name": "Acme Corp",
-  "email": "contact@acme.com",
-  "phone": "+1 555 0100",
-  "company": "Acme Corp",
-  "notes": "Key account"
-}
-```
-
-Only `name` is required. All other fields are optional.
-
-**Response `201`:**
-```json
-{ "client": { ...clientObject } }
-```
-
----
-
-#### `PUT /clients/:id`
-
-Same body as POST. All fields required in body (pass existing values to preserve them).
-
-**Response `200`:**
-```json
-{ "client": { ...clientObject } }
-```
-
-**Errors:** `404` not found or not owned by user
-
----
-
-#### `DELETE /clients/:id`
-
-**Response `200`:**
-```json
-{ "message": "Client deleted" }
-```
-
-**Errors:** `404` not found or not owned by user
-
----
-
-### Projects — `/projects`
-
-All routes require auth.
-
-#### `GET /projects`
-
-Returns all projects with joined `client_name` and `client_company`.
-
-**Response `200`:**
-```json
-{
-  "projects": [
-    {
-      "id": "uuid",
-      "title": "Website Redesign",
-      "status": "in_progress",
-      "client_name": "Acme Corp",
-      "client_company": "Acme Corp",
-      "rate": 100,
-      "rate_type": "hourly",
-      "deadline": "2024-03-01",
-      "created_at": "2024-01-01T00:00:00.000Z"
-    }
-  ]
-}
-```
-
----
-
-#### `GET /projects/:id`
-
-Returns a single project with joined client details.
-
-**Response `200`:**
-```json
-{ "project": { ...projectObject, "client_email": "..." } }
-```
-
----
-
-#### `POST /projects`
-
-**Request body:**
-```json
-{
-  "title": "Website Redesign",
-  "client_id": "uuid",
-  "description": "Full redesign of marketing site",
-  "status": "not_started",
-  "rate": 100,
-  "rate_type": "hourly",
-  "deadline": "2024-03-01"
-}
-```
-
-Only `title` is required. `status` defaults to `not_started`.
-
-**Response `201`:**
-```json
-{ "project": { ...projectObject } }
-```
-
----
-
-#### `PUT /projects/:id`
-
-Same body as POST. Used for both full edits and drag-and-drop status changes.
-
-**Response `200`:**
-```json
-{ "project": { ...projectObject } }
-```
-
----
-
-#### `DELETE /projects/:id`
-
-**Response `200`:**
-```json
-{ "message": "Project deleted" }
-```
-
----
-
-### Invoices — `/invoices`
-
-All routes require auth.
-
-#### `GET /invoices`
-
-Returns all invoices with joined `client_name` and `project_title`.
-
-**Response `200`:**
-```json
-{
-  "invoices": [
-    {
-      "id": "uuid",
-      "invoice_number": "INV-202401-0001",
-      "status": "sent",
-      "total": 1500.00,
-      "due_date": "2024-02-01",
-      "client_name": "Acme Corp",
-      "project_title": "Website Redesign",
-      "created_at": "2024-01-01T00:00:00.000Z"
-    }
-  ]
-}
-```
-
----
-
-#### `GET /invoices/:id`
-
-Returns full invoice with all client details and line items array.
-
-**Response `200`:**
-```json
-{
-  "invoice": {
-    "id": "uuid",
-    "invoice_number": "INV-202401-0001",
-    "status": "sent",
-    "total": 1500.00,
-    "client_name": "Acme Corp",
-    "client_email": "contact@acme.com",
-    "items": [
-      {
-        "id": "uuid",
-        "description": "Frontend development",
-        "quantity": 10,
-        "unit_price": 150.00
-      }
-    ]
-  }
-}
-```
-
----
-
-#### `POST /invoices`
-
-Creates invoice and all line items in a single database transaction.
-
-**Request body:**
-```json
-{
-  "client_id": "uuid",
-  "project_id": "uuid",
-  "due_date": "2024-02-01",
-  "status": "draft",
-  "items": [
-    { "description": "Frontend development", "quantity": 10, "unit_price": 150 }
-  ]
-}
-```
-
-`items` is required and must have at least one entry. `total` is computed automatically.
-
-**Response `201`:**
-```json
-{ "invoice": { ...fullInvoiceWithItems } }
-```
-
----
-
-#### `PUT /invoices/:id`
-
-Updates invoice. If `items` is provided, replaces all line items (delete + re-insert in transaction). Total is recomputed.
-
-**Request body:** Same as POST.
-
-**Response `200`:**
-```json
-{ "invoice": { ...fullInvoiceWithItems } }
-```
-
----
-
-#### `DELETE /invoices/:id`
-
-**Response `200`:**
-```json
-{ "message": "Invoice deleted" }
-```
-
----
-
-#### `GET /invoices/:id/pdf`
-
-Generates and streams a styled PDF invoice.
-
-**Response:** Binary PDF with headers:
-```
-Content-Type: application/pdf
-Content-Disposition: attachment; filename="invoice-INV-202401-0001.pdf"
-```
-
----
-
-#### `POST /invoices/:id/send`
-
-Generates the PDF and sends it to the client's email address via Resend. If the invoice is still in `draft` status, it is automatically updated to `sent`.
-
-**Auth required:** Yes
-
-**Response `200`:**
-```json
-{ "message": "Invoice sent successfully" }
-```
-
-**Errors:** `400` client has no email address, `404` invoice not found
-
----
-
-### Billing — `/billing`
-
-#### `POST /billing/create-checkout`
-
-Creates a Stripe Checkout session for a specific invoice.
-
-**Auth required:** Yes
-
-**Request body:**
-```json
-{ "invoice_id": "uuid" }
-```
-
-**Response `200`:**
-```json
-{
-  "url": "https://checkout.stripe.com/...",
-  "sessionId": "cs_test_..."
-}
-```
-
-**Errors:** `400` invoice already paid, `404` invoice not found
-
----
-
-#### `POST /billing/webhook`
-
-Stripe webhook endpoint. Verifies the `stripe-signature` header and processes `checkout.session.completed` events to mark invoices as paid and record payments.
-
-**Auth required:** No (uses Stripe signature verification)
-
-> **Important:** This route must be registered **before** `express.json()` in `index.js` because it requires the raw request body for signature verification.
-
-**Response `200`:**
-```json
-{ "received": true }
-```
-
----
-
-### Dashboard — `/dashboard`
-
-#### `GET /dashboard/stats`
-
-Returns aggregated statistics and recent activity for the authenticated user.
-
-**Auth required:** Yes
-
-**Response `200`:**
-```json
-{
-  "totalClients": 12,
-  "activeProjects": 3,
-  "outstandingInvoices": 4500.00,
-  "totalRevenue": 28000.00,
-  "monthlyRevenue": [
-    { "month": "Nov", "revenue": 3200 },
-    { "month": "Dec", "revenue": 5100 },
-    { "month": "Jan", "revenue": 4800 }
-  ],
-  "recentClients": [...],
-  "recentProjects": [...],
-  "recentInvoices": [...]
-}
-```
-
-`monthlyRevenue` always returns the last 6 months with `0` for months with no payments.
-
----
-
-### Health Check
-
-#### `GET /health`
-
-**Auth required:** No
-
-**Response `200`:**
-```json
-{ "status": "ok" }
-```
-
----
-
-## Key Implementation Notes
-
-- **Webhook route registration order:** `express.raw()` for `/billing/webhook` must be registered before `express.json()`. Reversing this breaks Stripe signature verification.
-- **Multi-step writes:** Invoice create/update uses `pool.connect()` / `BEGIN` / `COMMIT` / `ROLLBACK` to ensure line items and invoice are written atomically.
-- **User isolation:** Every query that reads or modifies data is scoped with `WHERE user_id = $1` using `req.userId` from the JWT middleware.
-- **New columns:** Added via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in `initDb()` so existing deployments are not broken on redeploy.
-- **Stripe lazy init:** `getStripe()` initialises the client on demand — avoids crashing at startup if the key is missing in development.
+The Playwright specs in `../e2e/` exercise this API directly (auth, schedules, sessions, attendance, reschedules, homework, admin flows). They run against a live backend URL (`API_URL`) with credentials from `TEST_ADMIN_EMAIL` / `TEST_ADMIN_PASSWORD` env vars; CI runs the core suite (`reschedule-and-buffer.spec.ts`) against production on every push to master.
