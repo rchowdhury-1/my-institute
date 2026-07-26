@@ -961,7 +961,6 @@ function StudentCard({
                     Awaiting first login
                   </span>
                 )}
-                {/* Legacy badge kept for scanability; pill also carries the label */}
               </div>
 
               {/* Email + phone */}

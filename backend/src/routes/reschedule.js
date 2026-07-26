@@ -102,11 +102,11 @@ router.delete('/:id', requireRole('student'), asyncHandler(async (req, res) => {
   const reqRes = await pool.query('SELECT * FROM reschedule_requests WHERE id = $1', [req.params.id]);
   if (reqRes.rows.length === 0)
     return res.status(404).json({ error: 'Request not found' });
-  const rr = reqRes.rows[0];
+  const rescheduleRequest = reqRes.rows[0];
 
-  if (rr.student_id !== req.userId)
+  if (rescheduleRequest.student_id !== req.userId)
     return res.status(403).json({ error: 'Forbidden' });
-  if (rr.status !== 'pending')
+  if (rescheduleRequest.status !== 'pending')
     return res.status(400).json({ error: 'Only pending requests can be cancelled' });
 
   const result = await pool.query(
@@ -179,25 +179,25 @@ router.patch('/:id/approve', requireRole('teacher', 'admin', 'supervisor'), asyn
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Request not found' });
     }
-    const rr = reqRes.rows[0];
+    const rescheduleRequest = reqRes.rows[0];
 
-    if (rr.status !== 'pending') {
+    if (rescheduleRequest.status !== 'pending') {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Request is no longer pending' });
     }
 
     // Teacher can only approve their own sessions
-    if (req.userRole === 'teacher' && rr.teacher_id !== req.userId) {
+    if (req.userRole === 'teacher' && rescheduleRequest.teacher_id !== req.userId) {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'Forbidden' });
     }
 
     // Re-check teacher conflict
     const hasConflict = await hasTeacherConflict(client, {
-      teacherId: rr.teacher_id,
-      scheduledAt: rr.proposed_at,
-      durationMinutes: rr.duration_minutes,
-      excludeSessionId: rr.session_id,
+      teacherId: rescheduleRequest.teacher_id,
+      scheduledAt: rescheduleRequest.proposed_at,
+      durationMinutes: rescheduleRequest.duration_minutes,
+      excludeSessionId: rescheduleRequest.session_id,
     });
     if (hasConflict) {
       await client.query('ROLLBACK');
@@ -211,7 +211,7 @@ router.patch('/:id/approve', requireRole('teacher', 'admin', 'supervisor'), asyn
     await client.query(
       `UPDATE sessions SET status = 'rescheduled', last_modified_by = $1, updated_at = now()
        WHERE id = $2`,
-      [req.userId, rr.session_id]
+      [req.userId, rescheduleRequest.session_id]
     );
 
     // 2. Create new session with copied fields
@@ -221,10 +221,10 @@ router.patch('/:id/approve', requireRole('teacher', 'admin', 'supervisor'), asyn
          (id, student_id, teacher_id, scheduled_at, duration_minutes, subject,
           zoom_link, rate_at_creation, currency_at_creation, rescheduled_from)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [newId, rr.student_id, rr.teacher_id, rr.proposed_at,
-       rr.duration_minutes, rr.subject || 'quran',
-       rr.zoom_link, rr.rate_at_creation, rr.currency_at_creation,
-       rr.session_id]
+      [newId, rescheduleRequest.student_id, rescheduleRequest.teacher_id, rescheduleRequest.proposed_at,
+       rescheduleRequest.duration_minutes, rescheduleRequest.subject || 'quran',
+       rescheduleRequest.zoom_link, rescheduleRequest.rate_at_creation, rescheduleRequest.currency_at_creation,
+       rescheduleRequest.session_id]
     );
 
     // 3. Update request
@@ -238,18 +238,18 @@ router.patch('/:id/approve', requireRole('teacher', 'admin', 'supervisor'), asyn
     await client.query('COMMIT');
 
     // Notify student
-    const newTime = formatSessionTime(rr.proposed_at);
-    await notify(rr.student_id, 'reschedule_approved', 'Reschedule Approved',
+    const newTime = formatSessionTime(rescheduleRequest.proposed_at);
+    await notify(rescheduleRequest.student_id, 'reschedule_approved', 'Reschedule Approved',
       `Your session has been rescheduled to ${newTime}`,
       '/student/sessions');
 
     // Notify the other party (if teacher approved, notify admins; if admin approved, notify teacher)
     if (req.userRole === 'teacher') {
       await notifyAdmins('reschedule_approved', 'Reschedule Approved',
-        `${rr.student_name}'s session was approved and rescheduled to ${newTime}`, '/supervisor');
+        `${rescheduleRequest.student_name}'s session was approved and rescheduled to ${newTime}`, '/supervisor');
     } else {
-      await notify(rr.teacher_id, 'reschedule_approved', 'Reschedule Approved',
-        `${rr.student_name}'s session was rescheduled to ${newTime}`, '/teacher/dashboard');
+      await notify(rescheduleRequest.teacher_id, 'reschedule_approved', 'Reschedule Approved',
+        `${rescheduleRequest.student_name}'s session was rescheduled to ${newTime}`, '/teacher/dashboard');
     }
 
     res.json({ request: updatedReq.rows[0], new_session: newSessRes.rows[0] });
@@ -278,12 +278,12 @@ router.patch('/:id/reject', requireRole('teacher', 'admin', 'supervisor'), async
   );
   if (reqRes.rows.length === 0)
     return res.status(404).json({ error: 'Request not found' });
-  const rr = reqRes.rows[0];
+  const rescheduleRequest = reqRes.rows[0];
 
-  if (rr.status !== 'pending')
+  if (rescheduleRequest.status !== 'pending')
     return res.status(400).json({ error: 'Request is no longer pending' });
 
-  if (req.userRole === 'teacher' && rr.teacher_id !== req.userId)
+  if (req.userRole === 'teacher' && rescheduleRequest.teacher_id !== req.userId)
     return res.status(403).json({ error: 'Forbidden' });
 
   const result = await pool.query(
@@ -294,19 +294,19 @@ router.patch('/:id/reject', requireRole('teacher', 'admin', 'supervisor'), async
   );
 
   // Notify student
-  const origTime = formatSessionTime(rr.original_scheduled_at);
+  const origTime = formatSessionTime(rescheduleRequest.original_scheduled_at);
   const reasonText = rejection_reason ? ` Reason: ${rejection_reason}` : '';
-  await notify(rr.student_id, 'reschedule_rejected', 'Reschedule Rejected',
+  await notify(rescheduleRequest.student_id, 'reschedule_rejected', 'Reschedule Rejected',
     `Your reschedule request for ${origTime} was not approved.${reasonText}`,
     '/student/sessions');
 
   // Notify the other party
   if (req.userRole === 'teacher') {
     await notifyAdmins('reschedule_rejected', 'Reschedule Rejected',
-      `${rr.student_name}'s reschedule request was rejected`, '/supervisor');
+      `${rescheduleRequest.student_name}'s reschedule request was rejected`, '/supervisor');
   } else {
-    await notify(rr.teacher_id, 'reschedule_rejected', 'Reschedule Rejected',
-      `${rr.student_name}'s reschedule request was rejected`, '/teacher/dashboard');
+    await notify(rescheduleRequest.teacher_id, 'reschedule_rejected', 'Reschedule Rejected',
+      `${rescheduleRequest.student_name}'s reschedule request was rejected`, '/teacher/dashboard');
   }
 
   res.json({ request: result.rows[0] });

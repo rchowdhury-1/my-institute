@@ -68,8 +68,8 @@ router.post('/', requireRole('admin', 'supervisor'), asyncHandler(async (req, re
   const validSubjects = ['quran', 'arabic', 'islamic_studies'];
   const sessionSubject = validSubjects.includes(subject) ? subject : 'quran';
 
-  const dur = parseInt(duration_minutes) || 60;
-  const durationError = validateDuration(dur);
+  const durationMinutes = parseInt(duration_minutes) || 60;
+  const durationError = validateDuration(durationMinutes);
   if (durationError) return res.status(400).json({ error: durationError });
 
   // Snapshot the student's current rate at session creation time
@@ -85,15 +85,15 @@ router.post('/', requireRole('admin', 'supervisor'), asyncHandler(async (req, re
        (id, student_id, teacher_id, scheduled_at, duration_minutes, subject, zoom_link,
         rate_at_creation, currency_at_creation)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-    [id, student_id, teacher_id, scheduled_at, dur, sessionSubject, zoom_link || null, hourly_rate, currency]
+    [id, student_id, teacher_id, scheduled_at, durationMinutes, sessionSubject, zoom_link || null, hourly_rate, currency]
   );
   const session = result.rows[0];
-  const dt = formatSessionTime(scheduled_at);
+  const dateTime = formatSessionTime(scheduled_at);
 
   await notify(student_id, 'session_scheduled', 'Session Scheduled',
-    `A session has been booked for ${dt}`, '/student/sessions');
+    `A session has been booked for ${dateTime}`, '/student/sessions');
   await notify(teacher_id, 'session_scheduled', 'Session Scheduled',
-    `A session has been scheduled for ${dt}`, '/teacher/dashboard');
+    `A session has been scheduled for ${dateTime}`, '/teacher/dashboard');
 
   res.status(201).json({ session });
 }));
@@ -126,11 +126,11 @@ router.delete('/:id', requireRole('admin', 'supervisor'), asyncHandler(async (re
   await pool.query('UPDATE sessions SET rescheduled_from = NULL WHERE rescheduled_from = $1', [id]);
   await pool.query('DELETE FROM sessions WHERE id=$1', [id]);
   await pool.query('COMMIT');
-  const dt = formatSessionTime(session.scheduled_at);
+  const dateTime = formatSessionTime(session.scheduled_at);
   await notify(session.student_id, 'session_cancelled', 'Session Removed',
-    `Your session on ${dt} has been removed by admin`, '/student/sessions');
+    `Your session on ${dateTime} has been removed by admin`, '/student/sessions');
   await notify(session.teacher_id, 'session_cancelled', 'Session Removed',
-    `A session on ${dt} has been removed`, '/teacher/dashboard');
+    `A session on ${dateTime} has been removed`, '/teacher/dashboard');
   res.json({ message: 'Session deleted' });
 }));
 
@@ -161,16 +161,16 @@ router.patch('/:id/cancel', requireRole('student', 'teacher', 'admin', 'supervis
     [cancellation_reason || null, id]
   );
 
-  const dt = formatSessionTime(session.scheduled_at);
+  const dateTime = formatSessionTime(session.scheduled_at);
   if (req.userRole === 'student') {
     await notify(session.teacher_id, 'session_cancelled', 'Session Cancelled',
-      `Session on ${dt} was cancelled by the student`, '/teacher/dashboard');
+      `Session on ${dateTime} was cancelled by the student`, '/teacher/dashboard');
   } else {
     await notify(session.student_id, 'session_cancelled', 'Session Cancelled',
-      `Your session on ${dt} was cancelled`, '/student/sessions');
+      `Your session on ${dateTime} was cancelled`, '/student/sessions');
   }
   await notifyAdmins('session_cancelled', 'Session Cancelled',
-    `Session on ${dt} was cancelled`, '/supervisor');
+    `Session on ${dateTime} was cancelled`, '/supervisor');
 
   res.json({ session: result.rows[0] });
 }));
@@ -337,16 +337,16 @@ router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supe
   }
 
   // Notify student of attendance record
-  const dt = formatSessionTime(session.scheduled_at);
+  const dateTime = formatSessionTime(session.scheduled_at);
   if (newStatus === 'completed') {
     await notify(session.student_id, 'attendance_marked', 'Attendance Confirmed',
-      `Attendance confirmed for your session on ${dt}`, '/student/sessions');
+      `Attendance confirmed for your session on ${dateTime}`, '/student/sessions');
   } else if (newStatus === 'no_show') {
     await notify(session.student_id, 'attendance_marked', 'Marked as No-Show',
-      `You were marked as absent for the session on ${dt}`, '/student/sessions');
+      `You were marked as absent for the session on ${dateTime}`, '/student/sessions');
   } else if (newStatus === 'cancelled_teacher') {
     await notify(session.student_id, 'attendance_marked', 'Session Cancelled by Teacher',
-      `The session on ${dt} was cancelled by the teacher`, '/student/sessions');
+      `The session on ${dateTime} was cancelled by the teacher`, '/student/sessions');
   }
 
   res.json({ session: updated });

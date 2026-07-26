@@ -13,6 +13,9 @@ const pool = new Pool({
 
 // Migrations that were applied before the tracking table existed.
 // These are seeded into migrations_applied on first run so they aren't re-run.
+// Frozen one-time bootstrap list — do not add new migrations here. New
+// migration files just need to exist in ../migrations; initDb() below
+// discovers and applies them automatically.
 const LEGACY_MIGRATIONS = [
   '001_init.sql',
   '002_phase2.sql',

@@ -30,6 +30,9 @@ router.get('/students', requireAuth, requireRole('teacher', 'admin'), asyncHandl
 }));
 
 // GET /teachers/lessons — upcoming + recent schedule (queries sessions table)
+// Vocabulary debt: same "lessons" vs "sessions" naming mismatch as
+// /admin/lessons — path and response key kept for frontend compatibility
+// (smell roadmap L1, deferred).
 router.get('/lessons', requireAuth, requireRole('teacher', 'admin'), asyncHandler(async (req, res) => {
   const result = await pool.query(
     `SELECT s.*, u.display_name AS student_name,

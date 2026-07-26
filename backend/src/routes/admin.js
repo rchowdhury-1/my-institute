@@ -335,6 +335,10 @@ router.get('/sessions', asyncHandler(async (req, res) => {
 }));
 
 // POST /admin/lessons — schedule a session (with rate snapshot)
+// Vocabulary debt: this route path and its `lesson` response key predate the
+// `sessions` table/entity naming used everywhere else. Left as-is — the
+// frontend depends on this exact path and key — renaming is tracked as
+// deferred debt (smell roadmap L1), not fixed here.
 router.post('/lessons', asyncHandler(async (req, res) => {
   const { student_id, teacher_id, subject, scheduled_at, duration_minutes, notes, zoom_link } = req.body;
   if (!student_id || !teacher_id || !subject || !scheduled_at)
@@ -402,9 +406,9 @@ router.get('/teacher-hours', asyncHandler(async (req, res) => {
   if (!/^\d{4}-\d{2}$/.test(month))
     return res.status(400).json({ error: 'month must be in YYYY-MM format' });
 
-  const [year, mon] = month.split('-').map(Number);
-  const startDate = new Date(Date.UTC(year, mon - 1, 1));
-  const endDate = new Date(Date.UTC(year, mon, 1));
+  const [year, monthNum] = month.split('-').map(Number);
+  const startDate = new Date(Date.UTC(year, monthNum - 1, 1));
+  const endDate = new Date(Date.UTC(year, monthNum, 1));
 
   const result = await pool.query(
     `SELECT
@@ -457,18 +461,18 @@ router.patch('/teachers/:id/pay-rate', asyncHandler(async (req, res) => {
   if (teacherCheck.rows.length === 0)
     return res.status(404).json({ error: 'Teacher not found' });
 
-  const sets = ['pay_rate_per_hour = $1'];
+  const setClauses = ['pay_rate_per_hour = $1'];
   const params = [parseFloat(pay_rate_per_hour)];
-  let idx = 2;
+  let paramIdx = 2;
 
   if (pay_currency) {
-    sets.push(`pay_currency = $${idx++}`);
+    setClauses.push(`pay_currency = $${paramIdx++}`);
     params.push(pay_currency);
   }
 
   params.push(id);
   const result = await pool.query(
-    `UPDATE users SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, display_name, pay_rate_per_hour, pay_currency`,
+    `UPDATE users SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING id, display_name, pay_rate_per_hour, pay_currency`,
     params
   );
 
@@ -620,43 +624,43 @@ router.patch('/sessions/:id', asyncHandler(async (req, res) => {
   }
 
   // Build SET clause dynamically
-  const sets = ['last_modified_by = $1', 'updated_at = now()'];
+  const setClauses = ['last_modified_by = $1', 'updated_at = now()'];
   const params = [req.userId];
   let paramIdx = 2;
 
   const changes = {};
 
   if (scheduled_at !== undefined) {
-    sets.push(`scheduled_at = $${paramIdx++}`);
+    setClauses.push(`scheduled_at = $${paramIdx++}`);
     params.push(new Date(scheduled_at).toISOString());
     changes.scheduled_at = { from: session.scheduled_at, to: scheduled_at };
   }
   if (duration_minutes !== undefined) {
-    sets.push(`duration_minutes = $${paramIdx++}`);
+    setClauses.push(`duration_minutes = $${paramIdx++}`);
     params.push(parseInt(duration_minutes));
     if (parseInt(duration_minutes) !== session.duration_minutes)
       changes.duration_minutes = { from: session.duration_minutes, to: parseInt(duration_minutes) };
   }
   if (subject !== undefined) {
-    sets.push(`subject = $${paramIdx++}`);
+    setClauses.push(`subject = $${paramIdx++}`);
     params.push(subject);
     if (subject !== session.subject)
       changes.subject = { from: session.subject, to: subject };
   }
   if (teacher_id !== undefined) {
-    sets.push(`teacher_id = $${paramIdx++}`);
+    setClauses.push(`teacher_id = $${paramIdx++}`);
     params.push(teacher_id);
     if (teacher_id !== session.teacher_id)
       changes.teacher_id = { from: session.teacher_id, to: teacher_id };
   }
   if (zoom_link !== undefined) {
-    sets.push(`zoom_link = $${paramIdx++}`);
+    setClauses.push(`zoom_link = $${paramIdx++}`);
     params.push(zoom_link || null);
     if ((zoom_link || null) !== session.zoom_link)
       changes.zoom_link = true;
   }
   if (notes !== undefined) {
-    sets.push(`notes = $${paramIdx++}`);
+    setClauses.push(`notes = $${paramIdx++}`);
     params.push(notes || null);
     if ((notes || null) !== session.notes)
       changes.notes = true;
@@ -664,7 +668,7 @@ router.patch('/sessions/:id', asyncHandler(async (req, res) => {
 
   params.push(id);
   const result = await pool.query(
-    `UPDATE sessions SET ${sets.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
+    `UPDATE sessions SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
     params
   );
   const updated = result.rows[0];

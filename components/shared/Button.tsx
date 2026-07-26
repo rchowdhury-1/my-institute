@@ -41,20 +41,32 @@ export default function Button({
   const classes = cn(base, variantClasses[variant], className);
 
   if (href) {
+    // Anchors have no native `disabled` attribute — fake it so a disabled
+    // link button can't be clicked or tabbed to, matching what `disabled`
+    // does on the <button> branch below.
+    const linkClasses = cn(classes, disabled && "pointer-events-none opacity-60 cursor-not-allowed");
+
     if (external) {
       return (
         <a
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className={classes}
+          aria-disabled={disabled}
+          tabIndex={disabled ? -1 : undefined}
+          className={linkClasses}
         >
           {children}
         </a>
       );
     }
     return (
-      <Link href={href} className={classes}>
+      <Link
+        href={href}
+        aria-disabled={disabled}
+        tabIndex={disabled ? -1 : undefined}
+        className={linkClasses}
+      >
         {children}
       </Link>
     );
