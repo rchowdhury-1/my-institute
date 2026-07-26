@@ -1,6 +1,7 @@
 "use client";
 
 import { BRAND } from "@/lib/content";
+import { whatsAppUrl } from "@/lib/labels";
 
 const WhatsAppIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
@@ -9,13 +10,11 @@ const WhatsAppIcon = () => (
 );
 
 export default function WhatsAppButton() {
-  const whatsappNumber = BRAND.whatsapp.replace(/\+/g, "");
-  const message = encodeURIComponent("Hello! I'd like to learn more about My Institute.");
-  const url = `https://wa.me/${whatsappNumber}?text=${message}`;
+  const url = whatsAppUrl(BRAND.whatsapp, "Hello! I'd like to learn more about My Institute.");
 
   return (
     <a
-      href={url}
+      href={url ?? undefined}
       target="_blank"
       rel="noopener noreferrer"
       className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 text-white shadow-lg hover:shadow-xl transition-all hover:scale-110"

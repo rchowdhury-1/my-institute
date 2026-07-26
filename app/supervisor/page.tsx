@@ -11,6 +11,9 @@ import Link from "next/link";
 import { formatSessionTime, formatRelative, formatHours, isSessionStillUpcoming, zonedInputToISO, isoToZonedInput, otherZoneHint, OPERATIONAL_TZ_LABEL } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
+import { subjectLabel, SESSION_STATUS_STYLE, SESSION_STATUS_LABEL, DURATION_OPTIONS, LOW_BALANCE_AMBER_HOURS, whatsAppUrl } from "@/lib/labels";
+
+const TOAST_MS = 3000;
 
 interface Session {
   id: string;
@@ -75,15 +78,6 @@ interface RescheduleRequest {
   created_at: string;
 }
 
-const statusStyle: Record<string, string> = {
-  scheduled: "bg-emerald-primary/10 text-emerald-primary",
-  completed: "bg-blue-50 text-blue-600",
-  cancelled: "bg-red-50 text-red-500",
-  rescheduled: "bg-amber-50 text-amber-600",
-  no_show: "bg-orange-50 text-orange-600",
-  cancelled_teacher: "bg-red-50 text-red-500",
-};
-
 const DAY_LABELS: Record<string, string> = {
   mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
 };
@@ -141,7 +135,6 @@ export default function SupervisorPage() {
     if (params.get("status")) setFilterStatuses(new Set(params.get("status")!.split(",")));
   }, []);
   const [showPast, setShowPast] = useState(false);
-  const STATUS_LABELS: Record<string, string> = { scheduled: "Scheduled", completed: "Completed", cancelled: "Cancelled", rescheduled: "Rescheduled", no_show: "No-show", cancelled_teacher: "Teacher cancelled" };
 
   // attendance override
   const [attendanceId, setAttendanceId] = useState<string | null>(null);
@@ -240,7 +233,7 @@ export default function SupervisorPage() {
                 {s.student_attended != null && (s.student_attended ? " S✓" : " S✗")}
               </span>
             )}
-            <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusStyle[s.status] ?? "bg-gray-100 text-gray-600"}`}>
+            <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${SESSION_STATUS_STYLE[s.status] ? `${SESSION_STATUS_STYLE[s.status].bg} ${SESSION_STATUS_STYLE[s.status].text}` : "bg-gray-100 text-gray-600"}`}>
               {s.status === "cancelled_teacher" ? "teacher cancelled" : s.status === "no_show" ? "no show" : s.status}
             </span>
             {s.status === "scheduled" && !isPast && (
@@ -621,7 +614,7 @@ export default function SupervisorPage() {
       );
       setMsgForm({ receiver_id: "", content: "" });
       setMsgSent(true);
-      setTimeout(() => setMsgSent(false), 3000);
+      setTimeout(() => setMsgSent(false), TOAST_MS);
     } catch (err) {
       alert(getAxiosError(err).message);
     } finally {
@@ -683,11 +676,6 @@ export default function SupervisorPage() {
     }
   }
 
-  function whatsAppUrl(phone: string | undefined, message: string) {
-    const num = (phone || "").replace(/[^0-9]/g, "");
-    if (!num) return null;
-    return `https://wa.me/${num}?text=${encodeURIComponent(message)}`;
-  }
 
   function openEditModal(s: Session) {
     setEditSession(s);
@@ -905,10 +893,9 @@ export default function SupervisorPage() {
                     data-testid="select-duration"
                     className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
                   >
-                    <option value={30}>30 min</option>
-                    <option value={60}>60 min</option>
-                    <option value={90}>90 min</option>
-                    <option value={120}>120 min</option>
+                    {DURATION_OPTIONS.map((d) => (
+                      <option key={d} value={d}>{d} min</option>
+                    ))}
                   </select>
                   <select
                     value={sessionForm.subject}
@@ -965,7 +952,7 @@ export default function SupervisorPage() {
                           <p className="font-semibold text-charcoal text-sm">
                             {rr.student_name} <span className="text-charcoal/40 font-normal">· {rr.student_email}</span>
                           </p>
-                          <p className="text-charcoal/60 text-xs">Teacher: {rr.teacher_name} · {rr.subject ? (rr.subject === "quran" ? "Quran" : rr.subject === "arabic" ? "Arabic" : "Islamic Studies") : ""}</p>
+                          <p className="text-charcoal/60 text-xs">Teacher: {rr.teacher_name} · {subjectLabel(rr.subject)}</p>
                           <p className="text-charcoal/50 text-xs">
                             Current: {formatSessionTime(rr.original_scheduled_at)}
                           </p>
@@ -1091,7 +1078,7 @@ export default function SupervisorPage() {
                         : "bg-gray-50 border-gray-200 text-gray-400"
                     }`}
                   >
-                    {STATUS_LABELS[st]}
+                    {SESSION_STATUS_LABEL[st]}
                   </button>
                 ))}
               </div>
@@ -1252,7 +1239,7 @@ export default function SupervisorPage() {
                           {sched.student_name} <span className="text-charcoal/30">↔</span> {sched.teacher_name}
                         </p>
                         <p className="text-charcoal/50 text-xs mt-0.5">
-                          {sched.subject === "quran" ? "Quran" : sched.subject === "arabic" ? "Arabic" : sched.subject === "islamic_studies" ? "Islamic Studies" : sched.subject}
+                          {subjectLabel(sched.subject)}
                           {" · "}
                           {sched.slots.map(sl => `${DAY_LABELS[sl.day] || sl.day} ${sl.time}`).join(", ")}
                           {" · "}
@@ -1262,7 +1249,7 @@ export default function SupervisorPage() {
                           <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                             sched.lessons_remaining <= 0
                               ? "bg-red-100 text-red-700"
-                              : sched.lessons_remaining <= 4
+                              : sched.lessons_remaining <= LOW_BALANCE_AMBER_HOURS
                                 ? "bg-amber-100 text-amber-700"
                                 : "bg-emerald-100 text-emerald-700"
                           }`}>
@@ -1525,10 +1512,9 @@ export default function SupervisorPage() {
                     onChange={(e) => setScheduleForm(p => ({ ...p, default_duration: e.target.value }))}
                     className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
                   >
-                    <option value="30">30 min</option>
-                    <option value="60">60 min</option>
-                    <option value="90">90 min</option>
-                    <option value="120">120 min</option>
+                    {DURATION_OPTIONS.map((d) => (
+                      <option key={d} value={String(d)}>{d} min</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1606,10 +1592,9 @@ export default function SupervisorPage() {
                               className="px-2 py-1 rounded-lg border border-black/10 bg-white text-xs text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
                             >
                               <option value="">Default ({scheduleForm.default_duration} min)</option>
-                              <option value="30">30 min</option>
-                              <option value="60">60 min</option>
-                              <option value="90">90 min</option>
-                              <option value="120">120 min</option>
+                              {DURATION_OPTIONS.map((d) => (
+                                <option key={d} value={String(d)}>{d} min</option>
+                              ))}
                             </select>
                           </>
                         )}
@@ -1698,8 +1683,9 @@ export default function SupervisorPage() {
                 <select value={editForm.duration_minutes}
                   onChange={(e) => setEditForm((p) => ({ ...p, duration_minutes: e.target.value }))}
                   className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30">
-                  <option value="30">30 min</option><option value="60">60 min</option>
-                  <option value="90">90 min</option><option value="120">120 min</option>
+                  {DURATION_OPTIONS.map((d) => (
+                    <option key={d} value={String(d)}>{d} min</option>
+                  ))}
                 </select>
               </div>
               <div>

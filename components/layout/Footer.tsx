@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Mail, Phone } from "lucide-react";
 import { BRAND } from "@/lib/content";
+import { whatsAppUrl } from "@/lib/labels";
 
 const QUICK_LINKS = [
   { href: "/about", label: "About" },
@@ -45,7 +46,7 @@ const WhatsAppIcon = () => (
 );
 
 export default function Footer() {
-  const whatsappUrl = `https://wa.me/${BRAND.whatsapp.replace(/\+/g, "")}`;
+  const footerWhatsappUrl = whatsAppUrl(BRAND.whatsapp);
 
   return (
     <footer className="bg-charcoal text-white">
@@ -113,7 +114,7 @@ export default function Footer() {
             </h4>
             <div className="flex items-center gap-3">
               <a
-                href={whatsappUrl}
+                href={footerWhatsappUrl ?? undefined}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-2 rounded-full bg-white/10 text-gray-400 hover:bg-green-600 hover:text-white transition-all"

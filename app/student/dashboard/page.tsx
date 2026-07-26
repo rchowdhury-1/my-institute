@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink, MessageCircle, ClipboardList } from "lucide-react";
-import { formatSessionDate, formatTimeOnly, formatSimpleDate, formatHours, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
+import { formatSessionDate, formatTimeOnly, formatSimpleDate, formatHours, isSessionJoinable, isSessionBeforeStart, computeClockSkew, JOIN_WINDOW_HOURS } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { BRAND, EXAM_PORTAL_URL } from "@/lib/content";
+import { subjectLabel, whatsAppUrl, RENEWAL_REMINDER_HOURS } from "@/lib/labels";
 
 interface Lesson {
   id: string;
@@ -45,11 +46,6 @@ interface DashboardData {
   schedules_summary: SchedulesSummary;
   upcoming_lessons: Lesson[];
 }
-
-function subjectLabel(s: string) {
-  return s === "quran" ? "Quran" : s === "arabic" ? "Arabic" : "Islamic Studies";
-}
-
 
 export default function StudentDashboard() {
   const router = useRouter();
@@ -139,12 +135,12 @@ export default function StudentDashboard() {
 
         {/* Lessons card */}
         <div className={`rounded-2xl p-6 mb-8 ${
-          summary.source !== "none" && summary.active_lessons_remaining <= 2
+          summary.source !== "none" && summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS
             ? "bg-amber-50 border border-amber-200"
             : "bg-emerald-primary text-white"
         }`}>
           <p className={`text-xs uppercase tracking-wider mb-1 ${
-            summary.source !== "none" && summary.active_lessons_remaining <= 2
+            summary.source !== "none" && summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS
               ? "text-amber-600 font-semibold" : "text-white/70"
           }`}>
             {unit === "hour" ? "Hours" : "Lessons"}
@@ -153,24 +149,24 @@ export default function StudentDashboard() {
             <div className="flex items-end justify-between">
               <div>
                 <h2 className={`font-display text-2xl font-bold ${
-                  summary.active_lessons_remaining <= 2 ? "text-amber-800" : ""
+                  summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS ? "text-amber-800" : ""
                 }`}>
                   {formatHours(summary.active_lessons_remaining)} {unit}{summary.active_lessons_remaining !== 1 ? "s" : ""} remaining
                 </h2>
                 <p className={`text-sm mt-1 ${
-                  summary.active_lessons_remaining <= 2 ? "text-amber-600" : "text-white/80"
+                  summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS ? "text-amber-600" : "text-white/80"
                 }`}>
                   {summary.source === "schedules"
                     ? summary.active_schedule_count > 1
                       ? `Across ${summary.active_schedule_count} active schedules`
                       : "From your current schedule"
                     : "From your package"}
-                  {summary.active_lessons_remaining <= 2 && " — contact us to renew"}
+                  {summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS && " — contact us to renew"}
                 </p>
               </div>
               {pkg?.expires_at && (
                 <p className={`text-xs ${
-                  summary.active_lessons_remaining <= 2 ? "text-amber-500" : "text-white/60"
+                  summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS ? "text-amber-500" : "text-white/60"
                 }`}>Expires {formatSimpleDate(pkg.expires_at)}</p>
               )}
             </div>
@@ -225,7 +221,7 @@ export default function StudentDashboard() {
                     <div className="mt-3 p-3 rounded-xl bg-red-50 border border-red-200">
                       <p className="text-red-700 text-sm font-medium">{balanceEmptyMsg}</p>
                       <a
-                        href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(balanceEmptyWa)}`}
+                        href={whatsAppUrl(BRAND.whatsapp, balanceEmptyWa) ?? undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors"
@@ -234,7 +230,7 @@ export default function StudentDashboard() {
                         WhatsApp Admin
                       </a>
                     </div>
-                  ) : l.zoom_link && isSessionJoinable(l.scheduled_at, 3, { skewMs }) ? (
+                  ) : l.zoom_link && isSessionJoinable(l.scheduled_at, JOIN_WINDOW_HOURS, { skewMs }) ? (
                     <a
                       href={l.zoom_link}
                       target="_blank"

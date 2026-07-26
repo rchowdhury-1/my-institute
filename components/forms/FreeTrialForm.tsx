@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { freeTrialSchema, type FreeTrialInput } from "@/lib/validators";
 import Button from "@/components/shared/Button";
 import { BRAND } from "@/lib/content";
+import { whatsAppUrl } from "@/lib/labels";
 
 export default function FreeTrialForm() {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -39,7 +40,8 @@ export default function FreeTrialForm() {
       setStatus("success");
       reset();
       const msg = `New Free Trial Request\nName: ${data.firstName} ${data.lastName}\nEmail: ${data.email}\nPhone: ${data.phone}\nCourse: ${data.interest}\nMessage: ${data.message || ""}`;
-      window.open(`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(msg)}`);
+      const url = whatsAppUrl(BRAND.whatsapp, msg);
+      if (url) window.open(url);
     } catch (err) {
       setStatus("error");
       setErrorMessage(err instanceof Error ? err.message : "Something went wrong.");

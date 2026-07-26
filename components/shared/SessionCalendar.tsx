@@ -14,9 +14,8 @@ import {
 } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-
-const LONDON = "Europe/London";
-const CAIRO = "Africa/Cairo";
+import { LONDON, CAIRO, timeIn } from "@/lib/datetime";
+import { SUBJECT_LABELS, SESSION_STATUS_STYLE, SESSION_STATUS_LABEL } from "@/lib/labels";
 
 interface Session {
   id: string;
@@ -35,29 +34,6 @@ interface SessionCalendarProps {
   onModeChange: (mode: "week" | "month") => void;
   nameField: "student_name" | "teacher_name";
   onSessionClick?: (session: Session) => void;
-}
-
-const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; label: string }> = {
-  scheduled:         { bg: "bg-blue-50",    border: "border-blue-400",    text: "text-blue-700",    label: "Scheduled" },
-  completed:         { bg: "bg-emerald-50", border: "border-emerald-400", text: "text-emerald-700", label: "Completed" },
-  cancelled:         { bg: "bg-gray-50",    border: "border-gray-400",    text: "text-gray-500",    label: "Cancelled" },
-  rescheduled:       { bg: "bg-amber-50",   border: "border-amber-400",   text: "text-amber-700",   label: "Rescheduled" },
-  no_show:           { bg: "bg-red-50",     border: "border-red-400",     text: "text-red-700",     label: "No-show" },
-  cancelled_teacher: { bg: "bg-orange-50",  border: "border-orange-400",  text: "text-orange-700",  label: "Teacher cancelled" },
-};
-
-const SUBJECT_LABELS: Record<string, string> = {
-  quran: "Quran",
-  arabic: "Arabic",
-  islamic_studies: "Islamic Studies",
-};
-
-function londonTime(d: Date): string {
-  return format(toZonedTime(d, LONDON), "HH:mm");
-}
-
-function cairoTime(d: Date): string {
-  return format(toZonedTime(d, CAIRO), "HH:mm");
 }
 
 function londonDate(d: Date): Date {
@@ -123,11 +99,12 @@ export default function SessionCalendar({
       : format(anchor, "MMMM yyyy");
 
   function SessionPill({ session }: { session: Session }) {
-    const style = STATUS_STYLES[session.status] || STATUS_STYLES.scheduled;
+    const style = SESSION_STATUS_STYLE[session.status] || SESSION_STATUS_STYLE.scheduled;
+    const label = SESSION_STATUS_LABEL[session.status] || SESSION_STATUS_LABEL.scheduled;
     const d = new Date(session.scheduled_at);
     const name = session[nameField] || "";
     const subject = session.subject ? SUBJECT_LABELS[session.subject] || session.subject : "";
-    const ariaLabel = `${format(londonDate(d), "EEE d MMM")}, ${londonTime(d)}, ${style.label}${subject ? ` ${subject}` : ""} lesson${name ? ` with ${name}` : ""}`;
+    const ariaLabel = `${format(londonDate(d), "EEE d MMM")}, ${timeIn(d, LONDON)}, ${label}${subject ? ` ${subject}` : ""} lesson${name ? ` with ${name}` : ""}`;
 
     return (
       <button
@@ -139,8 +116,8 @@ export default function SessionCalendar({
         tabIndex={0}
       >
         <p className={`text-xs font-medium ${style.text} truncate`}>
-          {londonTime(d)}
-          <span className="text-[10px] opacity-60 ml-1">{cairoTime(d)} Cairo</span>
+          {timeIn(d, LONDON)}
+          <span className="text-[10px] opacity-60 ml-1">{timeIn(d, CAIRO)} Cairo</span>
         </p>
         {name && (
           <p className="text-[11px] text-charcoal/60 truncate">{name}</p>
@@ -311,9 +288,9 @@ export default function SessionCalendar({
 
       {/* Status legend */}
       <div className="flex flex-wrap gap-2 text-[10px]">
-        {Object.entries(STATUS_STYLES).map(([key, style]) => (
+        {Object.entries(SESSION_STATUS_STYLE).map(([key, style]) => (
           <span key={key} className={`px-2 py-0.5 rounded-full ${style.bg} ${style.text} border ${style.border}`}>
-            {style.label}
+            {SESSION_STATUS_LABEL[key]}
           </span>
         ))}
       </div>

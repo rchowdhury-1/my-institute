@@ -7,12 +7,12 @@ import AnimatedSection from "@/components/shared/AnimatedSection";
 import Badge from "@/components/shared/Badge";
 import Section from "@/components/shared/Section";
 import { BRAND } from "@/lib/content";
+import { whatsAppUrl } from "@/lib/labels";
 
-const whatsappUrl =
-  `https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=` +
-  encodeURIComponent(
-    "Hi, I'd like to sponsor a student. Please let me know how to donate."
-  );
+const donateWhatsappUrl = whatsAppUrl(
+  BRAND.whatsapp,
+  "Hi, I'd like to sponsor a student. Please let me know how to donate."
+);
 
 export default function DonateClient() {
   return (
@@ -104,7 +104,7 @@ export default function DonateClient() {
               </p>
 
               <a
-                href={whatsappUrl}
+                href={donateWhatsappUrl ?? undefined}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-full bg-gold text-white font-semibold text-sm hover:bg-gold-dark shadow-sm hover:shadow-md transition-all"

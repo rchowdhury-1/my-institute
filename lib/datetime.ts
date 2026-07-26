@@ -1,8 +1,20 @@
 import { format } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
 
-const LONDON = "Europe/London";
-const CAIRO = "Africa/Cairo";
+export const LONDON = "Europe/London";
+export const CAIRO = "Africa/Cairo";
+
+/**
+ * Named time thresholds. Backend twins live in backend/src/config.js until
+ * B11 unifies cross-tier constants — keep both sides in sync by hand until
+ * then.
+ */
+export const JOIN_WINDOW_HOURS = 3;
+export const EARLY_JOIN_MINUTES = 15;
+export const UPCOMING_BUFFER_HOURS = 3;
+export const CANCELLATION_BUFFER_HOURS = 12;
+export const ATTENDANCE_EARLY_MS = EARLY_JOIN_MINUTES * 60 * 1000;
+export const ATTENDANCE_LATE_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The single timezone admin-entered wall-clock times are anchored to
@@ -34,7 +46,7 @@ function londonLabel(d: Date): string {
 }
 
 /** Format time in a given IANA timezone as "HH:mm" */
-function timeIn(d: Date, tz: string): string {
+export function timeIn(d: Date, tz: string): string {
   return format(toZonedTime(d, tz), "HH:mm");
 }
 
@@ -150,10 +162,10 @@ export function computeClockSkew(serverTimeIso?: string | null): number {
  */
 export function isSessionJoinable(
   scheduledAt: Date | string | null | undefined,
-  joinWindowHours: number = 3,
+  joinWindowHours: number = JOIN_WINDOW_HOURS,
   opts: { earlyMinutes?: number; skewMs?: number } = {}
 ): boolean {
-  const { earlyMinutes = 15, skewMs = 0 } = opts;
+  const { earlyMinutes = EARLY_JOIN_MINUTES, skewMs = 0 } = opts;
   if (!scheduledAt) return false;
   const start = new Date(scheduledAt).getTime();
   if (isNaN(start)) return false;
@@ -168,7 +180,7 @@ export function isSessionJoinable(
 export function isSessionBeforeStart(
   scheduledAt: Date | string | null | undefined,
   skewMs: number = 0,
-  earlyMinutes: number = 15
+  earlyMinutes: number = EARLY_JOIN_MINUTES
 ): boolean {
   if (!scheduledAt) return false;
   const start = new Date(scheduledAt).getTime();
@@ -223,7 +235,7 @@ export function formatHours(hours: number): string {
 export function isSessionStillUpcoming(
   scheduledAt: Date | string | null | undefined,
   durationMinutes: number,
-  bufferHours: number = 3
+  bufferHours: number = UPCOMING_BUFFER_HOURS
 ): boolean {
   if (!scheduledAt) return false;
   const start = new Date(scheduledAt).getTime();
@@ -231,4 +243,20 @@ export function isSessionStillUpcoming(
   const sessionEnd = start + durationMinutes * 60 * 1000;
   const cutoff = Date.now() - bufferHours * 60 * 60 * 1000;
   return sessionEnd > cutoff;
+}
+
+/**
+ * True if `iso` falls on the device's current local calendar date. Not
+ * timezone-aware (compares raw Date fields) — distinct from date-fns'
+ * `isToday`, which SessionCalendar uses on already zone-adjusted Dates for
+ * calendar-grid day comparisons.
+ */
+export function isToday(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
 }

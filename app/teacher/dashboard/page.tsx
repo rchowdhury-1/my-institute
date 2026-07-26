@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink, RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
-import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
+import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew, isToday, JOIN_WINDOW_HOURS, ATTENDANCE_EARLY_MS, ATTENDANCE_LATE_MS } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
 import SessionCalendar from "@/components/shared/SessionCalendar";
+import { subjectLabel, SESSION_STATUS_STYLE, SESSION_STATUS_LABEL, whatsAppUrl } from "@/lib/labels";
 
 interface Lesson {
   id: string;
@@ -42,19 +43,6 @@ interface RescheduleRequest {
   teacher_name: string;
   created_at: string;
 }
-
-function subjectLabel(s: string) {
-  return s === "quran" ? "Quran" : s === "arabic" ? "Arabic" : "Islamic Studies";
-}
-
-function isToday(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-}
-
 
 export default function TeacherDashboard() {
   const router = useRouter();
@@ -180,12 +168,6 @@ export default function TeacherDashboard() {
     } finally {
       setRrActioning(null);
     }
-  }
-
-  function whatsAppUrl(phone: string | undefined, message: string) {
-    const num = (phone || "").replace(/[^0-9]/g, "");
-    if (!num) return null;
-    return `https://wa.me/${num}?text=${encodeURIComponent(message)}`;
   }
 
   const handleLogout = async () => {
@@ -415,7 +397,7 @@ export default function TeacherDashboard() {
                         <p className="text-charcoal/55 text-sm">{formatTimeOnly(l.scheduled_at)}</p>
                       </div>
                     </div>
-                    {l.zoom_link && isSessionJoinable(l.scheduled_at, 3, { skewMs }) && (
+                    {l.zoom_link && isSessionJoinable(l.scheduled_at, JOIN_WINDOW_HOURS, { skewMs }) && (
                       <a
                         href={l.zoom_link}
                         target="_blank"
@@ -464,26 +446,10 @@ function LessonCard({
   const done = lesson.status !== "scheduled";
   const now = Date.now() + skewMs;
   const sessionStart = new Date(lesson.scheduled_at);
-  const windowStart = sessionStart.getTime() - 15 * 60 * 1000;
-  const windowEnd = sessionStart.getTime() + 24 * 60 * 60 * 1000;
+  const windowStart = sessionStart.getTime() - ATTENDANCE_EARLY_MS;
+  const windowEnd = sessionStart.getTime() + ATTENDANCE_LATE_MS;
   const inWindow = now >= windowStart && now <= windowEnd;
   const isPast = !isSessionStillUpcoming(lesson.scheduled_at, lesson.duration_minutes);
-
-  const statusLabel: Record<string, string> = {
-    completed: "Completed",
-    no_show: "No Show",
-    cancelled: "Cancelled",
-    cancelled_teacher: "Teacher Cancelled",
-    rescheduled: "Rescheduled",
-  };
-
-  const statusColor: Record<string, string> = {
-    completed: "bg-emerald-primary/10 text-emerald-primary",
-    no_show: "bg-orange-50 text-orange-600",
-    cancelled: "bg-red-50 text-red-500",
-    cancelled_teacher: "bg-red-50 text-red-500",
-    rescheduled: "bg-amber-50 text-amber-600",
-  };
 
   return (
     <div className="bg-white rounded-2xl border border-black/5 p-5">
@@ -508,14 +474,14 @@ function LessonCard({
                 )}
               </div>
             )}
-            <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${statusColor[lesson.status] ?? "bg-gray-100 text-gray-600"}`}>
-              {statusLabel[lesson.status] ?? lesson.status}
+            <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${SESSION_STATUS_STYLE[lesson.status] ? `${SESSION_STATUS_STYLE[lesson.status].bg} ${SESSION_STATUS_STYLE[lesson.status].text}` : "bg-gray-100 text-gray-600"}`}>
+              {SESSION_STATUS_LABEL[lesson.status] ?? lesson.status}
             </span>
           </div>
         )}
       </div>
 
-      {!done && lesson.zoom_link && isSessionJoinable(lesson.scheduled_at, 3, { skewMs }) && (
+      {!done && lesson.zoom_link && isSessionJoinable(lesson.scheduled_at, JOIN_WINDOW_HOURS, { skewMs }) && (
         <a
           href={lesson.zoom_link}
           target="_blank"

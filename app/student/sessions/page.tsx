@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink, MessageCircle, List } from "lucide-react";
-import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
+import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew, JOIN_WINDOW_HOURS, CANCELLATION_BUFFER_HOURS } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
 import { BRAND } from "@/lib/content";
 import SessionCalendar from "@/components/shared/SessionCalendar";
+import { subjectLabel, SESSION_STATUS_STYLE, RENEWAL_REMINDER_HOURS, whatsAppUrl } from "@/lib/labels";
 
 interface Session {
   id: string;
@@ -42,18 +43,6 @@ interface Payment {
   notes?: string;
   created_at: string;
 }
-
-function subjectLabel(s?: string) {
-  if (!s) return "";
-  return s === "quran" ? "Quran" : s === "arabic" ? "Arabic" : "Islamic Studies";
-}
-
-const statusStyle: Record<string, string> = {
-  scheduled: "bg-emerald-primary/10 text-emerald-primary",
-  completed: "bg-blue-50 text-blue-600",
-  cancelled: "bg-red-50 text-red-500",
-  rescheduled: "bg-amber-50 text-amber-600",
-};
 
 export default function StudentSessionsPage() {
   const { authChecked } = useAuthGuard(["student"]);
@@ -245,25 +234,25 @@ export default function StudentSessionsPage() {
         {/* Lessons remaining bar */}
         {summary.source !== "none" && (
           <div className={`rounded-2xl p-5 mb-6 flex items-center justify-between gap-4 ${
-            summary.active_lessons_remaining <= 2
+            summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS
               ? "bg-amber-50 border border-amber-200"
               : "bg-emerald-primary text-white"
           }`}>
             <div>
               <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${
-                summary.active_lessons_remaining <= 2 ? "text-amber-600" : "text-white/70"
+                summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS ? "text-amber-600" : "text-white/70"
               }`}>
-                {summary.active_lessons_remaining <= 2
+                {summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS
                   ? "⚠ Renewal Reminder"
                   : unit === "hour" ? "Hours" : "Lessons"}
               </p>
               <p className={`font-semibold ${
-                summary.active_lessons_remaining <= 2 ? "text-amber-800" : "text-white"
+                summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS ? "text-amber-800" : "text-white"
               }`}>
                 {formatHours(summary.active_lessons_remaining)} {unit}{summary.active_lessons_remaining !== 1 ? "s" : ""} remaining
-                {summary.active_lessons_remaining <= 2 && " — contact us to renew"}
+                {summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS && " — contact us to renew"}
               </p>
-              <p className={`text-xs mt-1 ${summary.active_lessons_remaining <= 2 ? "text-amber-600" : "text-white/60"}`}>
+              <p className={`text-xs mt-1 ${summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS ? "text-amber-600" : "text-white/60"}`}>
                 {summary.source === "schedules"
                   ? summary.active_schedule_count > 1
                     ? `Across ${summary.active_schedule_count} active schedules`
@@ -271,7 +260,7 @@ export default function StudentSessionsPage() {
                   : "From your package"}
               </p>
             </div>
-            {summary.active_lessons_remaining <= 2 && (
+            {summary.active_lessons_remaining <= RENEWAL_REMINDER_HOURS && (
               <AlertTriangle className="text-amber-500 shrink-0" size={24} />
             )}
           </div>
@@ -350,7 +339,7 @@ export default function StudentSessionsPage() {
                     <div className="mb-3 p-3 rounded-xl bg-red-50 border border-red-200">
                       <p className="text-red-700 text-sm font-medium">{balanceEmptyMsg}</p>
                       <a
-                        href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(balanceEmptyWa)}`}
+                        href={whatsAppUrl(BRAND.whatsapp, balanceEmptyWa) ?? undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors w-fit"
@@ -359,7 +348,7 @@ export default function StudentSessionsPage() {
                         WhatsApp Admin
                       </a>
                     </div>
-                  ) : s.zoom_link && isSessionJoinable(s.scheduled_at, 3, { skewMs }) ? (
+                  ) : s.zoom_link && isSessionJoinable(s.scheduled_at, JOIN_WINDOW_HOURS, { skewMs }) ? (
                     <a
                       href={s.zoom_link}
                       target="_blank"
@@ -380,9 +369,9 @@ export default function StudentSessionsPage() {
                   {/* Actions — check 12h buffer */}
                   {(() => {
                     const hoursUntil = (new Date(s.scheduled_at).getTime() - Date.now()) / 3600000;
-                    const withinBuffer = hoursUntil >= 0 && hoursUntil < 12;
+                    const withinBuffer = hoursUntil >= 0 && hoursUntil < CANCELLATION_BUFFER_HOURS;
                     const waText = `Hi, I need to change my session on ${formatSessionTime(s.scheduled_at)}.`;
-                    const waUrl = `https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(waText)}`;
+                    const waUrl = whatsAppUrl(BRAND.whatsapp, waText) ?? undefined;
 
                     if (withinBuffer && !pendingReq) {
                       return (
@@ -526,7 +515,7 @@ export default function StudentSessionsPage() {
                       <p className="text-charcoal/40 text-xs mt-0.5 italic">{s.cancellation_reason}</p>
                     )}
                   </div>
-                  <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusStyle[s.status]}`}>
+                  <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium capitalize ${SESSION_STATUS_STYLE[s.status] ? `${SESSION_STATUS_STYLE[s.status].bg} ${SESSION_STATUS_STYLE[s.status].text}` : "bg-gray-100 text-gray-600"}`}>
                     {s.status}
                   </span>
                 </div>

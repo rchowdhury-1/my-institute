@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
 import { BRAND } from "@/lib/content";
+import { whatsAppUrl, COPY_FEEDBACK_MS } from "@/lib/labels";
 import {
   Plus,
   X,
@@ -95,7 +96,7 @@ function CopyButton({ text }: { text: string }) {
       onClick={() => {
         navigator.clipboard.writeText(text);
         setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
       }}
       className="ml-2 p-1 rounded hover:bg-black/5 transition-colors text-charcoal/50 hover:text-charcoal"
       title="Copy to clipboard"
@@ -135,7 +136,7 @@ export default function AdminStudentsPage() {
     temp_password: "",
     send_email: true,
   });
-  const [showCreatePw, setShowCreatePw] = useState(false);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
 
@@ -514,7 +515,7 @@ export default function AdminStudentsPage() {
                 <p className="text-xs text-amber-700 font-medium">⚠ Welcome email could not be sent — please share these credentials manually.</p>
                 {successBanner.emailError && <p className="text-xs text-amber-600 mt-1">Reason: {successBanner.emailError}</p>}
                 <a
-                  href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(`Assalamu alaikum! Your My Institute account is ready.\n\nLogin: ${successBanner.email}\nPassword: ${successBanner.password}\n\nPlease log in at https://www.my-institute.com/login and set a new password.`)}`}
+                  href={whatsAppUrl(BRAND.whatsapp, `Assalamu alaikum! Your My Institute account is ready.\n\nLogin: ${successBanner.email}\nPassword: ${successBanner.password}\n\nPlease log in at https://www.my-institute.com/login and set a new password.`) ?? undefined}
                   target="_blank" rel="noopener noreferrer"
                   className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors"
                 >
@@ -548,7 +549,7 @@ export default function AdminStudentsPage() {
               <div className="p-2 bg-red-50 border border-red-200 rounded-xl">
                 <p className="text-xs text-red-700 font-medium">⚠ Email could not be sent — please share the new password manually.</p>
                 <a
-                  href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(`Your My Institute password has been reset.\n\nLogin: ${resetBanner.email}\nNew password: ${resetBanner.password}\n\nPlease log in and set a new password.`)}`}
+                  href={whatsAppUrl(BRAND.whatsapp, `Your My Institute password has been reset.\n\nLogin: ${resetBanner.email}\nNew password: ${resetBanner.password}\n\nPlease log in and set a new password.`) ?? undefined}
                   target="_blank" rel="noopener noreferrer"
                   className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors"
                 >
@@ -683,17 +684,17 @@ export default function AdminStudentsPage() {
                 <label className="block text-xs font-medium text-charcoal/60 mb-1.5">Temporary password</label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <input type={showCreatePw ? "text" : "password"} data-testid="input-temp-password"
+                    <input type={showCreatePassword ? "text" : "password"} data-testid="input-temp-password"
                       value={createForm.temp_password}
                       onChange={(e) => setCreateForm((f) => ({ ...f, temp_password: e.target.value }))}
                       placeholder="Leave blank to auto-generate" className={inputClass + " pr-10"} />
-                    <button type="button" onClick={() => setShowCreatePw((v) => !v)}
+                    <button type="button" onClick={() => setShowCreatePassword((v) => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-charcoal/40 hover:text-charcoal transition-colors">
-                      {showCreatePw ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {showCreatePassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
                   <button type="button" data-testid="btn-generate-password"
-                    onClick={() => { setCreateForm((f) => ({ ...f, temp_password: generatePassword() })); setShowCreatePw(true); }}
+                    onClick={() => { setCreateForm((f) => ({ ...f, temp_password: generatePassword() })); setShowCreatePassword(true); }}
                     className="px-3 py-2 rounded-xl border border-black/10 text-charcoal/60 text-xs hover:border-black/20 transition-colors whitespace-nowrap">
                     Generate for me
                   </button>

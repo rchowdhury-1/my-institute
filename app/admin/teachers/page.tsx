@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
 import { BRAND } from "@/lib/content";
+import { whatsAppUrl, COPY_FEEDBACK_MS } from "@/lib/labels";
 import {
   Plus,
   X,
@@ -61,7 +62,7 @@ function CopyButton({ text }: { text: string }) {
   const handleCopy = () => {
     navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
   };
   return (
     <button
@@ -448,7 +449,7 @@ export default function AdminTeachersPage() {
                 <p className="text-xs text-amber-700 font-medium">⚠ Welcome email could not be sent — please share these credentials manually.</p>
                 {successBanner.emailError && <p className="text-xs text-amber-600 mt-1">Reason: {successBanner.emailError}</p>}
                 <a
-                  href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(`Assalamu alaikum! Your My Institute teacher account is ready.\n\nLogin: ${successBanner.email}\nPassword: ${successBanner.password}\n\nPlease log in at https://www.my-institute.com/login and set a new password.`)}`}
+                  href={whatsAppUrl(BRAND.whatsapp, `Assalamu alaikum! Your My Institute teacher account is ready.\n\nLogin: ${successBanner.email}\nPassword: ${successBanner.password}\n\nPlease log in at https://www.my-institute.com/login and set a new password.`) ?? undefined}
                   target="_blank" rel="noopener noreferrer"
                   className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors"
                 >
@@ -482,7 +483,7 @@ export default function AdminTeachersPage() {
               <div className="p-2 bg-red-50 border border-red-200 rounded-xl">
                 <p className="text-xs text-red-700 font-medium">⚠ Email could not be sent — please share the new password manually.</p>
                 <a
-                  href={`https://wa.me/${BRAND.whatsapp.replace("+", "")}?text=${encodeURIComponent(`Your My Institute password has been reset.\n\nLogin: ${resetBanner.email}\nNew password: ${resetBanner.password}\n\nPlease log in and set a new password.`)}`}
+                  href={whatsAppUrl(BRAND.whatsapp, `Your My Institute password has been reset.\n\nLogin: ${resetBanner.email}\nNew password: ${resetBanner.password}\n\nPlease log in and set a new password.`) ?? undefined}
                   target="_blank" rel="noopener noreferrer"
                   className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors"
                 >
