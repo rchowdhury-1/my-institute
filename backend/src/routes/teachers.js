@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errors');
+const { validateEnum } = require('../lib/validators');
 
 const router = express.Router();
 
@@ -48,8 +49,10 @@ router.patch('/lessons/:id', requireAuth, requireRole('teacher', 'admin'), async
   const { status, notes, zoom_link } = req.body;
   const validStatuses = ['scheduled', 'completed', 'cancelled'];
 
-  if (status && !validStatuses.includes(status))
-    return res.status(400).json({ error: 'Invalid status' });
+  if (status) {
+    const statusError = validateEnum(status, validStatuses, 'Invalid status');
+    if (statusError) return res.status(400).json({ error: statusError });
+  }
 
   const existing = await pool.query(
     'SELECT id FROM sessions WHERE id = $1 AND teacher_id = $2',

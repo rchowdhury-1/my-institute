@@ -6,6 +6,7 @@ const { canStudentCancel } = require('../lib/cancellation');
 const { formatSessionTime } = require('../lib/datetime');
 const { v4: uuidv4 } = require('uuid');
 const { asyncHandler } = require('../middleware/errors');
+const { hasTeacherConflict } = require('../lib/queries');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -56,16 +57,13 @@ router.post('/', requireRole('student'), async (req, res) => {
       return res.status(409).json({ error: 'A reschedule request is already pending for this session' });
 
     // 5. Teacher availability — overlap check
-    const conflict = await pool.query(
-      `SELECT id FROM sessions
-       WHERE teacher_id = $1
-         AND status = 'scheduled'
-         AND id <> $2
-         AND tstzrange(scheduled_at, scheduled_at + duration_minutes * interval '1 minute')
-          && tstzrange($3::timestamptz, $3::timestamptz + $4 * interval '1 minute')`,
-      [session.teacher_id, session_id, proposedDate.toISOString(), session.duration_minutes]
-    );
-    if (conflict.rows.length > 0)
+    const hasConflict = await hasTeacherConflict(pool, {
+      teacherId: session.teacher_id,
+      scheduledAt: proposedDate.toISOString(),
+      durationMinutes: session.duration_minutes,
+      excludeSessionId: session_id,
+    });
+    if (hasConflict)
       return res.status(409).json({
         error: 'Teacher is not available at this time. Please pick a different time.',
         code: 'TEACHER_CONFLICT',
@@ -195,16 +193,13 @@ router.patch('/:id/approve', requireRole('teacher', 'admin', 'supervisor'), asyn
     }
 
     // Re-check teacher conflict
-    const conflict = await client.query(
-      `SELECT id FROM sessions
-       WHERE teacher_id = $1
-         AND status = 'scheduled'
-         AND id <> $2
-         AND tstzrange(scheduled_at, scheduled_at + duration_minutes * interval '1 minute')
-          && tstzrange($3::timestamptz, $3::timestamptz + $4 * interval '1 minute')`,
-      [rr.teacher_id, rr.session_id, rr.proposed_at, rr.duration_minutes]
-    );
-    if (conflict.rows.length > 0) {
+    const hasConflict = await hasTeacherConflict(client, {
+      teacherId: rr.teacher_id,
+      scheduledAt: rr.proposed_at,
+      durationMinutes: rr.duration_minutes,
+      excludeSessionId: rr.session_id,
+    });
+    if (hasConflict) {
       await client.query('ROLLBACK');
       return res.status(409).json({
         error: 'Conflict detected — another session has been scheduled at this time. Please reject this request and ask the student to propose a different time.',

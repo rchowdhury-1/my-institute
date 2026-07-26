@@ -3,6 +3,8 @@ const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { notify } = require('../lib/notify');
 const { asyncHandler } = require('../middleware/errors');
+const { validateDuration } = require('../lib/validators');
+const { getDisplayName, assertTeacherExists, safeGenerate } = require('../lib/queries');
 const {
   generateForScheduleId,
   generateAllSchedules,
@@ -44,11 +46,7 @@ function validateHours(value) {
 // GET /admin/weekly-schedules
 router.get('/', asyncHandler(async (req, res) => {
   // On-demand generation — idempotent, fills gaps
-  try {
-    await generateAllSchedules();
-  } catch (genErr) {
-    console.error('[generation] on-demand generation failed (non-blocking):', genErr);
-  }
+  await safeGenerate(() => generateAllSchedules(), 'generation');
 
   const conditions = [];
   const params = [];
@@ -86,11 +84,7 @@ router.get('/', asyncHandler(async (req, res) => {
 // GET /admin/weekly-schedules/:id
 router.get('/:id', asyncHandler(async (req, res) => {
   // On-demand generation for this specific schedule
-  try {
-    await generateForScheduleId(req.params.id);
-  } catch (genErr) {
-    console.error('[generation] on-demand generation failed (non-blocking):', genErr);
-  }
+  await safeGenerate(() => generateForScheduleId(req.params.id), 'generation');
 
   const result = await pool.query(
     `SELECT ws.*,
@@ -136,8 +130,8 @@ router.post('/', asyncHandler(async (req, res) => {
   if (hoursError) return res.status(400).json({ error: hoursError });
 
   const dur = parseInt(default_duration) || 60;
-  if (dur % 30 !== 0 || dur < 30)
-    return res.status(400).json({ error: 'default_duration must be 30, 60, 90, or 120 minutes' });
+  const durError = validateDuration(dur, 'default_duration');
+  if (durError) return res.status(400).json({ error: durError });
 
   // Validate zoom_link if provided
   if (zoom_link && typeof zoom_link === 'string' && zoom_link.trim() && !zoom_link.startsWith('http')) {
@@ -152,10 +146,8 @@ router.post('/', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Student not found' });
 
   // Validate teacher exists and is active
-  const teacherCheck = await pool.query(
-    "SELECT id FROM users WHERE id = $1 AND role = 'teacher' AND is_active = true", [teacher_id]
-  );
-  if (teacherCheck.rows.length === 0)
+  const teacher = await assertTeacherExists(pool, teacher_id, { requireActive: true });
+  if (!teacher)
     return res.status(400).json({ error: 'Teacher not found or inactive' });
 
   const cleanZoomLink = zoom_link && zoom_link.trim() ? zoom_link.trim() : null;
@@ -176,8 +168,8 @@ router.post('/', asyncHandler(async (req, res) => {
   const generation = await generateForScheduleId(schedule.id);
 
   // Notify student and teacher
-  const studentName = (await pool.query('SELECT display_name FROM users WHERE id=$1', [student_id])).rows[0]?.display_name;
-  const teacherName = (await pool.query('SELECT display_name FROM users WHERE id=$1', [teacher_id])).rows[0]?.display_name;
+  const studentName = await getDisplayName(pool, student_id);
+  const teacherName = await getDisplayName(pool, teacher_id);
   const slotSummary = slots.map(s => `${s.day.charAt(0).toUpperCase() + s.day.slice(1)} ${s.time}`).join(', ');
 
   await notify(student_id, 'schedule_created', 'Weekly Schedule Created',
@@ -213,17 +205,13 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   }
 
   if (default_duration != null) {
-    const dur = parseInt(default_duration);
-    if (isNaN(dur) || dur < 30 || dur % 30 !== 0)
-      return res.status(400).json({ error: 'default_duration must be 30, 60, 90, or 120 minutes' });
+    const durError = validateDuration(parseInt(default_duration), 'default_duration');
+    if (durError) return res.status(400).json({ error: durError });
   }
 
   if (teacher_id) {
-    const teacherCheck = await pool.query(
-      "SELECT id FROM users WHERE id = $1 AND role = 'teacher' AND is_active = true",
-      [teacher_id]
-    );
-    if (teacherCheck.rows.length === 0)
+    const teacher = await assertTeacherExists(pool, teacher_id, { requireActive: true });
+    if (!teacher)
       return res.status(400).json({ error: 'Teacher not found or inactive' });
   }
 
@@ -268,7 +256,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 
   // Notify affected users
   const effectiveTeacher = teacher_id || schedule.teacher_id;
-  const studentName = (await pool.query('SELECT display_name FROM users WHERE id=$1', [schedule.student_id])).rows[0]?.display_name;
+  const studentName = await getDisplayName(pool, schedule.student_id);
 
   await notify(schedule.student_id, 'schedule_updated', 'Schedule Updated',
     'Your weekly schedule has been updated', '/student/sessions');
@@ -341,7 +329,7 @@ router.post('/:id/reactivate', asyncHandler(async (req, res) => {
   const generation = await generateForScheduleId(id);
 
   const schedule = existing.rows[0];
-  const studentName = (await pool.query('SELECT display_name FROM users WHERE id=$1', [schedule.student_id])).rows[0]?.display_name;
+  const studentName = await getDisplayName(pool, schedule.student_id);
 
   await notify(schedule.student_id, 'schedule_reactivated', 'Schedule Reactivated',
     'Your weekly schedule has been reactivated', '/student/sessions');

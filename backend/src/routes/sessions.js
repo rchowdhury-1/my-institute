@@ -7,6 +7,8 @@ const { formatSessionTime } = require('../lib/datetime');
 const { v4: uuidv4 } = require('uuid');
 const { generateAllSchedules } = require('../lib/schedule-generator');
 const { asyncHandler } = require('../middleware/errors');
+const { validateDuration } = require('../lib/validators');
+const { getDisplayName, safeGenerate } = require('../lib/queries');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -14,11 +16,7 @@ router.use(requireAuth);
 // GET /sessions
 router.get('/', asyncHandler(async (req, res) => {
   // On-demand session generation — idempotent, fills any gaps in the 4-week window
-  try {
-    await generateAllSchedules();
-  } catch (genErr) {
-    console.error('[generation] on-demand generation failed (non-blocking):', genErr);
-  }
+  await safeGenerate(() => generateAllSchedules(), 'GET /sessions');
 
   let result;
   if (req.userRole === 'student') {
@@ -70,8 +68,8 @@ router.post('/', requireRole('admin', 'supervisor'), asyncHandler(async (req, re
   const sessionSubject = validSubjects.includes(subject) ? subject : 'quran';
 
   const dur = parseInt(duration_minutes) || 60;
-  if (dur % 30 !== 0 || dur < 30)
-    return res.status(400).json({ error: 'Duration must be 30, 60, 90, or 120 minutes' });
+  const durationError = validateDuration(dur);
+  if (durationError) return res.status(400).json({ error: durationError });
 
   // Snapshot the student's current rate at session creation time
   const studentResult = await pool.query(
@@ -301,7 +299,7 @@ router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supe
       if (balance !== null && balance !== undefined) {
         if (balance <= 0) {
           // Balance just hit zero — notify student + admins
-          const studentName = (await pool.query('SELECT display_name FROM users WHERE id=$1', [session.student_id])).rows[0]?.display_name || 'A student';
+          const studentName = (await getDisplayName(pool, session.student_id)) || 'A student';
           await notify(session.student_id, 'lesson_balance_zero', 'Hours Balance Empty',
             'You have no hours remaining. Please contact admin to renew.',
             '/student/sessions');

@@ -7,6 +7,8 @@ const { v4: uuidv4 } = require('uuid');
 const { notify } = require('../lib/notify');
 const { formatSessionTime } = require('../lib/datetime');
 const { asyncHandler } = require('../middleware/errors');
+const { isValidEmail, validateDuration, validateEnum } = require('../lib/validators');
+const { getDisplayName, assertTeacherExists, hasTeacherConflict } = require('../lib/queries');
 
 const router = express.Router();
 
@@ -46,7 +48,7 @@ router.post('/students', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Full name is required' });
   if (!email || !email.trim())
     return res.status(400).json({ error: 'Email address is required' });
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+  if (!isValidEmail(email))
     return res.status(400).json({ error: 'Please enter a valid email address' });
   if (hourly_rate == null)
     return res.status(400).json({ error: 'Hourly rate is required' });
@@ -71,10 +73,8 @@ router.post('/students', asyncHandler(async (req, res) => {
 
   // Validate teacher_id if provided
   if (teacher_id) {
-    const teacherCheck = await pool.query(
-      "SELECT id FROM users WHERE id = $1 AND role = 'teacher'", [teacher_id]
-    );
-    if (teacherCheck.rows.length === 0)
+    const teacher = await assertTeacherExists(pool, teacher_id);
+    if (!teacher)
       return res.status(400).json({ error: 'Assigned teacher not found' });
   }
 
@@ -130,7 +130,7 @@ router.patch('/students/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'Student not found' });
 
   if (email) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    if (!isValidEmail(email))
       return res.status(400).json({ error: 'Please enter a valid email address' });
     const dup = await pool.query('SELECT id FROM users WHERE email=$1 AND id!=$2', [email.trim().toLowerCase(), req.params.id]);
     if (dup.rows.length > 0)
@@ -138,8 +138,8 @@ router.patch('/students/:id', asyncHandler(async (req, res) => {
   }
 
   if (teacher_id) {
-    const teacherCheck = await pool.query("SELECT id FROM users WHERE id=$1 AND role='teacher'", [teacher_id]);
-    if (teacherCheck.rows.length === 0)
+    const teacher = await assertTeacherExists(pool, teacher_id);
+    if (!teacher)
       return res.status(400).json({ error: 'Assigned teacher not found' });
   }
 
@@ -236,7 +236,7 @@ router.post('/teachers', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Full name is required' });
   if (!email || !email.trim())
     return res.status(400).json({ error: 'Email address is required' });
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+  if (!isValidEmail(email))
     return res.status(400).json({ error: 'Please enter a valid email address' });
   if (providedPassword && providedPassword.length < 8)
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -278,7 +278,7 @@ router.patch('/teachers/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'Teacher not found' });
 
   if (email) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    if (!isValidEmail(email))
       return res.status(400).json({ error: 'Please enter a valid email address' });
     const dup = await pool.query('SELECT id FROM users WHERE email=$1 AND id!=$2', [email.trim().toLowerCase(), req.params.id]);
     if (dup.rows.length > 0)
@@ -433,8 +433,8 @@ router.get('/free-trials', asyncHandler(async (req, res) => {
 // PATCH /admin/free-trials/:id
 router.patch('/free-trials/:id', asyncHandler(async (req, res) => {
   const { status } = req.body;
-  const valid = ['pending', 'contacted', 'converted'];
-  if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  const statusError = validateEnum(status, ['pending', 'contacted', 'converted']);
+  if (statusError) return res.status(400).json({ error: statusError });
 
   const result = await pool.query(
     'UPDATE free_trials SET status = $1 WHERE id = $2 RETURNING *',
@@ -455,8 +455,8 @@ router.get('/scholarships', asyncHandler(async (req, res) => {
 // PATCH /admin/scholarships/:id
 router.patch('/scholarships/:id', asyncHandler(async (req, res) => {
   const { status } = req.body;
-  const valid = ['pending', 'approved', 'rejected'];
-  if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  const statusError = validateEnum(status, ['pending', 'approved', 'rejected']);
+  if (statusError) return res.status(400).json({ error: statusError });
 
   const result = await pool.query(
     'UPDATE scholarship_applications SET status = $1 WHERE id = $2 RETURNING *',
@@ -498,8 +498,8 @@ router.post('/lessons', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Invalid subject' });
 
   const dur = parseInt(duration_minutes) || 60;
-  if (dur % 30 !== 0 || dur < 30)
-    return res.status(400).json({ error: 'Duration must be 30, 60, 90, or 120 minutes' });
+  const durationError = validateDuration(dur);
+  if (durationError) return res.status(400).json({ error: durationError });
 
   // Snapshot the student's current rate at session creation time
   const studentResult = await pool.query(
@@ -532,9 +532,8 @@ router.get('/revert-applications', asyncHandler(async (req, res) => {
 // PATCH /admin/revert-applications/:id — update status
 router.patch('/revert-applications/:id', asyncHandler(async (req, res) => {
   const { status } = req.body;
-  const valid = ['new', 'contacted', 'enrolled', 'archived'];
-  if (!valid.includes(status))
-    return res.status(400).json({ error: 'Invalid status' });
+  const statusError = validateEnum(status, ['new', 'contacted', 'enrolled', 'archived']);
+  if (statusError) return res.status(400).json({ error: statusError });
 
   const result = await pool.query(
     'UPDATE revert_applications SET status = $1 WHERE id = $2 RETURNING *',
@@ -660,9 +659,8 @@ router.post('/newsfeed', asyncHandler(async (req, res) => {
   if (!type || !title || !body)
     return res.status(400).json({ error: 'type, title, and body are required' });
 
-  const validTypes = ['quote', 'honour_list', 'general'];
-  if (!validTypes.includes(type))
-    return res.status(400).json({ error: 'type must be quote, honour_list, or general' });
+  const typeError = validateEnum(type, ['quote', 'honour_list', 'general'], 'type must be quote, honour_list, or general');
+  if (typeError) return res.status(400).json({ error: typeError });
 
   const result = await pool.query(
     `INSERT INTO newsfeed_posts (type, title, body, image_url, show_on_homepage, created_by)
@@ -678,9 +676,8 @@ router.patch('/newsfeed/:id', asyncHandler(async (req, res) => {
   const { type, title, body, image_url, show_on_homepage } = req.body;
 
   if (type) {
-    const validTypes = ['quote', 'honour_list', 'general'];
-    if (!validTypes.includes(type))
-      return res.status(400).json({ error: 'type must be quote, honour_list, or general' });
+    const typeError = validateEnum(type, ['quote', 'honour_list', 'general'], 'type must be quote, honour_list, or general');
+    if (typeError) return res.status(400).json({ error: typeError });
   }
 
   const result = await pool.query(
@@ -739,16 +736,13 @@ router.patch('/sessions/:id', asyncHandler(async (req, res) => {
   // Validate inputs
   if (duration_minutes != null) {
     const dur = parseInt(duration_minutes);
-    if (isNaN(dur) || dur < 30 || dur % 30 !== 0)
-      return res.status(400).json({ error: 'Duration must be 30, 60, 90, or 120 minutes' });
+    const durationError = validateDuration(dur);
+    if (durationError) return res.status(400).json({ error: durationError });
   }
 
   if (teacher_id) {
-    const teacherCheck = await pool.query(
-      "SELECT id, display_name FROM users WHERE id = $1 AND role = 'teacher' AND is_active = true",
-      [teacher_id]
-    );
-    if (teacherCheck.rows.length === 0)
+    const teacher = await assertTeacherExists(pool, teacher_id, { requireActive: true });
+    if (!teacher)
       return res.status(400).json({ error: 'Teacher not found or inactive' });
   }
 
@@ -765,16 +759,13 @@ router.patch('/sessions/:id', asyncHandler(async (req, res) => {
   const effectiveDuration = duration_minutes != null ? parseInt(duration_minutes) : session.duration_minutes;
 
   if (scheduled_at || teacher_id) {
-    const conflict = await pool.query(
-      `SELECT id FROM sessions
-       WHERE teacher_id = $1
-         AND status = 'scheduled'
-         AND id <> $2
-         AND tstzrange(scheduled_at, scheduled_at + duration_minutes * interval '1 minute')
-          && tstzrange($3::timestamptz, $3::timestamptz + $4 * interval '1 minute')`,
-      [effectiveTeacher, id, effectiveTime, effectiveDuration]
-    );
-    if (conflict.rows.length > 0)
+    const conflict = await hasTeacherConflict(pool, {
+      teacherId: effectiveTeacher,
+      scheduledAt: effectiveTime,
+      durationMinutes: effectiveDuration,
+      excludeSessionId: id,
+    });
+    if (conflict)
       return res.status(409).json({
         error: 'The chosen teacher already has a session overlapping this time. Please pick a different time or teacher.',
         code: 'TEACHER_CONFLICT',
