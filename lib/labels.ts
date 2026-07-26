@@ -55,3 +55,17 @@ export function whatsAppUrl(phone: string | null | undefined, message?: string):
   if (!num) return null;
   return message ? `https://wa.me/${num}?text=${encodeURIComponent(message)}` : `https://wa.me/${num}`;
 }
+
+/**
+ * Balance unit: schedules hold hours; legacy packages still count lessons.
+ */
+export function getBalanceCopy(source: "schedules" | "package" | "none") {
+  const unit = source === "package" ? "lesson" : "hour";
+  const balanceEmptyMsg = unit === "hour"
+    ? "You have no hours remaining. Please contact admin to renew."
+    : "Your lesson balance is 0. Please contact admin to renew.";
+  const balanceEmptyWa = unit === "hour"
+    ? "Hi, I have no hours remaining. I'd like to renew."
+    : "Hi, my lesson balance has reached 0. I'd like to renew.";
+  return { unit, balanceEmptyMsg, balanceEmptyWa };
+}

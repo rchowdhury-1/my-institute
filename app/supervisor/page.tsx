@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { startOfWeek, format, addWeeks } from "date-fns";
 import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock, RefreshCw, X as XIcon, Pencil, Repeat, ChevronDown, Archive, Play, AlertTriangle, List, Search } from "lucide-react";
@@ -10,8 +9,11 @@ import SessionCalendar from "@/components/shared/SessionCalendar";
 import Link from "next/link";
 import { formatSessionTime, formatRelative, formatHours, isSessionStillUpcoming, zonedInputToISO, isoToZonedInput, otherZoneHint, OPERATIONAL_TZ_LABEL } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { useLogout } from "@/lib/useLogout";
 import { getAxiosError } from "@/lib/errors";
 import { subjectLabel, SESSION_STATUS_STYLE, SESSION_STATUS_LABEL, DURATION_OPTIONS, LOW_BALANCE_AMBER_HOURS, whatsAppUrl } from "@/lib/labels";
+import PageLoading from "@/components/shared/PageLoading";
+import PageError from "@/components/shared/PageError";
 
 const TOAST_MS = 3000;
 
@@ -85,7 +87,7 @@ const ALL_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const ALL_STATUSES = ["scheduled", "completed", "cancelled", "rescheduled", "no_show", "cancelled_teacher"] as const;
 
 export default function SupervisorPage() {
-  const router = useRouter();
+  const handleLogout = useLogout();
   const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [students, setStudents] = useState<User[]>([]);
@@ -355,14 +357,6 @@ export default function SupervisorPage() {
   const [msgForm, setMsgForm] = useState({ receiver_id: "", content: "" });
   const [sending, setSending] = useState(false);
   const [msgSent, setMsgSent] = useState(false);
-
-  const handleLogout = async () => {
-    // deliberate: logout must not block on API failure
-    await api.post("/auth/logout", {}).catch(() => {});
-    localStorage.clear();
-    document.cookie = "userRole=; path=/; max-age=0";
-    router.push("/login");
-  };
 
   useEffect(() => {
     if (!authChecked) return;
@@ -741,18 +735,10 @@ export default function SupervisorPage() {
   }
 
   if (loading) {
-    return (
-      <main className="min-h-screen bg-cream flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-emerald-primary/30 border-t-emerald-primary rounded-full animate-spin" />
-      </main>
-    );
+    return <PageLoading />;
   }
   if (error) {
-    return (
-      <main className="min-h-screen bg-cream flex items-center justify-center px-4">
-        <p className="text-red-500 text-center">{error}</p>
-      </main>
-    );
+    return <PageError message={error} />;
   }
 
   return (

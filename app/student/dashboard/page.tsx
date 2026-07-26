@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Video, ExternalLink, MessageCircle, ClipboardList } from "lucide-react";
-import { formatSessionDate, formatTimeOnly, formatSimpleDate, formatHours, isSessionJoinable, isSessionBeforeStart, computeClockSkew, JOIN_WINDOW_HOURS } from "@/lib/datetime";
+import { ExternalLink, MessageCircle, ClipboardList } from "lucide-react";
+import { formatSessionDate, formatTimeOnly, formatSimpleDate, formatHours, computeClockSkew } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { useLogout } from "@/lib/useLogout";
 import { BRAND, EXAM_PORTAL_URL } from "@/lib/content";
-import { subjectLabel, whatsAppUrl, RENEWAL_REMINDER_HOURS } from "@/lib/labels";
+import { subjectLabel, whatsAppUrl, RENEWAL_REMINDER_HOURS, getBalanceCopy } from "@/lib/labels";
+import PageLoading from "@/components/shared/PageLoading";
+import PageError from "@/components/shared/PageError";
+import JoinSessionButton from "@/components/shared/JoinSessionButton";
 
 interface Lesson {
   id: string;
@@ -48,7 +51,7 @@ interface DashboardData {
 }
 
 export default function StudentDashboard() {
-  const router = useRouter();
+  const handleLogout = useLogout();
   const { authChecked } = useAuthGuard(["student"]);
   const [data, setData] = useState<DashboardData | null>(null);
   const [history, setHistory] = useState<Lesson[]>([]);
@@ -74,44 +77,18 @@ export default function StudentDashboard() {
       .finally(() => setLoading(false));
   }, [authChecked]);
 
-  const handleLogout = async () => {
-    // deliberate: logout must not block on API failure
-    await api.post("/auth/logout", {}).catch(() => {});
-    localStorage.clear();
-    document.cookie = "userRole=; path=/; max-age=0";
-    router.push("/login");
-  };
-
   if (loading) {
-    return (
-      <main className="min-h-screen bg-cream flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-emerald-primary/30 border-t-emerald-primary rounded-full animate-spin" />
-      </main>
-    );
+    return <PageLoading />;
   }
 
   if (error || !data) {
-    return (
-      <main className="min-h-screen bg-cream flex items-center justify-center px-4">
-        <div className="text-center">
-          <p className="text-red-500 mb-4">{error || "Something went wrong."}</p>
-          <a href="/login" className="text-emerald-primary font-medium hover:underline">Back to login</a>
-        </div>
-      </main>
-    );
+    return <PageError message={error || "Something went wrong."} showLoginLink />;
   }
 
   const { user, package: pkg, schedules_summary: summary, upcoming_lessons } = data;
   const pastLessons = history.filter((l) => l.status !== "scheduled");
 
-  // Balance unit: schedules hold hours; legacy packages still count lessons
-  const unit = summary.source === "package" ? "lesson" : "hour";
-  const balanceEmptyMsg = unit === "hour"
-    ? "You have no hours remaining. Please contact admin to renew."
-    : "Your lesson balance is 0. Please contact admin to renew.";
-  const balanceEmptyWa = unit === "hour"
-    ? "Hi, I have no hours remaining. I'd like to renew."
-    : "Hi, my lesson balance has reached 0. I'd like to renew.";
+  const { unit, balanceEmptyMsg, balanceEmptyWa } = getBalanceCopy(summary.source);
 
   return (
     <main className="min-h-screen bg-cream">
@@ -230,23 +207,14 @@ export default function StudentDashboard() {
                         WhatsApp Admin
                       </a>
                     </div>
-                  ) : l.zoom_link && isSessionJoinable(l.scheduled_at, JOIN_WINDOW_HOURS, { skewMs }) ? (
-                    <a
-                      href={l.zoom_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
-                    >
-                      <Video size={14} />
-                      Join Session
-                      <ExternalLink size={12} />
-                    </a>
-                  ) : l.zoom_link && isSessionBeforeStart(l.scheduled_at, skewMs) ? (
-                    <p className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium">
-                      <Video size={14} />
-                      Starts at {formatTimeOnly(l.scheduled_at)}
-                    </p>
-                  ) : null}
+                  ) : (
+                    <JoinSessionButton
+                      zoomLink={l.zoom_link}
+                      scheduledAt={l.scheduled_at}
+                      skewMs={skewMs}
+                      className="mt-3 inline-flex"
+                    />
+                  )}
                 </div>
               ))}
             </div>

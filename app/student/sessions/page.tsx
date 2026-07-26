@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
-import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink, MessageCircle, List } from "lucide-react";
-import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew, JOIN_WINDOW_HOURS, CANCELLATION_BUFFER_HOURS } from "@/lib/datetime";
+import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, MessageCircle, List } from "lucide-react";
+import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, computeClockSkew, CANCELLATION_BUFFER_HOURS } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
 import { BRAND } from "@/lib/content";
 import SessionCalendar from "@/components/shared/SessionCalendar";
-import { subjectLabel, SESSION_STATUS_STYLE, RENEWAL_REMINDER_HOURS, whatsAppUrl } from "@/lib/labels";
+import { subjectLabel, SESSION_STATUS_STYLE, RENEWAL_REMINDER_HOURS, whatsAppUrl, getBalanceCopy } from "@/lib/labels";
+import PageLoading from "@/components/shared/PageLoading";
+import PageError from "@/components/shared/PageError";
+import JoinSessionButton from "@/components/shared/JoinSessionButton";
 
 interface Session {
   id: string;
@@ -171,32 +174,17 @@ export default function StudentSessionsPage() {
   }
 
   if (loading) {
-    return (
-      <main className="min-h-screen bg-cream flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-emerald-primary/30 border-t-emerald-primary rounded-full animate-spin" />
-      </main>
-    );
+    return <PageLoading />;
   }
   if (error) {
-    return (
-      <main className="min-h-screen bg-cream flex items-center justify-center px-4">
-        <p className="text-red-500">{error}</p>
-      </main>
-    );
+    return <PageError message={error} />;
   }
 
   const upcoming = sessions.filter(
     (s) => s.status === "scheduled" && isSessionStillUpcoming(s.scheduled_at, s.duration_minutes)
   );
 
-  // Balance unit: schedules hold hours; legacy packages still count lessons
-  const unit = summary.source === "package" ? "lesson" : "hour";
-  const balanceEmptyMsg = unit === "hour"
-    ? "You have no hours remaining. Please contact admin to renew."
-    : "Your lesson balance is 0. Please contact admin to renew.";
-  const balanceEmptyWa = unit === "hour"
-    ? "Hi, I have no hours remaining. I'd like to renew."
-    : "Hi, my lesson balance has reached 0. I'd like to renew.";
+  const { unit, balanceEmptyMsg, balanceEmptyWa } = getBalanceCopy(summary.source);
   const past = sessions.filter((s) => s.status !== "scheduled" || !isSessionStillUpcoming(s.scheduled_at, s.duration_minutes));
 
   const timeOptions = Array.from({ length: 48 }, (_, i) => {
@@ -348,23 +336,16 @@ export default function StudentSessionsPage() {
                         WhatsApp Admin
                       </a>
                     </div>
-                  ) : s.zoom_link && isSessionJoinable(s.scheduled_at, JOIN_WINDOW_HOURS, { skewMs }) ? (
-                    <a
-                      href={s.zoom_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mb-3 flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors w-fit"
-                    >
-                      <Video size={14} />
-                      Join Class
-                      <ExternalLink size={12} />
-                    </a>
-                  ) : s.zoom_link && isSessionBeforeStart(s.scheduled_at, skewMs) ? (
-                    <p className="mb-3 flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium w-fit">
-                      <Video size={14} />
-                      Starts at {formatTimeOnly(s.scheduled_at)}
-                    </p>
-                  ) : null}
+                  ) : (
+                    <JoinSessionButton
+                      zoomLink={s.zoom_link}
+                      scheduledAt={s.scheduled_at}
+                      skewMs={skewMs}
+                      label="Join Class"
+                      variant="blue"
+                      className="mb-3 flex w-fit"
+                    />
+                  )}
 
                   {/* Actions — check 12h buffer */}
                   {(() => {

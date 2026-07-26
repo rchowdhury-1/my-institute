@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { DollarSign, Check, Plus } from "lucide-react";
+import PageLoading from "@/components/shared/PageLoading";
 
 interface Teacher {
   id: string;
@@ -157,11 +158,7 @@ export default function AdminPaymentsPage() {
   }
 
   if (loading) {
-    return (
-      <main className="min-h-screen bg-cream flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-emerald-primary/30 border-t-emerald-primary rounded-full animate-spin" />
-      </main>
-    );
+    return <PageLoading />;
   }
 
   return (

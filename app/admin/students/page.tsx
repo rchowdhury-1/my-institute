@@ -6,6 +6,7 @@ import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
 import { BRAND } from "@/lib/content";
 import { whatsAppUrl, COPY_FEEDBACK_MS } from "@/lib/labels";
+import { INPUT_CLASS as inputClass } from "@/lib/styles";
 import {
   Plus,
   X,
@@ -453,9 +454,6 @@ export default function AdminStudentsPage() {
   // ────────────────────────────────────────────────────────────────────────
 
   if (!authChecked) return null;
-
-  const inputClass =
-    "w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 focus:border-emerald-primary transition-all";
 
   return (
     <main className="min-h-screen bg-cream">

@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { Video, ExternalLink, RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
-import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew, isToday, JOIN_WINDOW_HOURS, ATTENDANCE_EARLY_MS, ATTENDANCE_LATE_MS } from "@/lib/datetime";
+import { RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
+import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming, computeClockSkew, isToday, ATTENDANCE_EARLY_MS, ATTENDANCE_LATE_MS } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { useLogout } from "@/lib/useLogout";
 import { getAxiosError } from "@/lib/errors";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 import { subjectLabel, SESSION_STATUS_STYLE, SESSION_STATUS_LABEL, whatsAppUrl } from "@/lib/labels";
+import PageLoading from "@/components/shared/PageLoading";
+import PageError from "@/components/shared/PageError";
+import JoinSessionButton from "@/components/shared/JoinSessionButton";
 
 interface Lesson {
   id: string;
@@ -45,7 +48,7 @@ interface RescheduleRequest {
 }
 
 export default function TeacherDashboard() {
-  const router = useRouter();
+  const handleLogout = useLogout();
   const { authChecked } = useAuthGuard(["teacher"]);
   const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -170,31 +173,12 @@ export default function TeacherDashboard() {
     }
   }
 
-  const handleLogout = async () => {
-    // deliberate: logout must not block on API failure
-    await api.post("/auth/logout", {}).catch(() => {});
-    localStorage.clear();
-    document.cookie = "userRole=; path=/; max-age=0";
-    router.push("/login");
-  };
-
   if (loading) {
-    return (
-      <main className="min-h-screen bg-cream flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-emerald-primary/30 border-t-emerald-primary rounded-full animate-spin" />
-      </main>
-    );
+    return <PageLoading />;
   }
 
   if (error || !teacher) {
-    return (
-      <main className="min-h-screen bg-cream flex items-center justify-center px-4">
-        <div className="text-center">
-          <p className="text-red-500 mb-4">{error || "Something went wrong."}</p>
-          <a href="/login" className="text-emerald-primary font-medium hover:underline">Back to login</a>
-        </div>
-      </main>
-    );
+    return <PageError message={error || "Something went wrong."} showLoginLink />;
   }
 
   const todayLessons = lessons.filter((l) => isToday(l.scheduled_at));
@@ -397,24 +381,12 @@ export default function TeacherDashboard() {
                         <p className="text-charcoal/55 text-sm">{formatTimeOnly(l.scheduled_at)}</p>
                       </div>
                     </div>
-                    {l.zoom_link && isSessionJoinable(l.scheduled_at, JOIN_WINDOW_HOURS, { skewMs }) && (
-                      <a
-                        href={l.zoom_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
-                      >
-                        <Video size={14} />
-                        Join Session
-                        <ExternalLink size={12} />
-                      </a>
-                    )}
-                    {l.zoom_link && isSessionBeforeStart(l.scheduled_at, skewMs) && (
-                      <p className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium">
-                        <Video size={14} />
-                        Starts at {formatTimeOnly(l.scheduled_at)}
-                      </p>
-                    )}
+                    <JoinSessionButton
+                      zoomLink={l.zoom_link}
+                      scheduledAt={l.scheduled_at}
+                      skewMs={skewMs}
+                      className="mt-3 inline-flex"
+                    />
                     {l.schedule_lessons_remaining != null && l.schedule_lessons_remaining <= 0 && (
                       <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                         Student has no hours remaining — renewal needed
@@ -481,24 +453,13 @@ function LessonCard({
         )}
       </div>
 
-      {!done && lesson.zoom_link && isSessionJoinable(lesson.scheduled_at, JOIN_WINDOW_HOURS, { skewMs }) && (
-        <a
-          href={lesson.zoom_link}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mb-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
-        >
-          <Video size={14} />
-          Join Session
-          <ExternalLink size={12} />
-        </a>
-      )}
-
-      {!done && lesson.zoom_link && isSessionBeforeStart(lesson.scheduled_at, skewMs) && (
-        <p className="mb-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-black/5 text-charcoal/50 text-sm font-medium">
-          <Video size={14} />
-          Starts at {formatTimeOnly(lesson.scheduled_at)}
-        </p>
+      {!done && (
+        <JoinSessionButton
+          zoomLink={lesson.zoom_link}
+          scheduledAt={lesson.scheduled_at}
+          skewMs={skewMs}
+          className="mb-3 inline-flex"
+        />
       )}
 
       {!done && lesson.schedule_lessons_remaining != null && lesson.schedule_lessons_remaining <= 0 && (

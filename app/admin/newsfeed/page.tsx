@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
+import { INPUT_CLASS as inputClass } from "@/lib/styles";
 import { Plus, X, Pencil, Trash2, Eye, Image as ImageIcon } from "lucide-react";
 
 interface Post {
@@ -188,9 +189,6 @@ export default function AdminNewsfeedPage() {
   };
 
   if (!authChecked) return null;
-
-  const inputClass =
-    "w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 focus:border-emerald-primary transition-all";
 
   return (
     <main className="min-h-screen bg-cream">

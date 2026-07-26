@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { ClipboardList, CheckCircle, XCircle, Clock } from "lucide-react";
+import PageLoading from "@/components/shared/PageLoading";
 
 interface AssignedExam {
   id: string; // assignment id
@@ -143,11 +144,7 @@ export default function StudentExamsPage() {
   }
 
   if (loading) {
-    return (
-      <main className="min-h-screen bg-cream flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-emerald-primary/30 border-t-emerald-primary rounded-full animate-spin" />
-      </main>
-    );
+    return <PageLoading />;
   }
 
   // ── Taking exam view ──
