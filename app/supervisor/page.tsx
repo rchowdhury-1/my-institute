@@ -9,6 +9,7 @@ import UserSearchInput from "@/components/shared/UserSearchInput";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 import Link from "next/link";
 import { formatSessionTime, formatRelative, formatHours, isSessionStillUpcoming, zonedInputToISO, isoToZonedInput, otherZoneHint, OPERATIONAL_TZ_LABEL } from "@/lib/datetime";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Session {
   id: string;
@@ -90,6 +91,7 @@ const ALL_STATUSES = ["scheduled", "completed", "cancelled", "rescheduled", "no_
 
 export default function SupervisorPage() {
   const router = useRouter();
+  const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [students, setStudents] = useState<User[]>([]);
   const [teachers, setTeachers] = useState<User[]>([]);
@@ -368,8 +370,8 @@ export default function SupervisorPage() {
   };
 
   useEffect(() => {
+    if (!authChecked) return;
     const token = localStorage.getItem("accessToken");
-    if (!token) { router.push("/login"); return; }
     const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
@@ -388,7 +390,7 @@ export default function SupervisorPage() {
       })
       .catch(() => setError("Failed to load data. You may not have permission."))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   // ─── Schedule handlers ────────────────────────────────────────────────────
 

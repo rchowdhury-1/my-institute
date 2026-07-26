@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 import { BRAND } from "@/lib/content";
 import {
   Plus,
@@ -90,8 +90,7 @@ function CopyButton({ text }: { text: string }) {
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function AdminTeachersPage() {
-  const router = useRouter();
-  const [authChecked, setAuthChecked] = useState(false);
+  const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [token, setToken] = useState<string | null>(null);
 
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -153,15 +152,8 @@ export default function AdminTeachersPage() {
   // ── Auth guard ──────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const t = localStorage.getItem("accessToken");
-    const role = localStorage.getItem("userRole");
-    if (!t || (role !== "admin" && role !== "supervisor")) {
-      router.push("/login");
-    } else {
-      setToken(t);
-      setAuthChecked(true);
-    }
-  }, [router]);
+    if (authChecked) setToken(localStorage.getItem("accessToken"));
+  }, [authChecked]);
 
   // ── Fetch teachers ──────────────────────────────────────────────────────
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink, MessageCircle, ClipboardList } from "lucide-react";
 import { formatSessionDate, formatTimeOnly, formatSimpleDate, formatHours, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 import { BRAND, EXAM_PORTAL_URL } from "@/lib/content";
 
 interface Lesson {
@@ -52,6 +53,7 @@ function subjectLabel(s: string) {
 
 export default function StudentDashboard() {
   const router = useRouter();
+  const { authChecked } = useAuthGuard(["student"]);
   const [data, setData] = useState<DashboardData | null>(null);
   const [history, setHistory] = useState<Lesson[]>([]);
   const [skewMs, setSkewMs] = useState(0);
@@ -59,9 +61,8 @@ export default function StudentDashboard() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!authChecked) return;
     const token = localStorage.getItem("accessToken");
-    if (!token) { router.push("/login"); return; }
-
     const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
@@ -75,7 +76,7 @@ export default function StudentDashboard() {
       })
       .catch(() => setError("Failed to load dashboard. Please sign in again."))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   const handleLogout = async () => {
     await api.post("/auth/logout", {}).catch(() => {});

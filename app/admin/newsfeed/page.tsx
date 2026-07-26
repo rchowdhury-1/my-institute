@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 import { Plus, X, Pencil, Trash2, Eye, Image as ImageIcon } from "lucide-react";
 
 interface Post {
@@ -42,8 +42,7 @@ function formatDate(iso: string) {
 }
 
 export default function AdminNewsfeedPage() {
-  const router = useRouter();
-  const [authChecked, setAuthChecked] = useState(false);
+  const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [token, setToken] = useState<string | null>(null);
 
   const [posts, setPosts] = useState<Post[]>([]);
@@ -80,15 +79,8 @@ export default function AdminNewsfeedPage() {
 
   // Auth guard
   useEffect(() => {
-    const t = localStorage.getItem("accessToken");
-    const role = localStorage.getItem("userRole");
-    if (!t || (role !== "admin" && role !== "supervisor")) {
-      router.push("/login");
-    } else {
-      setToken(t);
-      setAuthChecked(true);
-    }
-  }, [router]);
+    if (authChecked) setToken(localStorage.getItem("accessToken"));
+  }, [authChecked]);
 
   // Fetch posts
   const fetchPosts = useCallback(async (t: string) => {

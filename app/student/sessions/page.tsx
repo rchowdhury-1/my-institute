@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink, MessageCircle, List } from "lucide-react";
 import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 import { BRAND } from "@/lib/content";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 
@@ -55,7 +55,7 @@ const statusStyle: Record<string, string> = {
 };
 
 export default function StudentSessionsPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard(["student"]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [skewMs, setSkewMs] = useState(0);
   const [summary, setSummary] = useState<SchedulesSummary>({ active_schedule_count: 0, active_lessons_remaining: 0, source: "none" });
@@ -82,8 +82,8 @@ export default function StudentSessionsPage() {
   const [cancellingRequest, setCancellingRequest] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!authChecked) return;
     const token = localStorage.getItem("accessToken");
-    if (!token) { router.push("/login"); return; }
     const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
@@ -101,7 +101,7 @@ export default function StudentSessionsPage() {
       })
       .catch(() => setError("Failed to load sessions."))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   function getPendingRequest(sessionId: string) {
     return pendingRequests.find((r) => r.session_id === sessionId);

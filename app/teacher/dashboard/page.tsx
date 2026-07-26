@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Video, ExternalLink, RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
 import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 
 interface Lesson {
@@ -56,6 +57,7 @@ function isToday(iso: string) {
 
 export default function TeacherDashboard() {
   const router = useRouter();
+  const { authChecked } = useAuthGuard(["teacher"]);
   const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [skewMs, setSkewMs] = useState(0);
@@ -73,9 +75,8 @@ export default function TeacherDashboard() {
   const [calendarMode, setCalendarMode] = useState<"week" | "month">("week");
 
   useEffect(() => {
+    if (!authChecked) return;
     const token = localStorage.getItem("accessToken");
-    if (!token) { router.push("/login"); return; }
-
     const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
@@ -91,7 +92,7 @@ export default function TeacherDashboard() {
       })
       .catch(() => setError("Failed to load dashboard. Please sign in again."))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   const markAttendance = async (lessonId: string, teacherAttended: boolean, studentAttended: boolean) => {
     const token = localStorage.getItem("accessToken");
