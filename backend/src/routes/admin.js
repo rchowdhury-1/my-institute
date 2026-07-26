@@ -1,14 +1,13 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { sendWelcomeEmail } = require('../email');
-const { generateTempPassword, hashPassword } = require('../utils/password');
 const { v4: uuidv4 } = require('uuid');
 const { notify } = require('../lib/notify');
 const { formatSessionTime } = require('../lib/datetime');
 const { asyncHandler } = require('../middleware/errors');
 const { isValidEmail, validateDuration, validateEnum } = require('../lib/validators');
 const { getDisplayName, assertTeacherExists, hasTeacherConflict } = require('../lib/queries');
+const { createUser, resetPassword } = require('../lib/users');
 
 const router = express.Router();
 
@@ -37,85 +36,9 @@ router.get('/students', asyncHandler(async (req, res) => {
 
 // POST /admin/students — create a student account
 router.post('/students', asyncHandler(async (req, res) => {
-  const {
-    display_name, email, phone, guardian_name, teacher_id,
-    password: providedPassword, send_email = true,
-    hourly_rate, is_legacy_pricing = false, pricing_notes, currency = 'GBP',
-    package_name, total_lessons, expires_at,
-  } = req.body;
-
-  if (!display_name || !display_name.trim())
-    return res.status(400).json({ error: 'Full name is required' });
-  if (!email || !email.trim())
-    return res.status(400).json({ error: 'Email address is required' });
-  if (!isValidEmail(email))
-    return res.status(400).json({ error: 'Please enter a valid email address' });
-  if (hourly_rate == null)
-    return res.status(400).json({ error: 'Hourly rate is required' });
-  if (isNaN(parseFloat(hourly_rate)) || parseFloat(hourly_rate) <= 0)
-    return res.status(400).json({ error: 'Hourly rate must be a positive number' });
-  if (!['GBP', 'EGP'].includes(currency))
-    return res.status(400).json({ error: 'Currency must be GBP or EGP' });
-  if (providedPassword && providedPassword.length < 8)
-    return res.status(400).json({ error: 'Password must be at least 8 characters' });
-
-  // Bundle fields are all-or-nothing
-  const bundleFields = [package_name, total_lessons, expires_at].filter(Boolean);
-  if (bundleFields.length > 0 && bundleFields.length < 3)
-    return res.status(400).json({ error: 'To add a prepaid bundle, fill in bundle label, total lessons, and expiry date' });
-  if (total_lessons != null && (isNaN(parseInt(total_lessons)) || parseInt(total_lessons) < 1))
-    return res.status(400).json({ error: 'Total lessons must be a positive number' });
-
-  // Duplicate email check
-  const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email.trim().toLowerCase()]);
-  if (existing.rows.length > 0)
-    return res.status(409).json({ error: 'Someone with this email address already exists' });
-
-  // Validate teacher_id if provided
-  if (teacher_id) {
-    const teacher = await assertTeacherExists(pool, teacher_id);
-    if (!teacher)
-      return res.status(400).json({ error: 'Assigned teacher not found' });
-  }
-
-  const tempPassword = providedPassword || generateTempPassword();
-  const hash = await hashPassword(tempPassword);
-
-  const result = await pool.query(
-    `INSERT INTO users
-       (display_name, email, password_hash, role, phone, guardian_name, teacher_id,
-        hourly_rate, currency, is_legacy_pricing, pricing_notes,
-        email_verified, must_change_password)
-     VALUES ($1,$2,$3,'student',$4,$5,$6,$7,$8,$9,$10,true,true)
-     RETURNING id, display_name, email, role`,
-    [
-      display_name.trim(), email.trim().toLowerCase(), hash,
-      phone || null, guardian_name || null, teacher_id || null,
-      parseFloat(hourly_rate), currency, is_legacy_pricing || false,
-      pricing_notes || null,
-    ]
-  );
-  const student = result.rows[0];
-
-  // Optionally create a prepaid bundle
-  if (package_name && total_lessons && expires_at) {
-    await pool.query(
-      `INSERT INTO packages (user_id, package_name, total_lessons, sessions_remaining, expires_at)
-       VALUES ($1,$2,$3,$3,$4)`,
-      [student.id, package_name.trim(), parseInt(total_lessons), expires_at]
-    );
-  }
-
-  // Send welcome email and report status
-  let emailResult = { email_sent: false, email_status: 'skipped', email_error: null };
-  if (send_email) {
-    emailResult = await sendWelcomeEmail({
-      to: student.email, name: student.display_name,
-      email: student.email, tempPassword, role: 'student',
-    }).catch(err => ({ email_sent: false, email_status: 'failed', email_error: err.message }));
-  }
-
-  res.status(201).json({ student, tempPassword, ...emailResult });
+  const result = await createUser('student', req.body);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.status(result.status).json({ student: result.user, tempPassword: result.tempPassword, ...result.emailResult });
 }));
 
 // PATCH /admin/students/:id — edit a student
@@ -183,29 +106,9 @@ router.patch('/students/:id', asyncHandler(async (req, res) => {
 
 // POST /admin/students/:id/reset-password
 router.post('/students/:id/reset-password', asyncHandler(async (req, res) => {
-  const { send_email = true } = req.body;
-  const existing = await pool.query("SELECT * FROM users WHERE id=$1 AND role='student'", [req.params.id]);
-  if (existing.rows.length === 0)
-    return res.status(404).json({ error: 'Student not found' });
-  const user = existing.rows[0];
-
-  const tempPassword = generateTempPassword();
-  const hash = await hashPassword(tempPassword);
-
-  await pool.query(
-    'UPDATE users SET password_hash=$1, must_change_password=true WHERE id=$2',
-    [hash, req.params.id]
-  );
-
-  let emailResult = { email_sent: false, email_status: 'skipped', email_error: null };
-  if (send_email) {
-    emailResult = await sendWelcomeEmail({
-      to: user.email, name: user.display_name,
-      email: user.email, tempPassword, role: 'student',
-    }).catch(err => ({ email_sent: false, email_status: 'failed', email_error: err.message }));
-  }
-
-  res.json({ tempPassword, ...emailResult });
+  const result = await resetPassword('student', req.params.id, req.body);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.json({ tempPassword: result.tempPassword, ...result.emailResult });
 }));
 
 // ─── Teachers ────────────────────────────────────────────────────────────────
@@ -227,46 +130,9 @@ router.get('/teachers', asyncHandler(async (req, res) => {
 
 // POST /admin/teachers — create a teacher account
 router.post('/teachers', asyncHandler(async (req, res) => {
-  const {
-    display_name, email, phone, bio, specialisation,
-    password: providedPassword, send_email = true,
-  } = req.body;
-
-  if (!display_name || !display_name.trim())
-    return res.status(400).json({ error: 'Full name is required' });
-  if (!email || !email.trim())
-    return res.status(400).json({ error: 'Email address is required' });
-  if (!isValidEmail(email))
-    return res.status(400).json({ error: 'Please enter a valid email address' });
-  if (providedPassword && providedPassword.length < 8)
-    return res.status(400).json({ error: 'Password must be at least 8 characters' });
-
-  const existing = await pool.query('SELECT id FROM users WHERE email=$1', [email.trim().toLowerCase()]);
-  if (existing.rows.length > 0)
-    return res.status(409).json({ error: 'Someone with this email address already exists' });
-
-  const tempPassword = providedPassword || generateTempPassword();
-  const hash = await hashPassword(tempPassword);
-
-  const result = await pool.query(
-    `INSERT INTO users
-       (display_name, email, password_hash, role, phone, bio, specialisation,
-        email_verified, must_change_password)
-     VALUES ($1,$2,$3,'teacher',$4,$5,$6,true,true)
-     RETURNING id, display_name, email, role`,
-    [display_name.trim(), email.trim().toLowerCase(), hash, phone || null, bio || null, specialisation || null]
-  );
-  const teacher = result.rows[0];
-
-  let emailResult = { email_sent: false, email_status: 'skipped', email_error: null };
-  if (send_email) {
-    emailResult = await sendWelcomeEmail({
-      to: teacher.email, name: teacher.display_name,
-      email: teacher.email, tempPassword, role: 'teacher',
-    }).catch(err => ({ email_sent: false, email_status: 'failed', email_error: err.message }));
-  }
-
-  res.status(201).json({ teacher, tempPassword, ...emailResult });
+  const result = await createUser('teacher', req.body);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.status(result.status).json({ teacher: result.user, tempPassword: result.tempPassword, ...result.emailResult });
 }));
 
 // PATCH /admin/teachers/:id — edit a teacher
@@ -320,29 +186,9 @@ router.patch('/teachers/:id', asyncHandler(async (req, res) => {
 
 // POST /admin/teachers/:id/reset-password
 router.post('/teachers/:id/reset-password', asyncHandler(async (req, res) => {
-  const { send_email = true } = req.body;
-  const existing = await pool.query("SELECT * FROM users WHERE id=$1 AND role='teacher'", [req.params.id]);
-  if (existing.rows.length === 0)
-    return res.status(404).json({ error: 'Teacher not found' });
-  const user = existing.rows[0];
-
-  const tempPassword = generateTempPassword();
-  const hash = await hashPassword(tempPassword);
-
-  await pool.query(
-    'UPDATE users SET password_hash=$1, must_change_password=true WHERE id=$2',
-    [hash, req.params.id]
-  );
-
-  let emailResult = { email_sent: false, email_status: 'skipped', email_error: null };
-  if (send_email) {
-    emailResult = await sendWelcomeEmail({
-      to: user.email, name: user.display_name,
-      email: user.email, tempPassword, role: 'teacher',
-    }).catch(err => ({ email_sent: false, email_status: 'failed', email_error: err.message }));
-  }
-
-  res.json({ tempPassword, ...emailResult });
+  const result = await resetPassword('teacher', req.params.id, req.body);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.json({ tempPassword: result.tempPassword, ...result.emailResult });
 }));
 
 // ─── Packages ────────────────────────────────────────────────────────────────
