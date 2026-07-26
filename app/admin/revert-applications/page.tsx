@@ -38,7 +38,6 @@ export default function AdminRevertApplicationsPage() {
   const router = useRouter();
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
     const t = localStorage.getItem("accessToken");
@@ -47,11 +46,8 @@ export default function AdminRevertApplicationsPage() {
       router.push("/login");
       return;
     }
-    setToken(t);
     api
-      .get("/admin/revert-applications", {
-        headers: { Authorization: `Bearer ${t}` },
-      })
+      .get("/admin/revert-applications")
       .then((res) => setApplications(res.data.applications))
       .catch((err) => console.error("[admin/revert-applications] failed to load:", err))
       .finally(() => setLoading(false));
@@ -61,8 +57,7 @@ export default function AdminRevertApplicationsPage() {
     try {
       const res = await api.patch(
         `/admin/revert-applications/${id}`,
-        { status: newStatus },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { status: newStatus }
       );
       setApplications((prev) =>
         prev.map((a) => (a.id === id ? res.data.application : a))

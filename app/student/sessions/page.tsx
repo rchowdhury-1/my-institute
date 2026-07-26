@@ -76,14 +76,12 @@ export default function StudentSessionsPage() {
 
   useEffect(() => {
     if (!authChecked) return;
-    const token = localStorage.getItem("accessToken");
-    const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
-      api.get("/sessions", { headers }),
-      api.get("/students/me", { headers }),
-      api.get("/students/payments", { headers }),
-      api.get("/reschedule-requests?status=pending", { headers }),
+      api.get("/sessions"),
+      api.get("/students/me"),
+      api.get("/students/payments"),
+      api.get("/reschedule-requests?status=pending"),
     ])
       .then(([sRes, meRes, payRes, rrRes]) => {
         setSessions(sRes.data.sessions);
@@ -107,8 +105,7 @@ export default function StudentSessionsPage() {
     setCancelSaving(true);
     try {
       await api.patch(`/sessions/${cancelId}/cancel`,
-        { cancellation_reason: cancelReason },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { cancellation_reason: cancelReason }
       );
       setSessions((prev) =>
         prev.map((s) => s.id === cancelId ? { ...s, status: "cancelled", cancellation_reason: cancelReason } : s)
@@ -132,8 +129,7 @@ export default function StudentSessionsPage() {
     setRescheduleError("");
     try {
       const res = await api.post("/reschedule-requests",
-        { session_id: rescheduleId, proposed_at },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { session_id: rescheduleId, proposed_at }
       );
       setPendingRequests((prev) => [...prev, res.data.request]);
       setRescheduleId(null);
@@ -162,8 +158,7 @@ export default function StudentSessionsPage() {
     if (!token) return;
     setCancellingRequest(requestId);
     try {
-      await api.delete(`/reschedule-requests/${requestId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      await api.delete(`/reschedule-requests/${requestId}`
       );
       setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
     } catch (err) {

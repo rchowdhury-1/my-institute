@@ -33,7 +33,7 @@ export default function CoursesList() {
     if (!token) { window.location.href = "/login"; return; }
     setEnrolling(course.id);
     try {
-      await api.post(`/courses/${course.id}/enroll`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      await api.post(`/courses/${course.id}/enroll`, {});
       setEnrolled(prev => [...prev, course.id]);
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { whatsapp_url?: string } } };

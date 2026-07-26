@@ -68,13 +68,11 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     if (!authChecked) return;
-    const token = localStorage.getItem("accessToken");
-    const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
-      api.get("/teachers/me", { headers }),
-      api.get("/teachers/lessons", { headers }),
-      api.get("/reschedule-requests?status=pending", { headers }),
+      api.get("/teachers/me"),
+      api.get("/teachers/lessons"),
+      api.get("/reschedule-requests?status=pending"),
     ])
       .then(([meRes, lessonsRes, rrRes]) => {
         setTeacher(meRes.data.user);
@@ -93,8 +91,7 @@ export default function TeacherDashboard() {
     try {
       const res = await api.patch(
         `/sessions/${lessonId}/attendance`,
-        { teacher_attended: teacherAttended, student_attended: studentAttended },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { teacher_attended: teacherAttended, student_attended: studentAttended }
       );
       setLessons((prev) => prev.map((l) => l.id === lessonId ? { ...l, ...res.data.session } : l));
     } catch (err: unknown) {
@@ -118,8 +115,7 @@ export default function TeacherDashboard() {
     try {
       const res = await api.patch(
         `/sessions/${lessonId}/cancel`,
-        { cancellation_reason: "Cancelled by teacher" },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { cancellation_reason: "Cancelled by teacher" }
       );
       setLessons((prev) => prev.map((l) => l.id === lessonId ? { ...l, ...res.data.session } : l));
     } catch (err) {
@@ -135,8 +131,7 @@ export default function TeacherDashboard() {
     setRrActioning(rr.id);
     setRrError((p) => ({ ...p, [rr.id]: "" }));
     try {
-      await api.patch(`/reschedule-requests/${rr.id}/approve`, {},
-        { headers: { Authorization: `Bearer ${token}` } }
+      await api.patch(`/reschedule-requests/${rr.id}/approve`, {}
       );
       setRescheduleRequests((prev) => prev.filter((r) => r.id !== rr.id));
       setRrResult((p) => ({ ...p, [rr.id]: { action: "approved", phone: rr.student_phone, proposedAt: rr.proposed_at } }));
@@ -158,8 +153,7 @@ export default function TeacherDashboard() {
     setRrActioning(rr.id);
     try {
       await api.patch(`/reschedule-requests/${rr.id}/reject`,
-        { rejection_reason: rrRejectReason || undefined },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { rejection_reason: rrRejectReason || undefined }
       );
       setRescheduleRequests((prev) => prev.filter((r) => r.id !== rr.id));
       setRrResult((p) => ({ ...p, [rr.id]: { action: "rejected", phone: rr.student_phone, originalAt: rr.original_scheduled_at, reason: rrRejectReason } }));

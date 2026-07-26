@@ -169,12 +169,10 @@ export default function AdminStudentsPage() {
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
-  const fetchStudents = useCallback(async (t: string) => {
+  const fetchStudents = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get("/admin/students", {
-        headers: { Authorization: `Bearer ${t}` },
-      });
+      const res = await api.get("/admin/students");
       setStudents(res.data.students ?? res.data);
     } catch (err) {
       console.error('Fetch students error:', err);
@@ -184,11 +182,9 @@ export default function AdminStudentsPage() {
     }
   }, []);
 
-  const fetchTeachers = useCallback(async (t: string) => {
+  const fetchTeachers = useCallback(async () => {
     try {
-      const res = await api.get("/admin/teachers", {
-        headers: { Authorization: `Bearer ${t}` },
-      });
+      const res = await api.get("/admin/teachers");
       const all: Teacher[] = res.data.teachers ?? res.data;
       setTeachers(all.filter((t) => t.is_active));
     } catch (err) {
@@ -199,8 +195,8 @@ export default function AdminStudentsPage() {
 
   useEffect(() => {
     if (authChecked && token) {
-      fetchStudents(token);
-      fetchTeachers(token);
+      fetchStudents();
+      fetchTeachers();
     }
   }, [authChecked, token, fetchStudents, fetchTeachers]);
 
@@ -279,15 +275,14 @@ export default function AdminStudentsPage() {
             : {}),
           ...(createForm.temp_password ? { password: createForm.temp_password } : {}),
           send_email: createForm.send_email,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
 
       const tempPassword: string = res.data.tempPassword ?? res.data.temp_password;
       const newName: string = res.data.student?.display_name ?? createForm.display_name;
 
       // Re-fetch the full list so the new card has all fields (package, rate, etc.)
-      await fetchStudents(token!);
+      await fetchStudents();
 
       setShowCreate(false);
       resetCreateForm();
@@ -346,8 +341,7 @@ export default function AdminStudentsPage() {
           currency: editForm.currency,
           is_legacy_pricing: editForm.is_legacy_pricing,
           pricing_notes: (editForm.pricing_notes as string) || null,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
       const updated: Partial<Student> = res.data.student ?? res.data;
       // Merge — PATCH response doesn't include package fields, keep existing ones
@@ -374,8 +368,7 @@ export default function AdminStudentsPage() {
     try {
       const res = await api.post(
         `/admin/students/${student.id}/reset-password`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
       const tempPassword: string = res.data.tempPassword ?? res.data.temp_password;
       setResetBanner({
@@ -408,8 +401,7 @@ export default function AdminStudentsPage() {
     try {
       await api.patch(
         `/admin/students/${student.id}`,
-        { is_active: false },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { is_active: false }
       );
       setStudents((prev) =>
         prev.map((s) => (s.id === student.id ? { ...s, is_active: false } : s))
@@ -436,8 +428,7 @@ export default function AdminStudentsPage() {
     try {
       await api.patch(
         `/admin/students/${student.id}`,
-        { is_active: true },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { is_active: true }
       );
       setStudents((prev) =>
         prev.map((s) => (s.id === student.id ? { ...s, is_active: true } : s))

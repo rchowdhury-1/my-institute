@@ -61,12 +61,10 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     if (!authChecked) return;
-    const token = localStorage.getItem("accessToken");
-    const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
-      api.get("/students/me", { headers }),
-      api.get("/students/lessons", { headers }),
+      api.get("/students/me"),
+      api.get("/students/lessons"),
     ])
       .then(([meRes, lessonsRes]) => {
         setData(meRes.data);

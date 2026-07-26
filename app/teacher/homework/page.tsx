@@ -66,11 +66,10 @@ export default function TeacherHomeworkPage() {
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
     if (!token) { router.push("/login"); return; }
-    const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
-      api.get("/homework", { headers }),
-      api.get("/teachers/students", { headers }).catch(() => ({ data: { students: [] } })),
+      api.get("/homework"),
+      api.get("/teachers/students").catch(() => ({ data: { students: [] } })),
     ])
       .then(([hwRes, studentsRes]) => {
         setHomework(hwRes.data.homework);
@@ -93,8 +92,7 @@ export default function TeacherHomeworkPage() {
           description: form.description || undefined,
           due_date: form.due_date || undefined,
           file_url: form.file_url || undefined,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
       const student = students.find((s) => s.id === form.student_id);
       setHomework((prev) => [{ ...res.data.homework, student_name: student?.display_name ?? "", submission_count: 0 }, ...prev]);
@@ -115,9 +113,7 @@ export default function TeacherHomeworkPage() {
     const token = localStorage.getItem("accessToken");
     if (!token) return;
     try {
-      const res = await api.get(`/homework/${hwId}/submissions`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get(`/homework/${hwId}/submissions`);
       setSubmissions((prev) => ({ ...prev, [hwId]: res.data.submissions }));
       setExpanded(hwId);
     } catch {
@@ -132,8 +128,7 @@ export default function TeacherHomeworkPage() {
     const gf = gradeForm[hwId] ?? { grade: "", teacher_notes: "" };
     try {
       await api.patch(`/homework/${hwId}/grade`,
-        { grade: gf.grade || undefined, teacher_notes: gf.teacher_notes || undefined },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { grade: gf.grade || undefined, teacher_notes: gf.teacher_notes || undefined }
       );
       setHomework((prev) =>
         prev.map((h) => h.id === hwId ? { ...h, status: "graded", grade: gf.grade, teacher_notes: gf.teacher_notes } : h)

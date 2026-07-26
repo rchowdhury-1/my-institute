@@ -317,8 +317,7 @@ export default function SupervisorPage() {
     setAttendanceSaving(true);
     try {
       const res = await api.patch(`/sessions/${sessionId}/attendance`,
-        { teacher_attended: teacherAttended, student_attended: studentAttended },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { teacher_attended: teacherAttended, student_attended: studentAttended }
       );
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, ...res.data.session } : s));
       setAttendanceId(null);
@@ -360,15 +359,13 @@ export default function SupervisorPage() {
 
   useEffect(() => {
     if (!authChecked) return;
-    const token = localStorage.getItem("accessToken");
-    const headers = { Authorization: `Bearer ${token}` };
 
     Promise.all([
-      api.get("/admin/sessions", { headers }),
-      api.get("/admin/students", { headers }),
-      api.get("/admin/teachers", { headers }),
-      api.get("/reschedule-requests?status=pending", { headers }),
-      api.get("/admin/weekly-schedules", { headers }),
+      api.get("/admin/sessions"),
+      api.get("/admin/students"),
+      api.get("/admin/teachers"),
+      api.get("/reschedule-requests?status=pending"),
+      api.get("/admin/weekly-schedules"),
     ])
       .then(([sessRes, studRes, teachRes, rrRes, schedRes]) => {
         setSessions(sessRes.data.sessions);
@@ -461,12 +458,12 @@ export default function SupervisorPage() {
           lessons_remaining: parseFloat(scheduleForm.lessons_remaining),
           teacher_id: scheduleForm.teacher_id !== editingSchedule.teacher_id ? scheduleForm.teacher_id : undefined,
           zoom_link: scheduleForm.zoom_link || null,
-        }, { headers: { Authorization: `Bearer ${token}` } });
+        });
 
         setSchedules(prev => prev.map(s => s.id === editingSchedule.id ? { ...s, ...res.data.schedule } : s));
         if (res.data.generation) setScheduleGenResult(res.data.generation);
         // Refresh sessions list
-        const sessRes = await api.get("/admin/sessions", { headers: { Authorization: `Bearer ${token}` } });
+        const sessRes = await api.get("/admin/sessions");
         setSessions(sessRes.data.sessions);
       } else {
         const res = await api.post("/admin/weekly-schedules", {
@@ -477,14 +474,14 @@ export default function SupervisorPage() {
           slots,
           lessons_remaining: parseFloat(scheduleForm.lessons_remaining),
           zoom_link: scheduleForm.zoom_link || null,
-        }, { headers: { Authorization: `Bearer ${token}` } });
+        });
 
         const student = students.find(s => s.id === scheduleForm.student_id);
         const teacher = teachers.find(t => t.id === scheduleForm.teacher_id);
         setSchedules(prev => [{ ...res.data.schedule, student_name: student?.display_name ?? "", teacher_name: teacher?.display_name ?? "" }, ...prev]);
         setScheduleGenResult(res.data.generation);
         // Refresh sessions list
-        const sessRes = await api.get("/admin/sessions", { headers: { Authorization: `Bearer ${token}` } });
+        const sessRes = await api.get("/admin/sessions");
         setSessions(sessRes.data.sessions);
       }
       if (!scheduleGenResult) setShowScheduleModal(false);
@@ -504,7 +501,7 @@ export default function SupervisorPage() {
     if (!token) return;
     setScheduleActioning(id);
     try {
-      await api.delete(`/admin/weekly-schedules/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      await api.delete(`/admin/weekly-schedules/${id}`);
       setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: false } : s));
       setSessions(prev => prev.filter(s => !(s.schedule_id === id && s.status === "scheduled" && new Date(s.scheduled_at) > new Date())));
     } catch (err) {
@@ -519,10 +516,10 @@ export default function SupervisorPage() {
     if (!token) return;
     setScheduleActioning(id);
     try {
-      const res = await api.post(`/admin/weekly-schedules/${id}/reactivate`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.post(`/admin/weekly-schedules/${id}/reactivate`, {});
       setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: true } : s));
       setScheduleGenResult(res.data.generation);
-      const sessRes = await api.get("/admin/sessions", { headers: { Authorization: `Bearer ${token}` } });
+      const sessRes = await api.get("/admin/sessions");
       setSessions(sessRes.data.sessions);
     } catch (err) {
       alert(getAxiosError(err).message);
@@ -536,10 +533,10 @@ export default function SupervisorPage() {
     if (!token) return;
     setScheduleActioning(id);
     try {
-      const res = await api.post(`/admin/weekly-schedules/${id}/generate`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.post(`/admin/weekly-schedules/${id}/generate`, {});
       setScheduleGenResult(res.data.generation);
       if (res.data.generation.created > 0) {
-        const sessRes = await api.get("/admin/sessions", { headers: { Authorization: `Bearer ${token}` } });
+        const sessRes = await api.get("/admin/sessions");
         setSessions(sessRes.data.sessions);
       }
     } catch (err) {
@@ -562,8 +559,7 @@ export default function SupervisorPage() {
           duration_minutes: parseInt(sessionForm.duration_minutes) || 30,
           subject: sessionForm.subject,
           zoom_link: sessionForm.zoom_link || undefined,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
       const student = students.find((s) => s.id === sessionForm.student_id);
       const teacher = teachers.find((t) => t.id === sessionForm.teacher_id);
@@ -587,7 +583,7 @@ export default function SupervisorPage() {
     if (!token) return;
     setDeleting(id);
     try {
-      await api.delete(`/sessions/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      await api.delete(`/sessions/${id}`);
       setSessions((prev) => prev.filter((s) => s.id !== id));
     } catch (err) {
       alert(getAxiosError(err).message);
@@ -603,8 +599,7 @@ export default function SupervisorPage() {
     setSending(true);
     try {
       await api.post("/messages",
-        { receiver_id: msgForm.receiver_id, content: msgForm.content.trim() },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { receiver_id: msgForm.receiver_id, content: msgForm.content.trim() }
       );
       setMsgForm({ receiver_id: "", content: "" });
       setMsgSent(true);
@@ -622,8 +617,7 @@ export default function SupervisorPage() {
     setRrActioning(rr.id);
     setRrError((p) => ({ ...p, [rr.id]: "" }));
     try {
-      const res = await api.patch(`/reschedule-requests/${rr.id}/approve`, {},
-        { headers: { Authorization: `Bearer ${token}` } }
+      const res = await api.patch(`/reschedule-requests/${rr.id}/approve`, {}
       );
       setRescheduleRequests((prev) => prev.filter((r) => r.id !== rr.id));
       setRrResult((p) => ({ ...p, [rr.id]: { action: "approved", phone: rr.student_phone, proposedAt: rr.proposed_at } }));
@@ -655,8 +649,7 @@ export default function SupervisorPage() {
     setRrError((p) => ({ ...p, [rr.id]: "" }));
     try {
       await api.patch(`/reschedule-requests/${rr.id}/reject`,
-        { rejection_reason: rrRejectReason || undefined },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { rejection_reason: rrRejectReason || undefined }
       );
       setRescheduleRequests((prev) => prev.filter((r) => r.id !== rr.id));
       setRrResult((p) => ({ ...p, [rr.id]: { action: "rejected", phone: rr.student_phone, originalAt: rr.original_scheduled_at, reason: rrRejectReason } }));
@@ -711,8 +704,7 @@ export default function SupervisorPage() {
 
       if (Object.keys(body).length === 0) { setEditSession(null); return; }
 
-      const res = await api.patch(`/admin/sessions/${editSession.id}`, body,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const res = await api.patch(`/admin/sessions/${editSession.id}`, body
       );
       const updated = res.data.session;
       setSessions((prev) => prev.map((s) => s.id === editSession.id ? updated : s));

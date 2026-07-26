@@ -32,7 +32,7 @@ export default function AdminScholarshipsPage() {
     const token = localStorage.getItem("accessToken");
     const role = localStorage.getItem("userRole");
     if (!token || (role !== "admin" && role !== "supervisor")) { router.push("/login"); return; }
-    api.get("/scholarships/applicants", { headers: { Authorization: `Bearer ${token}` } })
+    api.get("/scholarships/applicants")
       .then(res => setApplicants(res.data.applicants))
       .catch((err) => console.error("[admin/scholarships] failed to load applicants:", err))
       .finally(() => setLoading(false));

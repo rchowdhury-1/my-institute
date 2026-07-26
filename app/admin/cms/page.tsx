@@ -43,11 +43,6 @@ export default function AdminCmsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  function authHeaders() {
-    const token = localStorage.getItem("accessToken");
-    return { Authorization: `Bearer ${token}` };
-  }
-
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
     const role = localStorage.getItem("userRole");
@@ -60,7 +55,7 @@ export default function AdminCmsPage() {
     if (!loading[type] && items[type].length > 0) return; // already loaded
     setLoading(prev => ({ ...prev, [type]: true }));
     try {
-      const res = await api.get(`/cms/admin/${type}`, { headers: authHeaders() });
+      const res = await api.get(`/cms/admin/${type}`);
       setItems(prev => ({ ...prev, [type]: res.data.items }));
     } catch {
       // ignore
@@ -85,7 +80,7 @@ export default function AdminCmsPage() {
         content: form.content || undefined,
         image_url: form.image_url || undefined,
         position: parseInt(form.position) || 0,
-      }, { headers: authHeaders() });
+      });
       setItems(prev => ({
         ...prev,
         [activeTab]: [...prev[activeTab], res.data.item].sort((a, b) => a.position - b.position),
@@ -116,7 +111,7 @@ export default function AdminCmsPage() {
         content: editForm.content || null,
         image_url: editForm.image_url || null,
         position: parseInt(editForm.position) || 0,
-      }, { headers: authHeaders() });
+      });
       setItems(prev => ({
         ...prev,
         [activeTab]: prev[activeTab]
@@ -133,7 +128,7 @@ export default function AdminCmsPage() {
 
   async function toggleActive(item: CmsItem) {
     try {
-      const res = await api.patch(`/cms/${item.id}`, { is_active: !item.is_active }, { headers: authHeaders() });
+      const res = await api.patch(`/cms/${item.id}`, { is_active: !item.is_active });
       setItems(prev => ({
         ...prev,
         [activeTab]: prev[activeTab].map(i => i.id === item.id ? res.data.item : i),
@@ -147,7 +142,7 @@ export default function AdminCmsPage() {
     if (!confirm("Delete this item?")) return;
     setDeleting(id);
     try {
-      await api.delete(`/cms/${id}`, { headers: authHeaders() });
+      await api.delete(`/cms/${id}`);
       setItems(prev => ({ ...prev, [activeTab]: prev[activeTab].filter(i => i.id !== id) }));
     } catch {
       alert("Failed to delete.");
@@ -166,8 +161,8 @@ export default function AdminCmsPage() {
     const otherPos = item.position;
     try {
       await Promise.all([
-        api.patch(`/cms/${item.id}`, { position: newPos }, { headers: authHeaders() }),
-        api.patch(`/cms/${other.id}`, { position: otherPos }, { headers: authHeaders() }),
+        api.patch(`/cms/${item.id}`, { position: newPos }),
+        api.patch(`/cms/${other.id}`, { position: otherPos }),
       ]);
       setItems(prev => ({
         ...prev,

@@ -5,6 +5,22 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// ─── Auth header interceptor ─────────────────────────────────────────────────
+// Attaches the stored access token to every request that doesn't already
+// carry an explicit Authorization header, so call sites no longer need to
+// build it themselves.
+
+api.interceptors.request.use((config) => {
+  if (typeof window !== "undefined" && !config.headers?.Authorization) {
+    const token = localStorage.getItem("accessToken");
+    if (token) {
+      config.headers = config.headers ?? axios.AxiosHeaders.from({});
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
 // ─── Token refresh interceptor ───────────────────────────────────────────────
 // When the access token (15 min) expires, automatically call /auth/refresh
 // using the httpOnly refresh cookie and retry the original request.

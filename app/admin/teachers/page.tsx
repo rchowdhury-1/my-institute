@@ -150,26 +150,21 @@ export default function AdminTeachersPage() {
 
   // ── Fetch teachers ──────────────────────────────────────────────────────
 
-  const fetchTeachers = useCallback(
-    async (t: string) => {
-      setLoading(true);
-      try {
-        const res = await api.get("/admin/teachers", {
-          headers: { Authorization: `Bearer ${t}` },
-        });
-        setTeachers(res.data.teachers ?? res.data);
-      } catch (err) {
-        console.error('Fetch teachers error:', err);
-        setLoadError("Failed to load teachers. Please refresh the page.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
+  const fetchTeachers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/admin/teachers");
+      setTeachers(res.data.teachers ?? res.data);
+    } catch (err) {
+      console.error('Fetch teachers error:', err);
+      setLoadError("Failed to load teachers. Please refresh the page.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (authChecked && token) fetchTeachers(token);
+    if (authChecked && token) fetchTeachers();
   }, [authChecked, token, fetchTeachers]);
 
   // ── Derived ─────────────────────────────────────────────────────────────
@@ -205,8 +200,7 @@ export default function AdminTeachersPage() {
             ? { password: createForm.temp_password }
             : {}),
           send_email: createForm.send_email,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
 
       const tempPassword: string =
@@ -272,9 +266,7 @@ export default function AdminTeachersPage() {
     setEditError("");
     setEditLoading(true);
     try {
-      const res = await api.patch(`/admin/teachers/${teacherId}`, editForm, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.patch(`/admin/teachers/${teacherId}`, editForm);
       const updated: Teacher = res.data.teacher ?? res.data;
       setTeachers((prev) =>
         prev.map((t) => (t.id === teacherId ? { ...t, ...updated } : t))
@@ -299,8 +291,7 @@ export default function AdminTeachersPage() {
     try {
       const res = await api.post(
         `/admin/teachers/${teacher.id}/reset-password`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
       const tempPassword: string =
         res.data.temp_password ?? res.data.tempPassword;
@@ -334,8 +325,7 @@ export default function AdminTeachersPage() {
     try {
       await api.patch(
         `/admin/teachers/${teacher.id}`,
-        { is_active: false },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { is_active: false }
       );
       setTeachers((prev) =>
         prev.map((t) =>
@@ -364,8 +354,7 @@ export default function AdminTeachersPage() {
     try {
       await api.patch(
         `/admin/teachers/${teacher.id}`,
-        { is_active: true },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { is_active: true }
       );
       setTeachers((prev) =>
         prev.map((t) =>

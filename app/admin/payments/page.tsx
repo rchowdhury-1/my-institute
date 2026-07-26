@@ -81,21 +81,15 @@ export default function AdminPaymentsPage() {
     rate_per_session: "5.00",
   });
 
-  function authHeaders() {
-    const token = localStorage.getItem("accessToken");
-    return { Authorization: `Bearer ${token}` };
-  }
-
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
     const role = localStorage.getItem("userRole");
     if (!token || (role !== "admin" && role !== "supervisor")) { router.push("/login"); return; }
-    const headers = { Authorization: `Bearer ${token}` };
     Promise.all([
-      api.get("/payments", { headers }),
-      api.get("/admin/teachers", { headers }),
-      api.get("/admin/payments/student", { headers }),
-      api.get("/admin/students", { headers }),
+      api.get("/payments"),
+      api.get("/admin/teachers"),
+      api.get("/admin/payments/student"),
+      api.get("/admin/students"),
     ]).then(([payRes, teachRes, sPayRes, studRes]) => {
       setTeacherPayments(payRes.data.payments);
       setTeachers(teachRes.data.teachers);
@@ -113,7 +107,7 @@ export default function AdminPaymentsPage() {
         month: genForm.month,
         year: parseInt(genForm.year),
         rate_per_session: parseFloat(genForm.rate_per_session),
-      }, { headers: authHeaders() });
+      });
       const teacher = teachers.find(t => t.id === genForm.teacher_id);
       setTeacherPayments(prev => [{ ...res.data.payment, teacher_name: teacher?.display_name ?? "" }, ...prev]);
     } catch {
@@ -126,7 +120,7 @@ export default function AdminPaymentsPage() {
   async function handleMarkPaid(id: string) {
     setMarking(id);
     try {
-      await api.patch(`/payments/${id}/mark-paid`, {}, { headers: authHeaders() });
+      await api.patch(`/payments/${id}/mark-paid`, {});
       setTeacherPayments(prev => prev.map(p => p.id === id ? { ...p, status: "paid" } : p));
     } catch {
       alert("Failed to mark as paid.");
@@ -145,7 +139,7 @@ export default function AdminPaymentsPage() {
         currency: studentForm.currency || "GBP",
         payment_method: studentForm.payment_method || undefined,
         notes: studentForm.notes || undefined,
-      }, { headers: authHeaders() });
+      });
       const student = students.find(s => s.id === studentForm.student_id);
       setStudentPayments(prev => [{ ...res.data.payment, student_name: student?.display_name ?? "" }, ...prev]);
       setStudentForm({ student_id: "", amount: "", currency: "GBP", payment_method: "", notes: "" });

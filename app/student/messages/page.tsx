@@ -44,7 +44,7 @@ export default function StudentMessagesPage() {
     if (!token || !id) { router.push("/login"); return; }
     setMyId(id);
 
-    api.get("/messages/conversations", { headers: { Authorization: `Bearer ${token}` } })
+    api.get("/messages/conversations")
       .then((res) => setConversations(res.data.conversations))
       .catch((err) => console.error("[student/messages] failed to load conversations:", err))
       .finally(() => setLoading(false));
@@ -54,9 +54,7 @@ export default function StudentMessagesPage() {
     const token = localStorage.getItem("accessToken");
     if (!token) return;
     setActiveConv(conv);
-    const res = await api.get(`/messages/${conv.other_id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await api.get(`/messages/${conv.other_id}`);
     setMessages(res.data.messages);
     setConversations((prev) =>
       prev.map((c) => c.other_id === conv.other_id ? { ...c, unread_count: 0 } : c)
@@ -74,8 +72,7 @@ export default function StudentMessagesPage() {
     setSending(true);
     try {
       const res = await api.post("/messages",
-        { receiver_id: activeConv.other_id, content: newMessage.trim() },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { receiver_id: activeConv.other_id, content: newMessage.trim() }
       );
       setMessages((prev) => [...prev, { ...res.data.message, sender_name: "You" }]);
       setNewMessage("");

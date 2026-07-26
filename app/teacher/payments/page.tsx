@@ -30,7 +30,7 @@ export default function TeacherPaymentsPage() {
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
     if (!token) { router.push("/login"); return; }
-    api.get("/payments", { headers: { Authorization: `Bearer ${token}` } })
+    api.get("/payments")
       .then(res => setPayments(res.data.payments))
       .catch((err) => console.error("[teacher/payments] failed to load:", err))
       .finally(() => setLoading(false));

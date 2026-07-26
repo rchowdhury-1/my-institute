@@ -39,16 +39,11 @@ export default function AdminCoursesPage() {
   const [lessonForm, setLessonForm] = useState<Record<string, { title: string; video_url: string; duration_minutes: string }>>({});
   const [addingLesson, setAddingLesson] = useState<string | null>(null);
 
-  function authHeaders() {
-    const token = localStorage.getItem("accessToken");
-    return { Authorization: `Bearer ${token}` };
-  }
-
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
     const role = localStorage.getItem("userRole");
     if (!token || (role !== "admin" && role !== "supervisor")) { router.push("/login"); return; }
-    api.get("/courses", { headers: { Authorization: `Bearer ${token}` } })
+    api.get("/courses")
       .then(res => setCourses(res.data.courses))
       .catch((err) => console.error("[admin/courses] failed to load:", err))
       .finally(() => setLoading(false));
@@ -64,7 +59,7 @@ export default function AdminCoursesPage() {
         price: form.is_free ? 0 : parseFloat(form.price) || 0,
         is_free: form.is_free,
         thumbnail_url: form.thumbnail_url || undefined,
-      }, { headers: authHeaders() });
+      });
       setCourses(prev => [{ ...res.data.course, lesson_count: 0 }, ...prev]);
       setForm({ title: "", description: "", price: "", is_free: false, thumbnail_url: "" });
       setShowForm(false);
@@ -78,7 +73,7 @@ export default function AdminCoursesPage() {
   async function handleDelete(id: string) {
     if (!confirm("Delete this course and all its lessons?")) return;
     try {
-      await api.delete(`/courses/${id}`, { headers: authHeaders() });
+      await api.delete(`/courses/${id}`);
       setCourses(prev => prev.filter(c => c.id !== id));
     } catch {
       alert("Failed to delete course.");
@@ -89,7 +84,7 @@ export default function AdminCoursesPage() {
     if (expandedCourse === courseId) { setExpandedCourse(null); return; }
     if (lessons[courseId]) { setExpandedCourse(courseId); return; }
     try {
-      const res = await api.get(`/courses/${courseId}`, { headers: authHeaders() });
+      const res = await api.get(`/courses/${courseId}`);
       setLessons(prev => ({ ...prev, [courseId]: res.data.lessons }));
       setExpandedCourse(courseId);
     } catch {
@@ -108,7 +103,7 @@ export default function AdminCoursesPage() {
         video_url: lf.video_url || undefined,
         duration_minutes: lf.duration_minutes ? parseInt(lf.duration_minutes) : undefined,
         position: existingLessons.length,
-      }, { headers: authHeaders() });
+      });
       setLessons(prev => ({ ...prev, [courseId]: [...(prev[courseId] ?? []), res.data.lesson] }));
       setCourses(prev => prev.map(c => c.id === courseId ? { ...c, lesson_count: c.lesson_count + 1 } : c));
       setLessonForm(prev => ({ ...prev, [courseId]: { title: "", video_url: "", duration_minutes: "" } }));
@@ -122,7 +117,7 @@ export default function AdminCoursesPage() {
   async function handleDeleteLesson(courseId: string, lessonId: string) {
     if (!confirm("Delete this lesson?")) return;
     try {
-      await api.delete(`/courses/${courseId}/lessons/${lessonId}`, { headers: authHeaders() });
+      await api.delete(`/courses/${courseId}/lessons/${lessonId}`);
       setLessons(prev => ({ ...prev, [courseId]: prev[courseId].filter(l => l.id !== lessonId) }));
       setCourses(prev => prev.map(c => c.id === courseId ? { ...c, lesson_count: Math.max(0, c.lesson_count - 1) } : c));
     } catch {

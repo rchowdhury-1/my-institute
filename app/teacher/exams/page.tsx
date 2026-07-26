@@ -64,18 +64,12 @@ export default function TeacherExamsPage() {
   const [assignStudentId, setAssignStudentId] = useState("");
   const [assigning, setAssigning] = useState(false);
 
-  function authHeaders() {
-    const token = localStorage.getItem("accessToken");
-    return { Authorization: `Bearer ${token}` };
-  }
-
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
     if (!token) { router.push("/login"); return; }
-    const headers = { Authorization: `Bearer ${token}` };
     Promise.all([
-      api.get("/exams", { headers }),
-      api.get("/admin/students", { headers }).catch(() => ({ data: { students: [] } })),
+      api.get("/exams"),
+      api.get("/admin/students").catch(() => ({ data: { students: [] } })),
     ]).then(([examRes, studRes]) => {
       setExams(examRes.data.exams);
       setStudents(studRes.data.students);
@@ -94,7 +88,7 @@ export default function TeacherExamsPage() {
         description: form.description || undefined,
         time_limit_minutes: form.time_limit_minutes ? parseInt(form.time_limit_minutes) : undefined,
         questions,
-      }, { headers: authHeaders() });
+      });
       setExams(prev => [{ ...res.data.exam, question_count: questions.length, assigned_count: 0, completed_count: 0 }, ...prev]);
       setForm({ title: "", description: "", time_limit_minutes: "" });
       setQuestions([emptyQuestion()]);
@@ -123,7 +117,7 @@ export default function TeacherExamsPage() {
     if (!assignStudentId) return;
     setAssigning(true);
     try {
-      await api.post(`/exams/${examId}/assign`, { student_id: assignStudentId }, { headers: authHeaders() });
+      await api.post(`/exams/${examId}/assign`, { student_id: assignStudentId });
       setExams(prev => prev.map(e => e.id === examId ? { ...e, assigned_count: e.assigned_count + 1 } : e));
       setAssigningExam(null);
       setAssignStudentId("");
@@ -139,7 +133,7 @@ export default function TeacherExamsPage() {
     setLoadingResults(true);
     setView("results");
     try {
-      const res = await api.get(`/exams/${exam.id}/results`, { headers: authHeaders() });
+      const res = await api.get(`/exams/${exam.id}/results`);
       setResults(res.data.results);
     } catch {
       alert("Failed to load results.");

@@ -85,12 +85,10 @@ export default function AdminNewsfeedPage() {
   }, [authChecked]);
 
   // Fetch posts
-  const fetchPosts = useCallback(async (t: string) => {
+  const fetchPosts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get("/admin/newsfeed", {
-        headers: { Authorization: `Bearer ${t}` },
-      });
+      const res = await api.get("/admin/newsfeed");
       setPosts(res.data.posts ?? []);
     } catch (err) {
       console.error('Fetch posts error:', err);
@@ -101,7 +99,7 @@ export default function AdminNewsfeedPage() {
   }, []);
 
   useEffect(() => {
-    if (authChecked && token) fetchPosts(token);
+    if (authChecked && token) fetchPosts();
   }, [authChecked, token, fetchPosts]);
 
   // Create
@@ -118,8 +116,7 @@ export default function AdminNewsfeedPage() {
           body: createForm.body,
           image_url: createForm.image_url || null,
           show_on_homepage: createForm.show_on_homepage,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
       setPosts((prev) => [res.data.post, ...prev]);
       setShowCreate(false);
@@ -157,8 +154,7 @@ export default function AdminNewsfeedPage() {
           body: editForm.body,
           image_url: editForm.image_url || null,
           show_on_homepage: editForm.show_on_homepage,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
+        }
       );
       setPosts((prev) =>
         prev.map((p) => (p.id === postId ? res.data.post : p))
@@ -175,9 +171,7 @@ export default function AdminNewsfeedPage() {
   const handleDelete = async (postId: string) => {
     setDeleteLoading(true);
     try {
-      await api.delete(`/admin/newsfeed/${postId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.delete(`/admin/newsfeed/${postId}`);
       setPosts((prev) => prev.filter((p) => p.id !== postId));
       setDeleteConfirmId(null);
     } catch (err) {

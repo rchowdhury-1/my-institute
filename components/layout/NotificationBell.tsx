@@ -26,19 +26,16 @@ export default function NotificationBell() {
     const token = localStorage.getItem("accessToken");
     if (!token) return;
     setLoggedIn(true);
-    fetchNotifications(token);
+    fetchNotifications();
     const interval = setInterval(() => {
-      const t = localStorage.getItem("accessToken");
-      if (t) fetchNotifications(t);
+      if (localStorage.getItem("accessToken")) fetchNotifications();
     }, 30_000);
     return () => clearInterval(interval);
   }, []);
 
-  async function fetchNotifications(token: string) {
+  async function fetchNotifications() {
     try {
-      const res = await api.get("/notifications", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get("/notifications");
       setNotifications(res.data.notifications.slice(0, 10));
       setUnreadCount(res.data.unread_count);
     } catch {
@@ -49,9 +46,7 @@ export default function NotificationBell() {
   async function markAllRead() {
     const token = localStorage.getItem("accessToken");
     if (!token) return;
-    await api.patch("/notifications/read-all", {}, {
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch((err) => console.error("[NotificationBell] failed to mark all read:", err));
+    await api.patch("/notifications/read-all", {}).catch((err) => console.error("[NotificationBell] failed to mark all read:", err));
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnreadCount(0);
   }

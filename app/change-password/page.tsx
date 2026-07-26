@@ -40,11 +40,9 @@ export default function ChangePasswordPage() {
     setStatus("loading");
 
     try {
-      const token = localStorage.getItem("accessToken");
       await api.post(
         "/auth/change-password",
-        { newPassword },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { newPassword }
       );
 
       const role = localStorage.getItem("userRole");

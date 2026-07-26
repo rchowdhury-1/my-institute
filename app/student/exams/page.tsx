@@ -68,15 +68,10 @@ export default function StudentExamsPage() {
   const [examScore, setExamScore] = useState<{ score: number; max_score: number } | null>(null);
   const submittingRef = useRef(false);
 
-  function authHeaders() {
-    const token = localStorage.getItem("accessToken");
-    return { Authorization: `Bearer ${token}` };
-  }
-
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
     if (!token) { router.push("/login"); return; }
-    api.get("/exams", { headers: { Authorization: `Bearer ${token}` } })
+    api.get("/exams")
       .then(res => setExams(res.data.exams))
       .catch((err) => console.error("[student/exams] failed to load exams:", err))
       .finally(() => setLoading(false));
@@ -95,7 +90,7 @@ export default function StudentExamsPage() {
 
   async function startExam(exam: AssignedExam) {
     try {
-      const res = await api.post(`/exams/${exam.exam_id}/start`, {}, { headers: authHeaders() });
+      const res = await api.post(`/exams/${exam.exam_id}/start`, {});
       setActiveExam(exam);
       setQuestions(res.data.questions || []);
       setCurrentQ(0);
@@ -115,10 +110,10 @@ export default function StudentExamsPage() {
     setSubmitting(true);
     try {
       const answersArr = Object.entries(answers).map(([question_id, answer]) => ({ question_id, answer }));
-      const res = await api.post(`/exams/${activeExam.exam_id}/submit`, { answers: answersArr }, { headers: authHeaders() });
+      const res = await api.post(`/exams/${activeExam.exam_id}/submit`, { answers: answersArr });
       setExamScore({ score: res.data.score, max_score: res.data.max_score });
       // fetch detailed results
-      const resultRes = await api.get(`/exams/${activeExam.exam_id}/results`, { headers: authHeaders() });
+      const resultRes = await api.get(`/exams/${activeExam.exam_id}/results`);
       setResultRows(resultRes.data.results);
       setExams(prev => prev.map(e => e.exam_id === activeExam.exam_id
         ? { ...e, status: "completed", score: res.data.score }
@@ -137,7 +132,7 @@ export default function StudentExamsPage() {
     setActiveExam(exam);
     setExamScore({ score: exam.score ?? 0, max_score: exam.max_score });
     try {
-      const res = await api.get(`/exams/${exam.exam_id}/results`, { headers: authHeaders() });
+      const res = await api.get(`/exams/${exam.exam_id}/results`);
       setResultRows(res.data.results);
     } catch { /* ignore */ }
     setView("results");

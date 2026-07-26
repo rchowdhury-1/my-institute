@@ -46,7 +46,7 @@ export default function StudentHomeworkPage() {
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
     if (!token) { router.push("/login"); return; }
-    api.get("/homework", { headers: { Authorization: `Bearer ${token}` } })
+    api.get("/homework")
       .then((res) => setHomework(res.data.homework))
       .catch(() => setError("Failed to load homework."))
       .finally(() => setLoading(false));
@@ -66,8 +66,7 @@ export default function StudentHomeworkPage() {
     try {
       const form = submitForms[hw.id] ?? {};
       await api.post(`/homework/${hw.id}/submit`,
-        { notes: form.notes || undefined, file_url: form.file_url || undefined },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { notes: form.notes || undefined, file_url: form.file_url || undefined }
       );
       setHomework((prev) =>
         prev.map((h) => h.id === hw.id ? { ...h, status: "submitted", submission_notes: form.notes } : h)
