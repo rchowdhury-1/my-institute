@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { startOfWeek, format, addWeeks } from "date-fns";
-import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock, RefreshCw, X as XIcon, Pencil, Repeat, ChevronDown, Archive, Play, AlertTriangle, List } from "lucide-react";
+import { Plus, Trash2, Calendar, Send, Users, GraduationCap, Newspaper, Heart, Clock, RefreshCw, X as XIcon, Pencil, Repeat, ChevronDown, Archive, Play, AlertTriangle, List, Search } from "lucide-react";
 import UserSearchInput from "@/components/shared/UserSearchInput";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 import Link from "next/link";
@@ -346,8 +346,14 @@ export default function SupervisorPage() {
   const [scheduleConfirm, setScheduleConfirm] = useState(false);
   const [scheduleGenResult, setScheduleGenResult] = useState<ScheduleGeneration | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [scheduleSearchTerm, setScheduleSearchTerm] = useState("");
   const [scheduleActioning, setScheduleActioning] = useState<string | null>(null);
   const legacySessionCount = sessions.filter(s => !s.schedule_id && s.status === "scheduled" && new Date(s.scheduled_at) > new Date()).length;
+  const activeSchedules = schedules.filter(s => s.is_active);
+  const archivedSchedules = schedules.filter(s => !s.is_active);
+  const scheduleMatchesSearch = (s: Schedule) => s.student_name.toLowerCase().includes(scheduleSearchTerm.toLowerCase());
+  const filteredActiveSchedules = activeSchedules.filter(scheduleMatchesSearch);
+  const filteredArchivedSchedules = archivedSchedules.filter(scheduleMatchesSearch);
 
   // message form
   const [msgForm, setMsgForm] = useState({ receiver_id: "", content: "" });
@@ -1199,15 +1205,42 @@ export default function SupervisorPage() {
               </div>
             )}
 
+            {/* Student name search */}
+            <div className="relative mb-4">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-charcoal/30" />
+              <input
+                type="text"
+                data-testid="schedule-search-input"
+                value={scheduleSearchTerm}
+                onChange={(e) => setScheduleSearchTerm(e.target.value)}
+                placeholder="Search by student name…"
+                className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 focus:border-emerald-primary transition-all"
+              />
+              {scheduleSearchTerm && (
+                <button
+                  onClick={() => setScheduleSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-charcoal/30 hover:text-charcoal/60 transition-colors"
+                  title="Clear search"
+                >
+                  <XIcon size={14} />
+                </button>
+              )}
+            </div>
+
             {/* Active schedules */}
-            {schedules.filter(s => s.is_active).length === 0 ? (
+            {activeSchedules.length === 0 ? (
               <div className="bg-white rounded-2xl border border-black/5 p-8 text-center text-charcoal/30 mb-6">
                 <Repeat size={32} className="mx-auto mb-3 text-charcoal/20" />
                 <p>No active schedules. Click &quot;Add Schedule&quot; to create one.</p>
               </div>
+            ) : filteredActiveSchedules.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-black/5 p-8 text-center text-charcoal/30 mb-6">
+                <Search size={32} className="mx-auto mb-3 text-charcoal/20" />
+                <p>No schedules match your search.</p>
+              </div>
             ) : (
               <div className="space-y-2 mb-6">
-                {schedules.filter(s => s.is_active).map(sched => (
+                {filteredActiveSchedules.map(sched => (
                   <div key={sched.id} className="bg-white rounded-2xl border border-black/5 p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
@@ -1284,37 +1317,41 @@ export default function SupervisorPage() {
             )}
 
             {/* Archived schedules */}
-            {schedules.filter(s => !s.is_active).length > 0 && (
+            {archivedSchedules.length > 0 && (
               <div className="mb-6">
                 <button
                   onClick={() => setShowArchived(!showArchived)}
                   className="flex items-center gap-2 text-charcoal/40 text-sm hover:text-charcoal/60 transition-colors mb-2"
                 >
                   <ChevronDown size={14} className={`transition-transform ${showArchived ? "rotate-180" : ""}`} />
-                  Archived ({schedules.filter(s => !s.is_active).length})
+                  Archived ({archivedSchedules.length})
                 </button>
                 {showArchived && (
-                  <div className="space-y-2">
-                    {schedules.filter(s => !s.is_active).map(sched => (
-                      <div key={sched.id} className="bg-white/60 rounded-2xl border border-black/5 p-4 flex items-center justify-between gap-4">
-                        <div className="min-w-0">
-                          <p className="font-semibold text-charcoal/50 text-sm">
-                            {sched.student_name} ↔ {sched.teacher_name}
-                          </p>
-                          <p className="text-charcoal/30 text-xs mt-0.5">
-                            {sched.subject} · {sched.slots.map(sl => `${DAY_LABELS[sl.day] || sl.day} ${sl.time}`).join(", ")}
-                          </p>
+                  filteredArchivedSchedules.length === 0 ? (
+                    <p className="text-charcoal/30 text-sm px-1">No schedules match your search.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {filteredArchivedSchedules.map(sched => (
+                        <div key={sched.id} className="bg-white/60 rounded-2xl border border-black/5 p-4 flex items-center justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-charcoal/50 text-sm">
+                              {sched.student_name} ↔ {sched.teacher_name}
+                            </p>
+                            <p className="text-charcoal/30 text-xs mt-0.5">
+                              {sched.subject} · {sched.slots.map(sl => `${DAY_LABELS[sl.day] || sl.day} ${sl.time}`).join(", ")}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleReactivateSchedule(sched.id)}
+                            disabled={scheduleActioning === sched.id}
+                            className="px-3 py-1.5 rounded-full border border-emerald-primary/30 text-emerald-primary text-xs font-semibold hover:bg-emerald-primary/5 disabled:opacity-60 transition-colors"
+                          >
+                            {scheduleActioning === sched.id ? "…" : "Reactivate"}
+                          </button>
                         </div>
-                        <button
-                          onClick={() => handleReactivateSchedule(sched.id)}
-                          disabled={scheduleActioning === sched.id}
-                          className="px-3 py-1.5 rounded-full border border-emerald-primary/30 text-emerald-primary text-xs font-semibold hover:bg-emerald-primary/5 disabled:opacity-60 transition-colors"
-                        >
-                          {scheduleActioning === sched.id ? "…" : "Reactivate"}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )
                 )}
               </div>
             )}
