@@ -6,6 +6,7 @@ const { pool } = require('../db');
 const { sendVerificationEmail } = require('../email');
 const { requireAuth } = require('../middleware/auth');
 const { hashPassword } = require('../utils/password');
+const { asyncHandler } = require('../middleware/errors');
 
 const router = express.Router();
 
@@ -25,7 +26,7 @@ function signRefresh(userId) {
 }
 
 // POST /auth/register
-router.post('/register', async (req, res) => {
+router.post('/register', asyncHandler(async (req, res) => {
   const { display_name, email, password, role: requestedRole, phone } = req.body;
   if (!display_name || !email || !password)
     return res.status(400).json({ error: 'display_name, email and password are required' });
@@ -47,75 +48,65 @@ router.post('/register', async (req, res) => {
     }
   }
 
-  try {
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existing.rows.length > 0) return res.status(409).json({ error: 'Email already registered' });
+  const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  if (existing.rows.length > 0) return res.status(409).json({ error: 'Email already registered' });
 
-    const hash = await bcrypt.hash(password, 12);
-    const id = uuidv4();
-    const verificationToken = uuidv4();
-    const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`;
+  const hash = await bcrypt.hash(password, 12);
+  const id = uuidv4();
+  const verificationToken = uuidv4();
+  const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`;
 
-    await pool.query(
-      'INSERT INTO users (id, display_name, email, password_hash, role, phone, email_verified, verification_token) VALUES ($1,$2,$3,$4,$5,$6,false,$7)',
-      [id, display_name, email, hash, role, phone || null, verificationToken]
-    );
+  await pool.query(
+    'INSERT INTO users (id, display_name, email, password_hash, role, phone, email_verified, verification_token) VALUES ($1,$2,$3,$4,$5,$6,false,$7)',
+    [id, display_name, email, hash, role, phone || null, verificationToken]
+  );
 
-    const verificationUrl = `${backendUrl}/auth/verify-email?token=${verificationToken}`;
-    await sendVerificationEmail({ to: email, name: display_name, verificationUrl });
+  const verificationUrl = `${backendUrl}/auth/verify-email?token=${verificationToken}`;
+  await sendVerificationEmail({ to: email, name: display_name, verificationUrl });
 
-    res.status(201).json({ message: 'Registration successful. Please check your email to verify your account.' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+  res.status(201).json({ message: 'Registration successful. Please check your email to verify your account.' });
+}));
 
 // POST /auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-  try {
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    const user = result.rows[0];
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+  const user = result.rows[0];
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+  const valid = await bcrypt.compare(password, user.password_hash);
+  if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-    if (!user.email_verified)
-      return res.status(403).json({ error: 'Please verify your email before logging in.' });
+  if (!user.email_verified)
+    return res.status(403).json({ error: 'Please verify your email before logging in.' });
 
-    if (user.is_active === false)
-      return res.status(401).json({ error: 'Your account has been turned off. Please contact the institute.' });
+  if (user.is_active === false)
+    return res.status(401).json({ error: 'Your account has been turned off. Please contact the institute.' });
 
-    const accessToken = signAccess(user.id, user.role);
-    const refreshToken = signRefresh(user.id);
-    const refreshId = uuidv4();
-    const now = new Date().toISOString();
-    const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const accessToken = signAccess(user.id, user.role);
+  const refreshToken = signRefresh(user.id);
+  const refreshId = uuidv4();
+  const now = new Date().toISOString();
+  const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    await pool.query(
-      `INSERT INTO refresh_tokens (id, token, user_id, expires_at, created_at)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (token) DO NOTHING`,
-      [refreshId, refreshToken, user.id, refreshExpiry, now]
-    );
+  await pool.query(
+    `INSERT INTO refresh_tokens (id, token, user_id, expires_at, created_at)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (token) DO NOTHING`,
+    [refreshId, refreshToken, user.id, refreshExpiry, now]
+  );
 
-    res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS);
-    res.json({
-      accessToken,
-      user: {
-        id: user.id, display_name: user.display_name, email: user.email, role: user.role,
-        must_change_password: user.must_change_password || false,
-      },
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+  res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS);
+  res.json({
+    accessToken,
+    user: {
+      id: user.id, display_name: user.display_name, email: user.email, role: user.role,
+      must_change_password: user.must_change_password || false,
+    },
+  });
+}));
 
 // GET /auth/verify-email?token=...
 router.get('/verify-email', async (req, res) => {
@@ -167,30 +158,28 @@ router.post('/refresh', async (req, res) => {
 router.post('/logout', async (req, res) => {
   const token = req.cookies.refreshToken;
   if (token) {
-    await pool.query('DELETE FROM refresh_tokens WHERE token = $1', [token]).catch(() => {});
+    // Deliberately non-fatal: logout must succeed even if the DB delete
+    // fails, but the failure must not vanish silently.
+    await pool.query('DELETE FROM refresh_tokens WHERE token = $1', [token])
+      .catch((err) => console.error('[auth/logout] failed to delete refresh token:', err));
   }
   res.clearCookie('refreshToken', COOKIE_OPTIONS);
   res.json({ message: 'Logged out' });
 });
 
 // POST /auth/change-password — requires valid JWT; flips must_change_password to false
-router.post('/change-password', requireAuth, async (req, res) => {
+router.post('/change-password', requireAuth, asyncHandler(async (req, res) => {
   const { newPassword } = req.body;
   if (!newPassword || newPassword.length < 8)
     return res.status(400).json({ error: 'New password must be at least 8 characters' });
 
-  try {
-    const hash = await hashPassword(newPassword);
-    await pool.query(
-      'UPDATE users SET password_hash=$1, must_change_password=false WHERE id=$2',
-      [hash, req.userId]
-    );
-    res.json({ message: 'Password updated successfully' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+  const hash = await hashPassword(newPassword);
+  await pool.query(
+    'UPDATE users SET password_hash=$1, must_change_password=false WHERE id=$2',
+    [hash, req.userId]
+  );
+  res.json({ message: 'Password updated successfully' });
+}));
 
 // GET /auth/me
 router.get('/me', async (req, res) => {

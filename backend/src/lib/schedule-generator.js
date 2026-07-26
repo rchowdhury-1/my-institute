@@ -203,6 +203,7 @@ async function generateAllSchedules() {
         allErrors.push(...gen.conflicts.map(c => `[${schedule.id}] ${c}`));
       }
     } catch (err) {
+      console.error(`[generation] schedule ${schedule.id} failed:`, err);
       allErrors.push(`[${schedule.id}] Error: ${err.message}`);
     }
   }

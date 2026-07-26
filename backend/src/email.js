@@ -11,10 +11,13 @@ const BRAND_COLOR = '#065f46';
 
 async function sendVerificationEmail({ to, name, verificationUrl }) {
   const guard = shouldSendEmail(to);
-  if (!guard.allowed) return guard;
+  if (!guard.allowed) return { email_sent: false, email_status: 'suppressed_test', email_error: null };
 
   const resend = getResend();
-  if (!resend) return;
+  if (!resend) {
+    console.warn('sendVerificationEmail: RESEND_API_KEY not set — email skipped.');
+    return { email_sent: false, email_status: 'disabled', email_error: null };
+  }
 
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111;">
@@ -28,20 +31,29 @@ async function sendVerificationEmail({ to, name, verificationUrl }) {
     </div>
   `;
 
-  await resend.emails.send({
-    from: FROM,
-    to,
-    subject: 'Verify your My Institute account',
-    html,
-  });
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to,
+      subject: 'Verify your My Institute account',
+      html,
+    });
+    return { email_sent: true, email_status: 'sent', email_error: null };
+  } catch (err) {
+    console.error('sendVerificationEmail error:', err);
+    return { email_sent: false, email_status: 'failed', email_error: err.message };
+  }
 }
 
 async function sendContactNotification({ to, firstName, lastName, email, phone, subject, message }) {
   const guard = shouldSendEmail(to);
-  if (!guard.allowed) return guard;
+  if (!guard.allowed) return { email_sent: false, email_status: 'suppressed_test', email_error: null };
 
   const resend = getResend();
-  if (!resend) return;
+  if (!resend) {
+    console.warn('sendContactNotification: RESEND_API_KEY not set — email skipped.');
+    return { email_sent: false, email_status: 'disabled', email_error: null };
+  }
 
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111;">
@@ -56,12 +68,18 @@ async function sendContactNotification({ to, firstName, lastName, email, phone, 
     </div>
   `;
 
-  await resend.emails.send({
-    from: FROM,
-    to,
-    subject: `Contact: ${firstName} ${lastName}`,
-    html,
-  });
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to,
+      subject: `Contact: ${firstName} ${lastName}`,
+      html,
+    });
+    return { email_sent: true, email_status: 'sent', email_error: null };
+  } catch (err) {
+    console.error('sendContactNotification error:', err);
+    return { email_sent: false, email_status: 'failed', email_error: err.message };
+  }
 }
 
 /**

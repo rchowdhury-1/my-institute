@@ -5,6 +5,7 @@ const { notify, notifyAdmins } = require('../lib/notify');
 const { canStudentCancel } = require('../lib/cancellation');
 const { formatSessionTime } = require('../lib/datetime');
 const { v4: uuidv4 } = require('uuid');
+const { asyncHandler } = require('../middleware/errors');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -99,76 +100,66 @@ router.post('/', requireRole('student'), async (req, res) => {
 });
 
 // ─── DELETE /reschedule-requests/:id ───────────────────────────────────────
-router.delete('/:id', requireRole('student'), async (req, res) => {
-  try {
-    const reqRes = await pool.query('SELECT * FROM reschedule_requests WHERE id = $1', [req.params.id]);
-    if (reqRes.rows.length === 0)
-      return res.status(404).json({ error: 'Request not found' });
-    const rr = reqRes.rows[0];
+router.delete('/:id', requireRole('student'), asyncHandler(async (req, res) => {
+  const reqRes = await pool.query('SELECT * FROM reschedule_requests WHERE id = $1', [req.params.id]);
+  if (reqRes.rows.length === 0)
+    return res.status(404).json({ error: 'Request not found' });
+  const rr = reqRes.rows[0];
 
-    if (rr.student_id !== req.userId)
-      return res.status(403).json({ error: 'Forbidden' });
-    if (rr.status !== 'pending')
-      return res.status(400).json({ error: 'Only pending requests can be cancelled' });
+  if (rr.student_id !== req.userId)
+    return res.status(403).json({ error: 'Forbidden' });
+  if (rr.status !== 'pending')
+    return res.status(400).json({ error: 'Only pending requests can be cancelled' });
 
-    const result = await pool.query(
-      `UPDATE reschedule_requests SET status = 'cancelled_by_student', updated_at = now()
-       WHERE id = $1 RETURNING *`, [req.params.id]
-    );
-    res.json({ request: result.rows[0] });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+  const result = await pool.query(
+    `UPDATE reschedule_requests SET status = 'cancelled_by_student', updated_at = now()
+     WHERE id = $1 RETURNING *`, [req.params.id]
+  );
+  res.json({ request: result.rows[0] });
+}));
 
 // ─── GET /reschedule-requests ──────────────────────────────────────────────
-router.get('/', async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
   const statusFilter = req.query.status;
-  try {
-    let query = `
-      SELECT rr.*,
-             s.scheduled_at AS original_scheduled_at,
-             s.duration_minutes,
-             s.subject,
-             st.display_name AS student_name,
-             st.email AS student_email,
-             st.phone AS student_phone,
-             t.display_name AS teacher_name,
-             t.phone AS teacher_phone
-      FROM reschedule_requests rr
-      JOIN sessions s ON s.id = rr.session_id
-      JOIN users st ON st.id = rr.student_id
-      JOIN users t  ON t.id  = rr.teacher_id
-    `;
-    const params = [];
-    const conditions = [];
+  let query = `
+    SELECT rr.*,
+           s.scheduled_at AS original_scheduled_at,
+           s.duration_minutes,
+           s.subject,
+           st.display_name AS student_name,
+           st.email AS student_email,
+           st.phone AS student_phone,
+           t.display_name AS teacher_name,
+           t.phone AS teacher_phone
+    FROM reschedule_requests rr
+    JOIN sessions s ON s.id = rr.session_id
+    JOIN users st ON st.id = rr.student_id
+    JOIN users t  ON t.id  = rr.teacher_id
+  `;
+  const params = [];
+  const conditions = [];
 
-    // Role-based scope
-    if (req.userRole === 'student') {
-      conditions.push(`rr.student_id = $${params.length + 1}`);
-      params.push(req.userId);
-    } else if (req.userRole === 'teacher') {
-      conditions.push(`rr.teacher_id = $${params.length + 1}`);
-      params.push(req.userId);
-    }
-    // admin/supervisor see all
-
-    if (statusFilter) {
-      conditions.push(`rr.status = $${params.length + 1}`);
-      params.push(statusFilter);
-    }
-
-    if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
-    query += ' ORDER BY rr.created_at DESC';
-
-    const result = await pool.query(query, params);
-    res.json({ requests: result.rows });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+  // Role-based scope
+  if (req.userRole === 'student') {
+    conditions.push(`rr.student_id = $${params.length + 1}`);
+    params.push(req.userId);
+  } else if (req.userRole === 'teacher') {
+    conditions.push(`rr.teacher_id = $${params.length + 1}`);
+    params.push(req.userId);
   }
-});
+  // admin/supervisor see all
+
+  if (statusFilter) {
+    conditions.push(`rr.status = $${params.length + 1}`);
+    params.push(statusFilter);
+  }
+
+  if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
+  query += ' ORDER BY rr.created_at DESC';
+
+  const result = await pool.query(query, params);
+  res.json({ requests: result.rows });
+}));
 
 // ─── PATCH /reschedule-requests/:id/approve ────────────────────────────────
 router.patch('/:id/approve', requireRole('teacher', 'admin', 'supervisor'), async (req, res) => {
@@ -277,58 +268,53 @@ router.patch('/:id/approve', requireRole('teacher', 'admin', 'supervisor'), asyn
 });
 
 // ─── PATCH /reschedule-requests/:id/reject ─────────────────────────────────
-router.patch('/:id/reject', requireRole('teacher', 'admin', 'supervisor'), async (req, res) => {
+router.patch('/:id/reject', requireRole('teacher', 'admin', 'supervisor'), asyncHandler(async (req, res) => {
   const { rejection_reason } = req.body;
   if (rejection_reason && rejection_reason.length > 500)
     return res.status(400).json({ error: 'Rejection reason must be 500 characters or less' });
 
-  try {
-    const reqRes = await pool.query(
-      `SELECT rr.*, s.scheduled_at AS original_scheduled_at,
-              st.display_name AS student_name
-       FROM reschedule_requests rr
-       JOIN sessions s ON s.id = rr.session_id
-       JOIN users st ON st.id = rr.student_id
-       WHERE rr.id = $1`, [req.params.id]
-    );
-    if (reqRes.rows.length === 0)
-      return res.status(404).json({ error: 'Request not found' });
-    const rr = reqRes.rows[0];
+  const reqRes = await pool.query(
+    `SELECT rr.*, s.scheduled_at AS original_scheduled_at,
+            st.display_name AS student_name
+     FROM reschedule_requests rr
+     JOIN sessions s ON s.id = rr.session_id
+     JOIN users st ON st.id = rr.student_id
+     WHERE rr.id = $1`, [req.params.id]
+  );
+  if (reqRes.rows.length === 0)
+    return res.status(404).json({ error: 'Request not found' });
+  const rr = reqRes.rows[0];
 
-    if (rr.status !== 'pending')
-      return res.status(400).json({ error: 'Request is no longer pending' });
+  if (rr.status !== 'pending')
+    return res.status(400).json({ error: 'Request is no longer pending' });
 
-    if (req.userRole === 'teacher' && rr.teacher_id !== req.userId)
-      return res.status(403).json({ error: 'Forbidden' });
+  if (req.userRole === 'teacher' && rr.teacher_id !== req.userId)
+    return res.status(403).json({ error: 'Forbidden' });
 
-    const result = await pool.query(
-      `UPDATE reschedule_requests
-       SET status = 'rejected', decided_by = $1, rejection_reason = $2, updated_at = now()
-       WHERE id = $3 RETURNING *`,
-      [req.userId, rejection_reason || null, req.params.id]
-    );
+  const result = await pool.query(
+    `UPDATE reschedule_requests
+     SET status = 'rejected', decided_by = $1, rejection_reason = $2, updated_at = now()
+     WHERE id = $3 RETURNING *`,
+    [req.userId, rejection_reason || null, req.params.id]
+  );
 
-    // Notify student
-    const origTime = formatSessionTime(rr.original_scheduled_at);
-    const reasonText = rejection_reason ? ` Reason: ${rejection_reason}` : '';
-    await notify(rr.student_id, 'reschedule_rejected', 'Reschedule Rejected',
-      `Your reschedule request for ${origTime} was not approved.${reasonText}`,
-      '/student/sessions');
+  // Notify student
+  const origTime = formatSessionTime(rr.original_scheduled_at);
+  const reasonText = rejection_reason ? ` Reason: ${rejection_reason}` : '';
+  await notify(rr.student_id, 'reschedule_rejected', 'Reschedule Rejected',
+    `Your reschedule request for ${origTime} was not approved.${reasonText}`,
+    '/student/sessions');
 
-    // Notify the other party
-    if (req.userRole === 'teacher') {
-      await notifyAdmins('reschedule_rejected', 'Reschedule Rejected',
-        `${rr.student_name}'s reschedule request was rejected`, '/supervisor');
-    } else {
-      await notify(rr.teacher_id, 'reschedule_rejected', 'Reschedule Rejected',
-        `${rr.student_name}'s reschedule request was rejected`, '/teacher/dashboard');
-    }
-
-    res.json({ request: result.rows[0] });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+  // Notify the other party
+  if (req.userRole === 'teacher') {
+    await notifyAdmins('reschedule_rejected', 'Reschedule Rejected',
+      `${rr.student_name}'s reschedule request was rejected`, '/supervisor');
+  } else {
+    await notify(rr.teacher_id, 'reschedule_rejected', 'Reschedule Rejected',
+      `${rr.student_name}'s reschedule request was rejected`, '/teacher/dashboard');
   }
-});
+
+  res.json({ request: result.rows[0] });
+}));
 
 module.exports = router;
