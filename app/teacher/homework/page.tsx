@@ -75,7 +75,7 @@ export default function TeacherHomeworkPage() {
         setHomework(hwRes.data.homework);
         setStudents(studentsRes.data.students);
       })
-      .catch(() => {})
+      .catch((err) => console.error("[teacher/homework] failed to load:", err))
       .finally(() => setLoading(false));
   }, [router]);
 

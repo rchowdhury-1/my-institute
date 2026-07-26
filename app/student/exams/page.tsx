@@ -77,7 +77,7 @@ export default function StudentExamsPage() {
     if (!token) { router.push("/login"); return; }
     api.get("/exams", { headers: { Authorization: `Bearer ${token}` } })
       .then(res => setExams(res.data.exams))
-      .catch(() => {})
+      .catch((err) => console.error("[student/exams] failed to load exams:", err))
       .finally(() => setLoading(false));
   }, [router]);
 

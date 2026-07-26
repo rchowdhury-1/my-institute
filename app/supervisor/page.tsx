@@ -10,6 +10,7 @@ import SessionCalendar from "@/components/shared/SessionCalendar";
 import Link from "next/link";
 import { formatSessionTime, formatRelative, formatHours, isSessionStillUpcoming, zonedInputToISO, isoToZonedInput, otherZoneHint, OPERATIONAL_TZ_LABEL } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { getAxiosError } from "@/lib/errors";
 
 interface Session {
   id: string;
@@ -327,8 +328,8 @@ export default function SupervisorPage() {
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, ...res.data.session } : s));
       setAttendanceId(null);
       setAttendanceStep(null);
-    } catch {
-      alert("Failed to mark attendance.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setAttendanceSaving(false);
     }
@@ -363,6 +364,7 @@ export default function SupervisorPage() {
   const [msgSent, setMsgSent] = useState(false);
 
   const handleLogout = async () => {
+    // deliberate: logout must not block on API failure
     await api.post("/auth/logout", {}).catch(() => {});
     localStorage.clear();
     document.cookie = "userRole=; path=/; max-age=0";
@@ -518,8 +520,8 @@ export default function SupervisorPage() {
       await api.delete(`/admin/weekly-schedules/${id}`, { headers: { Authorization: `Bearer ${token}` } });
       setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: false } : s));
       setSessions(prev => prev.filter(s => !(s.schedule_id === id && s.status === "scheduled" && new Date(s.scheduled_at) > new Date())));
-    } catch {
-      alert("Failed to deactivate schedule.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setScheduleActioning(null);
     }
@@ -535,8 +537,8 @@ export default function SupervisorPage() {
       setScheduleGenResult(res.data.generation);
       const sessRes = await api.get("/admin/sessions", { headers: { Authorization: `Bearer ${token}` } });
       setSessions(sessRes.data.sessions);
-    } catch {
-      alert("Failed to reactivate schedule.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setScheduleActioning(null);
     }
@@ -553,8 +555,8 @@ export default function SupervisorPage() {
         const sessRes = await api.get("/admin/sessions", { headers: { Authorization: `Bearer ${token}` } });
         setSessions(sessRes.data.sessions);
       }
-    } catch {
-      alert("Failed to generate sessions.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setScheduleActioning(null);
     }
@@ -585,8 +587,8 @@ export default function SupervisorPage() {
       }, ...prev]);
       setSessionForm({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "60", subject: "quran", zoom_link: "" });
       setShowSessionForm(false);
-    } catch {
-      alert("Failed to create session.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setCreating(false);
     }
@@ -600,8 +602,8 @@ export default function SupervisorPage() {
     try {
       await api.delete(`/sessions/${id}`, { headers: { Authorization: `Bearer ${token}` } });
       setSessions((prev) => prev.filter((s) => s.id !== id));
-    } catch {
-      alert("Failed to delete session.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setDeleting(null);
     }
@@ -620,8 +622,8 @@ export default function SupervisorPage() {
       setMsgForm({ receiver_id: "", content: "" });
       setMsgSent(true);
       setTimeout(() => setMsgSent(false), 3000);
-    } catch {
-      alert("Failed to send message.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setSending(false);
     }

@@ -31,7 +31,7 @@ export default function TeacherPaymentsPage() {
     if (!token) { router.push("/login"); return; }
     api.get("/payments", { headers: { Authorization: `Bearer ${token}` } })
       .then(res => setPayments(res.data.payments))
-      .catch(() => {})
+      .catch((err) => console.error("[teacher/payments] failed to load:", err))
       .finally(() => setLoading(false));
   }, [router]);
 

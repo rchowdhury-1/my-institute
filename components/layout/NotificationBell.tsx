@@ -51,7 +51,7 @@ export default function NotificationBell() {
     if (!token) return;
     await api.patch("/notifications/read-all", {}, {
       headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => {});
+    }).catch((err) => console.error("[NotificationBell] failed to mark all read:", err));
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnreadCount(0);
   }

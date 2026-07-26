@@ -49,7 +49,7 @@ export default function CommunityClient() {
         setPosts(res.data.posts);
         setTotalPages(res.data.totalPages);
       })
-      .catch(() => {})
+      .catch((err) => console.error("[community] failed to load posts:", err))
       .finally(() => setLoading(false));
   }, [page]);
 

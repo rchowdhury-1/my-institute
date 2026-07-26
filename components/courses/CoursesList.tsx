@@ -24,7 +24,7 @@ export default function CoursesList() {
   useEffect(() => {
     api.get("/courses")
       .then(res => setCourses(res.data.courses))
-      .catch(() => {})
+      .catch((err) => console.error("[CoursesList] failed to load courses:", err))
       .finally(() => setLoading(false));
   }, []);
 

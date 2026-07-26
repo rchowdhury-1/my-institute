@@ -45,7 +45,7 @@ export default function TeacherMessagesPage() {
 
     api.get("/messages/conversations", { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => setConversations(res.data.conversations))
-      .catch(() => {})
+      .catch((err) => console.error("[teacher/messages] failed to load conversations:", err))
       .finally(() => setLoading(false));
   }, [router]);
 

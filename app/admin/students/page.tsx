@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { getAxiosError } from "@/lib/errors";
 import { BRAND } from "@/lib/content";
 import {
   Plus,
@@ -76,14 +77,6 @@ function generatePassword(): string {
   const arr = new Uint8Array(16);
   crypto.getRandomValues(arr);
   return Array.from(arr, (b) => chars[b % chars.length]).join("");
-}
-
-function getAxiosError(err: unknown): { status?: number; message: string } {
-  const e = err as { response?: { status?: number; data?: { error?: string } } };
-  return {
-    status: e?.response?.status,
-    message: e?.response?.data?.error ?? "Something went wrong.",
-  };
 }
 
 function formatRate(rate: string | null, currency: string): string {
@@ -196,8 +189,9 @@ export default function AdminStudentsPage() {
       });
       const all: Teacher[] = res.data.teachers ?? res.data;
       setTeachers(all.filter((t) => t.is_active));
-    } catch {
+    } catch (err) {
       // non-critical — dropdown just stays empty
+      console.error("[admin/students] failed to load teachers:", err);
     }
   }, []);
 
@@ -398,7 +392,7 @@ export default function AdminStudentsPage() {
       );
     } catch (err) {
       console.error('Reset password error:', err);
-      alert("Failed to reset password. Please try again.");
+      alert(getAxiosError(err).message);
     } finally {
       setResetLoading(false);
     }
@@ -447,8 +441,9 @@ export default function AdminStudentsPage() {
         prev.map((s) => (s.id === student.id ? { ...s, is_active: true } : s))
       );
       setReactivateConfirmId(null);
-    } catch {
+    } catch (err) {
       // Reactivation has no blocking conditions
+      console.error("[admin/students] failed to reactivate:", err);
     } finally {
       setReactivateLoading(false);
     }

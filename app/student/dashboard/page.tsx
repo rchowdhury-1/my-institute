@@ -79,6 +79,7 @@ export default function StudentDashboard() {
   }, [authChecked]);
 
   const handleLogout = async () => {
+    // deliberate: logout must not block on API failure
     await api.post("/auth/logout", {}).catch(() => {});
     localStorage.clear();
     document.cookie = "userRole=; path=/; max-age=0";

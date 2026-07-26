@@ -78,7 +78,7 @@ export default function TeacherExamsPage() {
     ]).then(([examRes, studRes]) => {
       setExams(examRes.data.exams);
       setStudents(studRes.data.students);
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch((err) => console.error("[teacher/exams] failed to load:", err)).finally(() => setLoading(false));
   }, [router]);
 
   async function handleCreate() {

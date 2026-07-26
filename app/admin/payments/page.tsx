@@ -100,7 +100,7 @@ export default function AdminPaymentsPage() {
       setTeachers(teachRes.data.teachers);
       setStudentPayments(sPayRes.data.payments ?? []);
       setStudents(studRes.data.students ?? []);
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch((err) => console.error("[admin/payments] failed to load:", err)).finally(() => setLoading(false));
   }, [router]);
 
   async function handleGenerate() {

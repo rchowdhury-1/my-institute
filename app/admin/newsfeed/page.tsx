@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { getAxiosError } from "@/lib/errors";
 import { Plus, X, Pencil, Trash2, Eye, Image as ImageIcon } from "lucide-react";
 
 interface Post {
@@ -122,8 +123,8 @@ export default function AdminNewsfeedPage() {
       setPosts((prev) => [res.data.post, ...prev]);
       setShowCreate(false);
       setCreateForm({ type: "general", title: "", body: "", image_url: "", show_on_homepage: false });
-    } catch {
-      setCreateError("Failed to create post.");
+    } catch (err) {
+      setCreateError(getAxiosError(err).message);
     } finally {
       setCreateLoading(false);
     }
@@ -162,8 +163,8 @@ export default function AdminNewsfeedPage() {
         prev.map((p) => (p.id === postId ? res.data.post : p))
       );
       setEditingId(null);
-    } catch {
-      setEditError("Failed to save changes.");
+    } catch (err) {
+      setEditError(getAxiosError(err).message);
     } finally {
       setEditLoading(false);
     }
@@ -180,7 +181,7 @@ export default function AdminNewsfeedPage() {
       setDeleteConfirmId(null);
     } catch (err) {
       console.error('Delete post error:', err);
-      alert("Failed to delete post. Please try again.");
+      alert(getAxiosError(err).message);
     } finally {
       setDeleteLoading(false);
     }

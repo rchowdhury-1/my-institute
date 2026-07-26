@@ -35,7 +35,7 @@ export default function ScholarshipApplicants() {
   useEffect(() => {
     api.get("/scholarships/applicants")
       .then(res => setApplicants(res.data.applicants))
-      .catch(() => {})
+      .catch((err) => console.error("[ScholarshipApplicants] failed to load:", err))
       .finally(() => setLoading(false));
   }, []);
 

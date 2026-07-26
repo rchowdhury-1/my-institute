@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, Video, ExternalLink, MessageCircle, List } from "lucide-react";
 import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { getAxiosError } from "@/lib/errors";
 import { BRAND } from "@/lib/content";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 
@@ -122,8 +123,8 @@ export default function StudentSessionsPage() {
       );
       setCancelId(null);
       setCancelReason("");
-    } catch {
-      alert("Failed to cancel session.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setCancelSaving(false);
     }
@@ -173,8 +174,8 @@ export default function StudentSessionsPage() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
-    } catch {
-      alert("Failed to cancel request.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setCancellingRequest(null);
     }

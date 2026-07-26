@@ -52,7 +52,7 @@ export default function AdminRevertApplicationsPage() {
         headers: { Authorization: `Bearer ${t}` },
       })
       .then((res) => setApplications(res.data.applications))
-      .catch(() => {})
+      .catch((err) => console.error("[admin/revert-applications] failed to load:", err))
       .finally(() => setLoading(false));
   }, [router]);
 

@@ -33,7 +33,7 @@ export default function CommunityPreview() {
     api
       .get("/newsfeed/homepage")
       .then((res) => setPosts(res.data.posts ?? []))
-      .catch(() => {});
+      .catch((err) => console.error("[CommunityPreview] failed to load posts:", err));
   }, []);
 
   if (posts.length === 0) return null;

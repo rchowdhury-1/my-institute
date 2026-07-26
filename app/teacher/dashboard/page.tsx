@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { Video, ExternalLink, RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
 import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming, isSessionJoinable, isSessionBeforeStart, computeClockSkew } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { getAxiosError } from "@/lib/errors";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 
 interface Lesson {
@@ -130,8 +131,8 @@ export default function TeacherDashboard() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setLessons((prev) => prev.map((l) => l.id === lessonId ? { ...l, ...res.data.session } : l));
-    } catch {
-      alert("Failed to cancel session.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setSaving(null);
     }
@@ -188,6 +189,7 @@ export default function TeacherDashboard() {
   }
 
   const handleLogout = async () => {
+    // deliberate: logout must not block on API failure
     await api.post("/auth/logout", {}).catch(() => {});
     localStorage.clear();
     document.cookie = "userRole=; path=/; max-age=0";

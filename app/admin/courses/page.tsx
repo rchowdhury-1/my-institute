@@ -49,7 +49,7 @@ export default function AdminCoursesPage() {
     if (!token || (role !== "admin" && role !== "supervisor")) { router.push("/login"); return; }
     api.get("/courses", { headers: { Authorization: `Bearer ${token}` } })
       .then(res => setCourses(res.data.courses))
-      .catch(() => {})
+      .catch((err) => console.error("[admin/courses] failed to load:", err))
       .finally(() => setLoading(false));
   }, [router]);
 
