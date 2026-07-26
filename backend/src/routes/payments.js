@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { DEFAULT_RATE_PER_SESSION } = require('../config');
 
 // GET /payments — teacher sees own history, admin sees all
 router.get('/', requireAuth, requireRole('admin', 'supervisor', 'teacher'), async (req, res) => {
@@ -40,7 +41,7 @@ router.post('/generate', requireAuth, requireRole('admin', 'supervisor'), async 
       [teacher_id, parseInt(month), parseInt(year)]
     );
     const sessions_completed = parseInt(sessionsRes.rows[0].count);
-    const rate = parseFloat(rate_per_session) || 5.00;
+    const rate = parseFloat(rate_per_session) || DEFAULT_RATE_PER_SESSION;
     const total_amount = sessions_completed * rate;
 
     const result = await pool.query(

@@ -16,9 +16,9 @@ const { pool } = require('../db');
 const { fromZonedTime } = require('date-fns-tz');
 const { addDays, startOfDay, format } = require('date-fns');
 const { v4: uuidv4 } = require('uuid');
+const { HORIZON_DAYS } = require('../config');
 
 const OPERATIONAL_TZ = 'Africa/Cairo';
-const HORIZON_DAYS = 28; // 4-week rolling window
 const VALID_SUBJECTS = ['quran', 'arabic', 'islamic_studies'];
 
 const DAY_MAP = {

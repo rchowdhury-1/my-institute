@@ -2,6 +2,8 @@
  * Email guard — suppresses sends to test addresses and rate-limits all sends.
  */
 
+const { EMAIL_WINDOW_MS, EMAIL_MAX_SENDS } = require('../config');
+
 // ─── Test recipient detection ──────────────────────────────────────────────
 
 const TEST_DOMAINS = [
@@ -35,17 +37,15 @@ function isTestRecipient(email) {
 
 // ─── Circuit breaker ───────────────────────────────────────────────────────
 
-const WINDOW_MS = 60_000; // 60 seconds
-const MAX_SENDS = 20;
 const sendTimestamps = [];
 
 function checkCircuitBreaker() {
   const now = Date.now();
   // Remove entries older than the window
-  while (sendTimestamps.length > 0 && sendTimestamps[0] < now - WINDOW_MS) {
+  while (sendTimestamps.length > 0 && sendTimestamps[0] < now - EMAIL_WINDOW_MS) {
     sendTimestamps.shift();
   }
-  if (sendTimestamps.length >= MAX_SENDS) {
+  if (sendTimestamps.length >= EMAIL_MAX_SENDS) {
     return false; // breaker tripped
   }
   sendTimestamps.push(now);
@@ -61,7 +61,7 @@ function shouldSendEmail(to) {
     return { allowed: false, reason: 'test_recipient', suppressed: true, recipient: to };
   }
   if (!checkCircuitBreaker()) {
-    console.error(`[EMAIL CIRCUIT BREAKER] Refused send to ${to} — over ${MAX_SENDS} sends in ${WINDOW_MS / 1000}s`);
+    console.error(`[EMAIL CIRCUIT BREAKER] Refused send to ${to} — over ${EMAIL_MAX_SENDS} sends in ${EMAIL_WINDOW_MS / 1000}s`);
     return { allowed: false, reason: 'circuit_breaker', recipient: to };
   }
   return { allowed: true };

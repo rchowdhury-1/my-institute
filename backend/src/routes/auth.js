@@ -7,6 +7,12 @@ const { sendVerificationEmail } = require('../email');
 const { requireAuth } = require('../middleware/auth');
 const { hashPassword } = require('../utils/password');
 const { asyncHandler } = require('../middleware/errors');
+const {
+  ACCESS_TOKEN_TTL,
+  REFRESH_TOKEN_TTL_JWT,
+  REFRESH_TOKEN_MAX_AGE_MS,
+  MIN_PASSWORD_LENGTH,
+} = require('../config');
 
 const router = express.Router();
 
@@ -14,15 +20,15 @@ const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-  maxAge: 7 * 24 * 60 * 60 * 1000,
+  maxAge: REFRESH_TOKEN_MAX_AGE_MS,
 };
 
 function signAccess(userId, role) {
-  return jwt.sign({ userId, role }, process.env.JWT_SECRET, { expiresIn: '15m' });
+  return jwt.sign({ userId, role }, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_TTL });
 }
 
 function signRefresh(userId) {
-  return jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, { expiresIn: REFRESH_TOKEN_TTL_JWT });
 }
 
 // POST /auth/register
@@ -30,7 +36,7 @@ router.post('/register', asyncHandler(async (req, res) => {
   const { display_name, email, password, role: requestedRole, phone } = req.body;
   if (!display_name || !email || !password)
     return res.status(400).json({ error: 'display_name, email and password are required' });
-  if (password.length < 8)
+  if (password.length < MIN_PASSWORD_LENGTH)
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
 
   let role = 'student';
@@ -89,7 +95,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   const refreshToken = signRefresh(user.id);
   const refreshId = uuidv4();
   const now = new Date().toISOString();
-  const refreshExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const refreshExpiry = new Date(Date.now() + REFRESH_TOKEN_MAX_AGE_MS).toISOString();
 
   await pool.query(
     `INSERT INTO refresh_tokens (id, token, user_id, expires_at, created_at)
@@ -170,7 +176,7 @@ router.post('/logout', async (req, res) => {
 // POST /auth/change-password — requires valid JWT; flips must_change_password to false
 router.post('/change-password', requireAuth, asyncHandler(async (req, res) => {
   const { newPassword } = req.body;
-  if (!newPassword || newPassword.length < 8)
+  if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH)
     return res.status(400).json({ error: 'New password must be at least 8 characters' });
 
   const hash = await hashPassword(newPassword);

@@ -3,6 +3,7 @@ const { generateTempPassword, hashPassword } = require('../utils/password');
 const { sendWelcomeEmail } = require('../email');
 const { isValidEmail } = require('./validators');
 const { assertTeacherExists } = require('./queries');
+const { MIN_PASSWORD_LENGTH, SUPPORTED_CURRENCIES } = require('../config');
 
 /**
  * Sends the welcome email and reports the outcome, or reports "skipped"
@@ -24,8 +25,8 @@ const ROLE_CONFIG = {
       if (hourly_rate == null) return 'Hourly rate is required';
       if (isNaN(parseFloat(hourly_rate)) || parseFloat(hourly_rate) <= 0)
         return 'Hourly rate must be a positive number';
-      if (!['GBP', 'EGP'].includes(currency)) return 'Currency must be GBP or EGP';
-      if (providedPassword && providedPassword.length < 8)
+      if (!SUPPORTED_CURRENCIES.includes(currency)) return 'Currency must be GBP or EGP';
+      if (providedPassword && providedPassword.length < MIN_PASSWORD_LENGTH)
         return 'Password must be at least 8 characters';
       const bundleFields = [package_name, total_lessons, expires_at].filter(Boolean);
       if (bundleFields.length > 0 && bundleFields.length < 3)
@@ -73,7 +74,7 @@ const ROLE_CONFIG = {
   teacher: {
     validateExtra(body) {
       const { password: providedPassword } = body;
-      if (providedPassword && providedPassword.length < 8)
+      if (providedPassword && providedPassword.length < MIN_PASSWORD_LENGTH)
         return 'Password must be at least 8 characters';
       return null;
     },

@@ -1,4 +1,6 @@
-const BUFFER_HOURS = 12;
+const { MS_PER_HOUR } = require('../config');
+
+const BUFFER_HOURS = Number(process.env.CANCELLATION_BUFFER_HOURS) || 12;
 
 /**
  * Check whether a student is allowed to cancel or request-reschedule a session.
@@ -12,7 +14,7 @@ function canStudentCancel(session) {
     return { allowed: false, reason: 'Session is not active', code: 'SESSION_NOT_SCHEDULED' };
   }
 
-  const hoursUntil = (new Date(session.scheduled_at).getTime() - Date.now()) / 3_600_000;
+  const hoursUntil = (new Date(session.scheduled_at).getTime() - Date.now()) / MS_PER_HOUR;
 
   if (hoursUntil < 0) {
     return {

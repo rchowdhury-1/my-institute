@@ -8,6 +8,7 @@ const { asyncHandler } = require('../middleware/errors');
 const { isValidEmail, validateDuration, validateEnum } = require('../lib/validators');
 const { getDisplayName, assertTeacherExists, hasTeacherConflict } = require('../lib/queries');
 const { createUser, resetPassword } = require('../lib/users');
+const { SUPPORTED_CURRENCIES } = require('../config');
 
 const router = express.Router();
 
@@ -68,7 +69,7 @@ router.patch('/students/:id', asyncHandler(async (req, res) => {
 
   if (hourly_rate != null && (isNaN(parseFloat(hourly_rate)) || parseFloat(hourly_rate) <= 0))
     return res.status(400).json({ error: 'Hourly rate must be a positive number' });
-  if (currency && !['GBP', 'EGP'].includes(currency))
+  if (currency && !SUPPORTED_CURRENCIES.includes(currency))
     return res.status(400).json({ error: 'Currency must be GBP or EGP' });
 
   const result = await pool.query(

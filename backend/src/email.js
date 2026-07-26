@@ -9,6 +9,23 @@ function getResend() {
 const FROM = 'MY Institute <noreply@my-institute.com>';
 const BRAND_COLOR = '#065f46';
 
+function renderEmailLayout({ title, bodyHtml }) {
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111;">
+      <h2 style="color: ${BRAND_COLOR};">${title}</h2>
+      ${bodyHtml}
+    </div>
+  `;
+}
+
+function renderCtaButton({ href, label, bold = false }) {
+  const boldStyle = bold ? ' font-weight: bold;' : '';
+  return `
+      <p style="margin: 32px 0;">
+        <a href="${href}" style="background: ${BRAND_COLOR}; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block;${boldStyle}">${label}</a>
+      </p>`;
+}
+
 async function sendVerificationEmail({ to, name, verificationUrl }) {
   const guard = shouldSendEmail(to);
   if (!guard.allowed) return { email_sent: false, email_status: 'suppressed_test', email_error: null };
@@ -19,17 +36,15 @@ async function sendVerificationEmail({ to, name, verificationUrl }) {
     return { email_sent: false, email_status: 'disabled', email_error: null };
   }
 
-  const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111;">
-      <h2 style="color: ${BRAND_COLOR};">Verify your email</h2>
+  const html = renderEmailLayout({
+    title: 'Verify your email',
+    bodyHtml: `
       <p>Hi ${name},</p>
       <p>Thanks for registering with My Institute. Click the button below to verify your email address.</p>
-      <p style="margin: 32px 0;">
-        <a href="${verificationUrl}" style="background: ${BRAND_COLOR}; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block;">Verify Email</a>
-      </p>
+      ${renderCtaButton({ href: verificationUrl, label: 'Verify Email' })}
       <p style="color: #555; font-size: 14px;">Please verify soon. If you didn't create an account, you can ignore this email.</p>
-    </div>
-  `;
+    `,
+  });
 
   try {
     await resend.emails.send({
@@ -55,9 +70,9 @@ async function sendContactNotification({ to, firstName, lastName, email, phone, 
     return { email_sent: false, email_status: 'disabled', email_error: null };
   }
 
-  const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111;">
-      <h2 style="color: ${BRAND_COLOR};">New Contact Message</h2>
+  const html = renderEmailLayout({
+    title: 'New Contact Message',
+    bodyHtml: `
       <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
         <tr><td style="padding: 6px 0; color: #555; width: 140px;">Name</td><td style="padding: 6px 0; font-weight: bold;">${firstName} ${lastName}</td></tr>
         <tr><td style="padding: 6px 0; color: #555;">Email</td><td style="padding: 6px 0;">${email}</td></tr>
@@ -65,8 +80,8 @@ async function sendContactNotification({ to, firstName, lastName, email, phone, 
         <tr><td style="padding: 6px 0; color: #555;">Subject</td><td style="padding: 6px 0;">${subject || '—'}</td></tr>
       </table>
       <p style="background: #f5f5f5; padding: 12px; border-radius: 6px;">${message}</p>
-    </div>
-  `;
+    `,
+  });
 
   try {
     await resend.emails.send({
@@ -101,9 +116,9 @@ async function sendWelcomeEmail({ to, name, email, tempPassword, role }) {
   const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
   const roleLabel = role === 'teacher' ? 'teacher' : 'student';
 
-  const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111;">
-      <h2 style="color: ${BRAND_COLOR};">Welcome to My Institute</h2>
+  const html = renderEmailLayout({
+    title: 'Welcome to My Institute',
+    bodyHtml: `
       <p>Hi ${name},</p>
       <p>Your ${roleLabel} account has been set up. Use the details below to log in for the first time.</p>
       <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
@@ -118,13 +133,11 @@ async function sendWelcomeEmail({ to, name, email, tempPassword, role }) {
           </td>
         </tr>
       </table>
-      <p style="margin: 32px 0;">
-        <a href="${loginUrl}" style="background: ${BRAND_COLOR}; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block; font-weight: bold;">Log in to My Institute</a>
-      </p>
+      ${renderCtaButton({ href: loginUrl, label: 'Log in to My Institute', bold: true })}
       <p style="color: #555; font-size: 14px;">You will be asked to set a new password when you first log in.</p>
       <p style="color: #555; font-size: 14px;">If you have any trouble, contact the institute directly.</p>
-    </div>
-  `;
+    `,
+  });
 
   try {
     await resend.emails.send({

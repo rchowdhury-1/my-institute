@@ -9,6 +9,7 @@ const { generateAllSchedules } = require('../lib/schedule-generator');
 const { asyncHandler } = require('../middleware/errors');
 const { validateDuration } = require('../lib/validators');
 const { getDisplayName, safeGenerate } = require('../lib/queries');
+const { ATTENDANCE_EARLY_MS, ATTENDANCE_LATE_MS, RENEWAL_REMINDER_HOURS } = require('../config');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -236,8 +237,8 @@ router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supe
   if (req.userRole === 'teacher') {
     const sessionStart = new Date(session.scheduled_at);
     const now = new Date();
-    const windowStart = new Date(sessionStart.getTime() - 15 * 60 * 1000);
-    const windowEnd = new Date(sessionStart.getTime() + 24 * 60 * 60 * 1000);
+    const windowStart = new Date(sessionStart.getTime() - ATTENDANCE_EARLY_MS);
+    const windowEnd = new Date(sessionStart.getTime() + ATTENDANCE_LATE_MS);
 
     if (now < windowStart)
       return res.status(403).json({
@@ -305,7 +306,7 @@ router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supe
             '/student/sessions');
           await notifyAdmins('lesson_balance_zero', 'Student Hours Balance Empty',
             `${studentName} has no hours remaining and needs renewal.`, '/supervisor');
-        } else if (balance <= 2) {
+        } else if (balance <= RENEWAL_REMINDER_HOURS) {
           await notify(session.student_id, 'renewal_reminder', 'Renew Your Hours',
             `You have ${balance} hour${balance !== 1 ? 's' : ''} remaining. Contact us to renew.`,
             '/student/sessions');
