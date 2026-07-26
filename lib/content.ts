@@ -17,6 +17,10 @@ export const BRAND: BrandInfo = {
 // External student exam portal, built and hosted by Mohammad
 export const EXAM_PORTAL_URL = "https://mohammad69850.github.io/my-institute-exam";
 
+// Fallback inbox for the public form routes (app/api/contact, /free-trial,
+// /scholarship) when CONTACT_EMAIL isn't set in the environment.
+export const FALLBACK_CONTACT_EMAIL = BRAND.email;
+
 export const SERVICES: Service[] = [
   {
     title: "Islamic Religion",

@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
+import { handleFormSubmission } from "../_lib/sendFormEmail";
 
 const contactSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -8,20 +9,13 @@ const contactSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const result = contactSchema.safeParse(body);
-
-    if (!result.success) {
-      return NextResponse.json(
-        { error: "Invalid form data", details: result.error.flatten() },
-        { status: 400 }
-      );
-    }
-
-    const data = result.data;
-
-    const emailBody = `
+  return handleFormSubmission({
+    req,
+    schema: contactSchema,
+    logLabel: "[Contact Form Submission]",
+    buildEmail: (data) => ({
+      subject: `Contact Message from ${data.name}`,
+      body: `
 New Contact Message
 ===================
 Name:    ${data.name}
@@ -29,28 +23,7 @@ Email:   ${data.email}
 
 Message:
 ${data.message}
-    `.trim();
-
-    if (process.env.RESEND_API_KEY) {
-      const { Resend } = await import("resend");
-      const resend = new Resend(process.env.RESEND_API_KEY);
-
-      await resend.emails.send({
-        from: "MY Institute <noreply@my-institute.com>",
-        to: process.env.CONTACT_EMAIL || "myinstitute2026@gmail.com",
-        subject: `Contact Message from ${data.name}`,
-        text: emailBody,
-      });
-    } else {
-      console.log("[Contact Form Submission]", emailBody);
-    }
-
-    return NextResponse.json({ success: true }, { status: 200 });
-  } catch (err) {
-    console.error("[API /contact]", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
+      `.trim(),
+    }),
+  });
 }

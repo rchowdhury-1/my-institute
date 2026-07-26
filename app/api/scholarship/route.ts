@@ -1,43 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { scholarshipSchema } from "@/lib/validators";
-import { checkRateLimit } from "@/lib/rateLimit";
-
-// 5 submissions per IP per hour
-const RATE_LIMIT = 5;
-const WINDOW_MS = 60 * 60 * 1000;
+import { handleFormSubmission } from "../_lib/sendFormEmail";
 
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const { allowed, retryAfter } = checkRateLimit(ip, RATE_LIMIT, WINDOW_MS);
-
-  if (!allowed) {
-    return NextResponse.json(
-      {
-        error:
-          "Too many requests. Please wait a while before submitting again.",
-      },
-      {
-        status: 429,
-        headers: { "Retry-After": String(retryAfter ?? 3600) },
-      }
-    );
-  }
-
-  try {
-    const body = await req.json();
-    const result = scholarshipSchema.safeParse(body);
-
-    if (!result.success) {
-      return NextResponse.json(
-        { error: "Invalid form data", details: result.error.flatten() },
-        { status: 400 }
-      );
-    }
-
-    const data = result.data;
-
-    const emailBody = `
+  return handleFormSubmission({
+    req,
+    schema: scholarshipSchema,
+    logLabel: "[Scholarship Application]",
+    buildEmail: (data) => ({
+      subject: `Scholarship Application — ${data.fullName}`,
+      body: `
 New Scholarship Application
 ============================
 Name:    ${data.fullName}
@@ -50,28 +22,7 @@ Story:
 ${data.story || "Not provided"}
 
 How they heard about us: ${data.source || "Not provided"}
-    `.trim();
-
-    if (process.env.RESEND_API_KEY) {
-      const { Resend } = await import("resend");
-      const resend = new Resend(process.env.RESEND_API_KEY);
-
-      await resend.emails.send({
-        from: "MY Institute <noreply@my-institute.com>",
-        to: process.env.CONTACT_EMAIL || "my.institute2027@gmail.com",
-        subject: `Scholarship Application — ${data.fullName}`,
-        text: emailBody,
-      });
-    } else {
-      console.log("[Scholarship Application]", emailBody);
-    }
-
-    return NextResponse.json({ success: true }, { status: 200 });
-  } catch (err) {
-    console.error("[API /scholarship]", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
+      `.trim(),
+    }),
+  });
 }

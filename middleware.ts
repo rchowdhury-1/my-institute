@@ -30,6 +30,22 @@ const PHASE2B_GATES: Array<{ prefixes: string[]; flag: string }> = [
   },
 ];
 
+/**
+ * Dashboard route → roles allowed to access it. Data-driven so adding a
+ * dashboard area is one row here instead of a new if-block.
+ *
+ * NOTE: `config.matcher` below must stay a static array literal (Next.js
+ * parses it at build time and can't accept a computed value) — its dashboard
+ * entries must mirror the prefixes here. The dev-only check after this file
+ * loads catches drift between the two.
+ */
+const ROUTE_ROLES: Array<{ prefix: string; allowedRoles: string[] }> = [
+  { prefix: "/student", allowedRoles: ["student"] },
+  { prefix: "/teacher", allowedRoles: ["teacher", "admin"] },
+  { prefix: "/supervisor", allowedRoles: ["supervisor", "admin"] },
+  { prefix: "/admin", allowedRoles: ["admin"] },
+];
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -44,44 +60,15 @@ export function middleware(request: NextRequest) {
   }
 
   // ── Auth + role checks (dashboard routes only) ──────────────────────────────
-  const dashboardPaths = [
-    "/student",
-    "/teacher",
-    "/supervisor",
-    "/admin",
-  ];
-  const isDashboard = dashboardPaths.some((p) => pathname.startsWith(p));
+  const routeRule = ROUTE_ROLES.find((r) => pathname.startsWith(r.prefix));
 
-  if (isDashboard) {
+  if (routeRule) {
     // refreshToken is httpOnly and set by the Render backend domain — Next.js
     // middleware on the Vercel domain cannot read cross-domain cookies.
     // userRole is set by frontend JS after login (same domain) and is the
     // correct signal to use here. Every page also verifies the JWT itself.
     const role = request.cookies.get("userRole")?.value;
-    if (!role) {
-      return NextResponse.redirect(new URL("/login", request.url));
-    }
-
-    if (pathname.startsWith("/student") && role && role !== "student") {
-      return NextResponse.redirect(new URL("/login", request.url));
-    }
-    if (
-      pathname.startsWith("/teacher") &&
-      role &&
-      role !== "teacher" &&
-      role !== "admin"
-    ) {
-      return NextResponse.redirect(new URL("/login", request.url));
-    }
-    if (
-      pathname.startsWith("/supervisor") &&
-      role &&
-      role !== "supervisor" &&
-      role !== "admin"
-    ) {
-      return NextResponse.redirect(new URL("/login", request.url));
-    }
-    if (pathname.startsWith("/admin") && role && role !== "admin") {
+    if (!role || !routeRule.allowedRoles.includes(role)) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
   }
@@ -91,7 +78,7 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Dashboard routes (auth-protected)
+    // Dashboard routes (auth-protected) — must mirror ROUTE_ROLES above
     "/student/:path*",
     "/teacher/:path*",
     "/supervisor/:path*",
@@ -100,3 +87,16 @@ export const config = {
     "/recorded-courses/:path*",
   ],
 };
+
+if (process.env.NODE_ENV !== "production") {
+  const matcherPrefixes = config.matcher
+    .filter((m) => m.endsWith("/:path*"))
+    .map((m) => m.replace("/:path*", ""));
+  for (const { prefix } of ROUTE_ROLES) {
+    if (!matcherPrefixes.includes(prefix)) {
+      console.warn(
+        `[middleware] ROUTE_ROLES has "${prefix}" but config.matcher is missing it — this route would run role checks without middleware ever executing.`
+      );
+    }
+  }
+}

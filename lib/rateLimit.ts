@@ -7,6 +7,10 @@
  * For this single-instance deployment (standalone Next.js or Render), it works correctly.
  */
 
+// Public form routes (contact, free-trial, scholarship): 5 submissions per IP per hour.
+export const FORM_RATE_LIMIT = 5;
+export const FORM_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
 interface Entry {
   count: number;
   resetAt: number;
