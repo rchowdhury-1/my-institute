@@ -13,8 +13,8 @@
  * duplicate sessions at the shifted instants.
  */
 const { pool } = require('../db');
-const { fromZonedTime } = require('date-fns-tz');
-const { addDays, startOfDay, format } = require('date-fns');
+const { fromZonedTime, toZonedTime } = require('date-fns-tz');
+const { addDays, subDays, startOfDay, format } = require('date-fns');
 const { v4: uuidv4 } = require('uuid');
 const { HORIZON_DAYS } = require('../config');
 
@@ -80,12 +80,15 @@ async function generateSessionsForSchedule(schedule) {
   const today = startOfDay(now);
   const horizon = addDays(today, HORIZON_DAYS);
 
-  let created = 0;
   let skipped = 0;
   const conflicts = [];
 
   const slots = Array.isArray(schedule.slots) ? schedule.slots : [];
 
+  // 1. Compute every candidate instant up front (same slot-then-date order as
+  // the original nested loop, so tie-breaking between two candidates that
+  // conflict with each other is unchanged).
+  const candidates = [];
   for (const slot of slots) {
     const duration = slot.duration || schedule.default_duration;
     const dates = getMatchingDates(slot.day, today, horizon);
@@ -99,65 +102,118 @@ async function generateSessionsForSchedule(schedule) {
         continue;
       }
 
-      // Idempotency check: any session (any status except nothing excluded) at this
-      // schedule + operational-zone date + operational-zone time already exists?
-      const existing = await pool.query(
-        `SELECT id FROM sessions
-         WHERE schedule_id = $1
-           AND DATE(scheduled_at AT TIME ZONE $4) = $2
-           AND TO_CHAR(scheduled_at AT TIME ZONE $4, 'HH24:MI') = $3`,
-        [schedule.id, format(targetDate, 'yyyy-MM-dd'), slot.time, OPERATIONAL_TZ]
-      );
-
-      if (existing.rows.length > 0) {
-        skipped++;
-        continue;
-      }
-
-      // Teacher conflict check (overlap with any scheduled session)
-      const conflict = await pool.query(
-        `SELECT id FROM sessions
-         WHERE teacher_id = $1
-           AND status = 'scheduled'
-           AND tstzrange(scheduled_at, scheduled_at + duration_minutes * interval '1 minute')
-            && tstzrange($2::timestamptz, $2::timestamptz + $3 * interval '1 minute')`,
-        [schedule.teacher_id, sessionTimeUTC.toISOString(), duration]
-      );
-
-      if (conflict.rows.length > 0) {
-        const dateStr = format(targetDate, 'yyyy-MM-dd');
-        conflicts.push(`Teacher conflict on ${dateStr} at ${slot.time}`);
-        skipped++;
-        continue;
-      }
-
-      // Create session (map subject to valid enum for sessions table constraint)
-      if (!VALID_SUBJECTS.includes(schedule.subject)) {
-        console.warn(`[generation] schedule ${schedule.id} has invalid subject "${schedule.subject}" — defaulting to "quran"`);
-      }
-      const sessionSubject = VALID_SUBJECTS.includes(schedule.subject) ? schedule.subject : 'quran';
-      const id = uuidv4();
-      await pool.query(
-        `INSERT INTO sessions
-           (id, student_id, teacher_id, scheduled_at, duration_minutes,
-            subject, schedule_id, rate_at_creation, currency_at_creation, zoom_link)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          id,
-          schedule.student_id,
-          schedule.teacher_id,
-          sessionTimeUTC.toISOString(),
-          duration,
-          sessionSubject,
-          schedule.id,
-          schedule.hourly_rate || null,
-          schedule.currency || null,
-          schedule.zoom_link || null,
-        ]
-      );
-
-      created++;
+      candidates.push({ slot, duration, targetDate, sessionTimeUTC });
     }
+  }
+
+  if (candidates.length === 0) {
+    return { created: 0, skipped, conflicts };
+  }
+
+  // 2. One query for idempotency: every existing session for this schedule
+  // (any status — decision 3.9/8.1, no exclusion), bounded to a window that
+  // can't miss a match (any session outside [today, horizon] can never share
+  // a candidate's operational-zone date, so this bound is exact, not
+  // approximate). Match key mirrors the original per-candidate SQL:
+  // DATE(scheduled_at AT TIME ZONE OPERATIONAL_TZ) + TO_CHAR(..., 'HH24:MI').
+  const existingRes = await pool.query(
+    `SELECT scheduled_at FROM sessions
+     WHERE schedule_id = $1 AND scheduled_at >= $2 AND scheduled_at <= $3`,
+    [schedule.id, subDays(today, 1).toISOString(), addDays(horizon, 1).toISOString()]
+  );
+  const existingKeys = new Set(
+    existingRes.rows.map((r) => {
+      const zoned = toZonedTime(r.scheduled_at, OPERATIONAL_TZ);
+      return `${format(zoned, 'yyyy-MM-dd')} ${format(zoned, 'HH:mm')}`;
+    })
+  );
+
+  // 3. One query for teacher conflicts: every 'scheduled' session for this
+  // teacher, unbounded by date (matches the original — it never restricted
+  // by date either, only by teacher_id + status).
+  const conflictRes = await pool.query(
+    `SELECT scheduled_at, duration_minutes FROM sessions
+     WHERE teacher_id = $1 AND status = 'scheduled'`,
+    [schedule.teacher_id]
+  );
+  const existingIntervals = conflictRes.rows.map((r) => {
+    const start = new Date(r.scheduled_at).getTime();
+    return { start, end: start + r.duration_minutes * 60_000 };
+  });
+
+  // 4. Decide create/skip per candidate in order, checking each against both
+  // pre-existing DB conflicts and conflicts newly created earlier in this
+  // same pass — the original caught the latter because it inserted before
+  // moving to the next candidate, so a later candidate's conflict query saw
+  // the earlier candidate's row already committed.
+  const newIntervals = [];
+  const toInsert = [];
+  let created = 0;
+
+  const overlaps = (a, b) => a.start < b.end && b.start < a.end;
+
+  for (const { slot, duration, targetDate, sessionTimeUTC } of candidates) {
+    const key = `${format(targetDate, 'yyyy-MM-dd')} ${slot.time}`;
+    if (existingKeys.has(key)) {
+      skipped++;
+      continue;
+    }
+
+    const interval = { start: sessionTimeUTC.getTime(), end: sessionTimeUTC.getTime() + duration * 60_000 };
+    const hasConflict =
+      existingIntervals.some((iv) => overlaps(interval, iv)) ||
+      newIntervals.some((iv) => overlaps(interval, iv));
+
+    if (hasConflict) {
+      const dateStr = format(targetDate, 'yyyy-MM-dd');
+      conflicts.push(`Teacher conflict on ${dateStr} at ${slot.time}`);
+      skipped++;
+      continue;
+    }
+
+    // Map subject to valid enum for sessions table constraint
+    if (!VALID_SUBJECTS.includes(schedule.subject)) {
+      console.warn(`[generation] schedule ${schedule.id} has invalid subject "${schedule.subject}" — defaulting to "quran"`);
+    }
+    const sessionSubject = VALID_SUBJECTS.includes(schedule.subject) ? schedule.subject : 'quran';
+
+    newIntervals.push(interval);
+    toInsert.push({
+      id: uuidv4(),
+      scheduledAt: sessionTimeUTC.toISOString(),
+      duration,
+      subject: sessionSubject,
+    });
+    created++;
+  }
+
+  // 5. Bulk-insert the survivors in one query.
+  if (toInsert.length > 0) {
+    const valueRows = [];
+    const params = [];
+    let i = 1;
+    for (const s of toInsert) {
+      valueRows.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+      params.push(
+        s.id,
+        schedule.student_id,
+        schedule.teacher_id,
+        s.scheduledAt,
+        s.duration,
+        s.subject,
+        schedule.id,
+        schedule.hourly_rate || null,
+        schedule.currency || null,
+        schedule.zoom_link || null
+      );
+    }
+    await pool.query(
+      `INSERT INTO sessions
+         (id, student_id, teacher_id, scheduled_at, duration_minutes,
+          subject, schedule_id, rate_at_creation, currency_at_creation, zoom_link)
+       VALUES ${valueRows.join(', ')}`,
+      params
+    );
   }
 
   return { created, skipped, conflicts };
