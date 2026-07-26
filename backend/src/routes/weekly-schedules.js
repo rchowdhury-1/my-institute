@@ -1,8 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { notify, notifyAdmins } = require('../lib/notify');
-const { formatSessionTime } = require('../lib/datetime');
+const { notify } = require('../lib/notify');
 const { asyncHandler } = require('../middleware/errors');
 const {
   generateForScheduleId,

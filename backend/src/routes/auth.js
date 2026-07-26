@@ -51,7 +51,7 @@ router.post('/register', asyncHandler(async (req, res) => {
   const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
   if (existing.rows.length > 0) return res.status(409).json({ error: 'Email already registered' });
 
-  const hash = await bcrypt.hash(password, 12);
+  const hash = await hashPassword(password);
   const id = uuidv4();
   const verificationToken = uuidv4();
   const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`;

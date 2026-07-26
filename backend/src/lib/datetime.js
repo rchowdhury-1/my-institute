@@ -40,64 +40,6 @@ function formatSessionTime(date) {
   return `${datePart(d)} · ${dualTime(d)}`;
 }
 
-function formatSessionDate(date) {
-  const d = toDate(date);
-  if (!d) return "";
-  return datePart(d);
-}
-
-function formatTimeOnly(date) {
-  const d = toDate(date);
-  if (!d) return "";
-  return dualTime(d);
-}
-
-function formatRelative(date) {
-  const d = toDate(date);
-  if (!d) return "";
-  const now = Date.now();
-  const diff = d.getTime() - now;
-  const absDiff = Math.abs(diff);
-  const future = diff > 0;
-
-  const minutes = Math.round(absDiff / 60000);
-  const hours = Math.round(absDiff / 3600000);
-  const days = Math.round(absDiff / 86400000);
-  const weeks = Math.round(absDiff / 604800000);
-
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return future ? `in ${minutes} min` : `${minutes} min ago`;
-  if (hours < 24) return future ? `in ${hours} hours` : `${hours} hours ago`;
-  if (days === 1) return future ? "tomorrow" : "yesterday";
-  if (days < 7) return future ? `in ${days} days` : `${days} days ago`;
-  if (weeks < 5) return future ? `in ${weeks} weeks` : `${weeks} weeks ago`;
-
-  return formatSimpleDate(d);
-}
-
-function formatSimpleDate(date) {
-  const d = toDate(date);
-  if (!d) return "";
-  return format(toZonedTime(d, LONDON), "d MMM yyyy");
-}
-
-/**
- * A session is "still upcoming" until 3 hours after its scheduled end.
- */
-function isSessionStillUpcoming(scheduledAt, durationMinutes, bufferHours = 3) {
-  if (!scheduledAt) return false;
-  const start = new Date(scheduledAt).getTime();
-  if (isNaN(start)) return false;
-  const sessionEnd = start + durationMinutes * 60 * 1000;
-  const cutoff = Date.now() - bufferHours * 60 * 60 * 1000;
-  return sessionEnd > cutoff;
-}
-
 module.exports = {
   formatSessionTime,
-  formatSessionDate,
-  formatTimeOnly,
-  formatRelative,
-  formatSimpleDate,
-  isSessionStillUpcoming,
 };

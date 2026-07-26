@@ -1,11 +1,6 @@
 require('dotenv').config();
-const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+const { pool } = require('./src/db');
+const { hashPassword } = require('./src/utils/password');
 
 async function seedAdmin() {
   // Credentials come from the environment — never hardcode them.
@@ -33,7 +28,7 @@ async function seedAdmin() {
       return;
     }
 
-    const password_hash = await bcrypt.hash(password, 12);
+    const password_hash = await hashPassword(password);
     const result = await pool.query(
       `INSERT INTO users (email, password_hash, display_name, role, must_change_password)
        VALUES ($1, $2, $3, $4, true) RETURNING id, email, display_name, role`,

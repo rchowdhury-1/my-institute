@@ -132,6 +132,9 @@ async function generateSessionsForSchedule(schedule) {
       }
 
       // Create session (map subject to valid enum for sessions table constraint)
+      if (!VALID_SUBJECTS.includes(schedule.subject)) {
+        console.warn(`[generation] schedule ${schedule.id} has invalid subject "${schedule.subject}" — defaulting to "quran"`);
+      }
       const sessionSubject = VALID_SUBJECTS.includes(schedule.subject) ? schedule.subject : 'quran';
       const id = uuidv4();
       await pool.query(

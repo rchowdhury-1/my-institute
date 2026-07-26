@@ -90,14 +90,25 @@ router.post('/:id/assign', requireAuth, requireRole('teacher', 'admin', 'supervi
        RETURNING *`,
       [req.params.id, student_id]
     );
-    await pool.query(
-      `INSERT INTO notifications (user_id, type, title, message, link)
-       SELECT $1, 'exam_assigned', 'New Exam Assigned',
-              e.title || ' has been assigned to you', '/student/exams'
-       FROM exams e WHERE e.id = $2`,
-      [student_id, req.params.id]
+
+    if (result.rows[0]) {
+      await pool.query(
+        `INSERT INTO notifications (user_id, type, title, message, link)
+         SELECT $1, 'exam_assigned', 'New Exam Assigned',
+                e.title || ' has been assigned to you', '/student/exams'
+         FROM exams e WHERE e.id = $2`,
+        [student_id, req.params.id]
+      );
+      return res.status(201).json({ assignment: result.rows[0] });
+    }
+
+    // Conflict — already assigned. Return the real existing row instead of
+    // a fake object with no exam data, and don't re-notify the student.
+    const existing = await pool.query(
+      `SELECT * FROM exam_assignments WHERE exam_id = $1 AND student_id = $2`,
+      [req.params.id, student_id]
     );
-    res.status(201).json({ assignment: result.rows[0] ?? { already_assigned: true } });
+    res.status(200).json({ assignment: { ...existing.rows[0], already_assigned: true } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to assign exam' });
@@ -114,19 +125,25 @@ router.post('/:id/start', requireAuth, requireRole('student'), async (req, res) 
        RETURNING *`,
       [req.params.id, req.userId]
     );
-    if (result.rowCount === 0) {
+
+    let assignment = result.rows[0];
+    if (!assignment) {
       const existing = await pool.query(
         `SELECT * FROM exam_assignments WHERE exam_id = $1 AND student_id = $2`,
         [req.params.id, req.userId]
       );
       if (existing.rowCount === 0) return res.status(404).json({ error: 'Assignment not found' });
       if (existing.rows[0].status === 'completed') return res.status(400).json({ error: 'Exam already completed' });
+      // Already in progress (e.g. the student refreshed the page) — hand
+      // back the existing assignment instead of an undefined one.
+      assignment = existing.rows[0];
     }
+
     const questions = await pool.query(
       `SELECT id, question, options, points FROM exam_questions WHERE exam_id = $1 ORDER BY id`,
       [req.params.id]
     );
-    res.json({ assignment: result.rows[0], questions: questions.rows });
+    res.json({ assignment, questions: questions.rows });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to start exam' });

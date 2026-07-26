@@ -210,43 +210,6 @@ router.patch('/:id/reschedule', requireRole('admin', 'supervisor'), asyncHandler
   res.status(201).json({ session: result.rows[0] });
 }));
 
-// DEPRECATED: replaced by PATCH /sessions/:id/attendance in Phase 4.3
-// Kept for backward compatibility — remove after 2026-08-01
-router.patch('/:id/complete', requireRole('teacher', 'admin'), asyncHandler(async (req, res) => {
-  res.set('Deprecation', 'true');
-  const { id } = req.params;
-
-  const existing = await pool.query('SELECT * FROM sessions WHERE id=$1', [id]);
-  if (existing.rows.length === 0) return res.status(404).json({ error: 'Session not found' });
-  const session = existing.rows[0];
-
-  if (req.userRole === 'teacher' && session.teacher_id !== req.userId)
-    return res.status(403).json({ error: 'Forbidden' });
-
-  await pool.query(`UPDATE sessions SET status='completed', updated_at=NOW() WHERE id=$1`, [id]);
-
-  // Decrement package sessions_remaining
-  const pkg = await pool.query(
-    `SELECT * FROM packages WHERE user_id=$1 ORDER BY purchased_at DESC LIMIT 1`,
-    [session.student_id]
-  );
-  if (pkg.rows.length > 0 && pkg.rows[0].sessions_remaining !== null) {
-    const remaining = Math.max(0, pkg.rows[0].sessions_remaining - 1);
-    await pool.query(`UPDATE packages SET sessions_remaining=$1 WHERE id=$2`, [remaining, pkg.rows[0].id]);
-
-    if (remaining <= 2 && !pkg.rows[0].renewal_reminder_sent) {
-      await pool.query(`UPDATE packages SET renewal_reminder_sent=true WHERE id=$1`, [pkg.rows[0].id]);
-      await notify(session.student_id, 'renewal_reminder', 'Renew Your Package',
-        `You have ${remaining} session${remaining !== 1 ? 's' : ''} remaining. Contact us to renew.`,
-        '/student/sessions');
-      await notifyAdmins('renewal_reminder', 'Student Package Renewal',
-        `A student has ${remaining} sessions remaining and needs renewal.`, '/supervisor');
-    }
-  }
-
-  res.json({ message: 'Session marked complete' });
-}));
-
 // PATCH /sessions/:id/attendance  (teacher within time window, admin/supervisor any time)
 router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supervisor'), asyncHandler(async (req, res) => {
   // Students cannot mark attendance

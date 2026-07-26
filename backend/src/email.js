@@ -27,7 +27,7 @@ async function sendVerificationEmail({ to, name, verificationUrl }) {
       <p style="margin: 32px 0;">
         <a href="${verificationUrl}" style="background: ${BRAND_COLOR}; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block;">Verify Email</a>
       </p>
-      <p style="color: #555; font-size: 14px;">This link expires in 24 hours. If you didn't create an account, you can ignore this email.</p>
+      <p style="color: #555; font-size: 14px;">Please verify soon. If you didn't create an account, you can ignore this email.</p>
     </div>
   `;
 
