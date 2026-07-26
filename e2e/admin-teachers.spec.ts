@@ -7,48 +7,16 @@
  */
 
 import { test, expect, Page } from "@playwright/test";
-
-const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
-if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-  throw new Error(
-    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running these tests.",
-  );
-}
-const BASE = "http://localhost:3000";
+import { BASE, loginAndNavigate as baseLoginAndNavigate, safeClick, uniqueEmail } from "./helpers";
 
 // ── Helper: log in as admin and navigate to /admin/teachers ─────────────────
 
 async function loginAndNavigate(page: Page) {
-  await page.goto(`${BASE}/login`);
-  await page.fill('input[type="email"]', ADMIN_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  // Wait until redirected away from /login
-  await page.waitForURL((url) => !url.href.includes("/login"), {
-    timeout: 10_000,
-  });
-  await page.goto(`${BASE}/admin/teachers`);
-  await page.waitForURL((url) => url.href.includes("/admin/teachers"), {
-    timeout: 5_000,
-  });
+  await baseLoginAndNavigate(page, "/admin/teachers");
   // Wait for loading spinner to disappear (content starts at pt-24 = 96px, well below fixed nav)
   await page.waitForSelector('[data-testid="empty-no-teachers"], .space-y-4, [data-testid="empty-no-results"]', {
     timeout: 10_000,
   });
-}
-
-/** Click a potentially off-screen element by scrolling it into view, then clicking */
-async function safeClick(page: Page, selector: string) {
-  const el = page.locator(selector).first();
-  await el.scrollIntoViewIfNeeded();
-  await el.click();
-}
-
-// ── Unique email per run ─────────────────────────────────────────────────────
-
-function uniqueEmail(prefix = "playwright") {
-  return `${prefix}+${Date.now()}@test-mi.dev`;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -57,7 +25,7 @@ test.describe("Admin Teachers Page", () => {
 
   // ── T1: Redirect unauthenticated users to /login ─────────────────────────
 
-  test("T1: redirects to /login when not authenticated", async ({ page }) => {
+  test("redirects to /login when not authenticated", async ({ page }) => {
     // Clear any stored auth state
     await page.goto(`${BASE}/login`);
     await page.evaluate(() => {
@@ -74,7 +42,7 @@ test.describe("Admin Teachers Page", () => {
 
   // ── T2: Redirect non-admin users to /login ────────────────────────────────
 
-  test("T2: redirects to /login when logged in as student", async ({ page }) => {
+  test("redirects to /login when logged in as student", async ({ page }) => {
     await page.goto(`${BASE}/login`);
     // Inject a fake student token directly into localStorage
     await page.evaluate(() => {
@@ -91,7 +59,7 @@ test.describe("Admin Teachers Page", () => {
 
   // ── T3: Page renders header and stats for admin ───────────────────────────
 
-  test("T3: shows Teachers heading and stats pills", async ({ page }) => {
+  test("shows Teachers heading and stats pills", async ({ page }) => {
     await loginAndNavigate(page);
 
     await expect(page.locator("h1")).toHaveText("Teachers");
@@ -103,34 +71,26 @@ test.describe("Admin Teachers Page", () => {
 
   // ── T4: Empty state when no teachers exist ────────────────────────────────
 
-  test("T4: shows empty state text when no teachers", async ({ page }) => {
+  test("shows empty state text when no teachers", async ({ page }) => {
     await loginAndNavigate(page);
 
-    const noTeachers = page.locator('[data-testid="empty-no-teachers"]');
-    const hasList = page.locator(".space-y-4");
+    // This scenario (zero teachers in the DB) can't be seeded safely against
+    // production — doing so would mean deleting real teacher accounts. If
+    // the list is non-empty we skip loudly rather than asserting something
+    // trivially true, so a real gap is visible in CI output instead of
+    // hiding behind a green checkmark that verified nothing.
+    const hasList = await page.locator(".space-y-4").isVisible().catch(() => false);
+    test.skip(hasList, "Teachers already exist in this environment — empty-DB state cannot be seeded without deleting real data");
 
-    const emptyVisible = await noTeachers.isVisible().catch(() => false);
-    const listVisible = await hasList.isVisible().catch(() => false);
-
-    if (!listVisible) {
-      // No teachers in DB — verify empty state copy
-      await expect(noTeachers).toBeVisible();
-      await expect(
-        page.locator("text=No teachers yet. Add your first teacher above.")
-      ).toBeVisible();
-    } else {
-      // Teachers exist — this test passes by skipping the empty-state check
-      test.info().annotations.push({
-        type: "note",
-        description: "Teachers already exist; empty-state check skipped",
-      });
-      expect(listVisible || emptyVisible).toBe(true);
-    }
+    await expect(page.locator('[data-testid="empty-no-teachers"]')).toBeVisible();
+    await expect(
+      page.locator("text=No teachers yet. Add your first teacher above.")
+    ).toBeVisible();
   });
 
   // ── T5: Create teacher — success, banner with temp password ───────────────
 
-  test("T5: creates a teacher and shows success banner with temp password", async ({
+  test("creates a teacher and shows success banner with temp password", async ({
     page,
   }) => {
     await loginAndNavigate(page);
@@ -183,7 +143,7 @@ test.describe("Admin Teachers Page", () => {
 
   // ── T6: Create teacher — 409 duplicate email ──────────────────────────────
 
-  test("T6: shows conflict error when email already exists", async ({
+  test("shows conflict error when email already exists", async ({
     page,
   }) => {
     await loginAndNavigate(page);
@@ -219,19 +179,17 @@ test.describe("Admin Teachers Page", () => {
 
   // ── T7: Search filters by name/email ──────────────────────────────────────
 
-  test("T7: search filters teacher list", async ({ page }) => {
+  test("search filters teacher list", async ({ page }) => {
     await loginAndNavigate(page);
 
-    // Ensure there's at least one teacher (create one if list is empty)
-    const emptyState = page.locator('[data-testid="empty-no-teachers"]');
-    if (await emptyState.isVisible().catch(() => false)) {
-      await safeClick(page, "text=Add Teacher");
-      await page.fill('[data-testid="input-display-name"]', "Searchable Teacher");
-      await page.fill('[data-testid="input-email"]', uniqueEmail("searchable"));
-      await page.click('[data-testid="btn-generate-password"]');
-      await page.click('[data-testid="btn-submit-create"]');
-      await expect(page.locator('[data-testid="success-banner"]')).toBeVisible({ timeout: 10_000 });
-    }
+    // Always seed our own teacher rather than depending on the DB already
+    // having one — makes the test deterministic regardless of environment.
+    await safeClick(page, "text=Add Teacher");
+    await page.fill('[data-testid="input-display-name"]', "Searchable Teacher");
+    await page.fill('[data-testid="input-email"]', uniqueEmail("searchable"));
+    await page.click('[data-testid="btn-generate-password"]');
+    await page.click('[data-testid="btn-submit-create"]');
+    await expect(page.locator('[data-testid="success-banner"]')).toBeVisible({ timeout: 10_000 });
 
     // Search for something that won't match any teacher
     await page.fill('[data-testid="search-input"]', "zzz_no_match_xyzzy");
@@ -251,7 +209,7 @@ test.describe("Admin Teachers Page", () => {
 
   // ── T8: Edit teacher inline ───────────────────────────────────────────────
 
-  test("T8: edit teacher inline and card updates", async ({ page }) => {
+  test("edit teacher inline and card updates", async ({ page }) => {
     await loginAndNavigate(page);
 
     // Create a teacher to edit
@@ -283,7 +241,7 @@ test.describe("Admin Teachers Page", () => {
 
   // ── T9: "Awaiting first login" badge on newly created teacher ─────────────
 
-  test("T9: newly created teacher shows Awaiting first login badge", async ({
+  test("newly created teacher shows Awaiting first login badge", async ({
     page,
   }) => {
     await loginAndNavigate(page);
@@ -304,7 +262,7 @@ test.describe("Admin Teachers Page", () => {
 
   // ── T10: Reset password — confirm flow, banner with new temp password ──────
 
-  test("T10: reset password shows confirm panel then success banner", async ({
+  test("reset password shows confirm panel then success banner", async ({
     page,
   }) => {
     await loginAndNavigate(page);
@@ -344,7 +302,7 @@ test.describe("Admin Teachers Page", () => {
 
   // ── T11: Turn off access — confirm then badge changes to Turned off ────────
 
-  test("T11: deactivate teacher updates badge to Turned off", async ({
+  test("deactivate teacher updates badge to Turned off", async ({
     page,
   }) => {
     await loginAndNavigate(page);

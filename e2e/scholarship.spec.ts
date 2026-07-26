@@ -7,8 +7,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-
-const BASE = "http://localhost:3000";
+import { BASE } from "./helpers";
 
 test.describe("Scholarship page", () => {
   test("page loads with form and all fields visible", async ({ page }) => {

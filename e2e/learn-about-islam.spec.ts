@@ -6,24 +6,8 @@
  *   - Backend on http://localhost:5001
  */
 
-import { test, expect, Page } from "@playwright/test";
-
-const BASE = "http://localhost:3000";
-const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
-if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-  throw new Error(
-    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running these tests.",
-  );
-}
-
-async function loginAsAdmin(page: Page) {
-  await page.goto(`${BASE}/login`);
-  await page.fill('input[type="email"]', ADMIN_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL((url) => !url.href.includes("/login"), { timeout: 20_000 });
-}
+import { test, expect } from "@playwright/test";
+import { BASE, loginAndNavigate as loginAsAdmin } from "./helpers";
 
 test.describe("Learn About Islam page", () => {
   test.describe.configure({ mode: "serial" });

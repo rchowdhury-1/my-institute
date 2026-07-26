@@ -7,40 +7,16 @@
  */
 
 import { test, expect, Page } from "@playwright/test";
-
-const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
-if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-  throw new Error(
-    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running these tests.",
-  );
-}
-const BASE = "http://localhost:3000";
+import { BASE, loginAndNavigate as baseLoginAndNavigate, safeClick, uniqueEmail } from "./helpers";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 async function loginAndNavigate(page: Page) {
-  await page.goto(`${BASE}/login`);
-  await page.fill('input[type="email"]', ADMIN_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL((url) => !url.href.includes("/login"), { timeout: 20_000 });
-  await page.goto(`${BASE}/admin/students`);
-  await page.waitForURL((url) => url.href.includes("/admin/students"), { timeout: 5_000 });
+  await baseLoginAndNavigate(page, "/admin/students");
   await page.waitForSelector(
     '[data-testid="empty-no-students"], .space-y-4, [data-testid="empty-no-results"]',
     { timeout: 10_000 }
   );
-}
-
-async function safeClick(page: Page, selector: string) {
-  const el = page.locator(selector).first();
-  await el.scrollIntoViewIfNeeded();
-  await el.click();
-}
-
-function uniqueEmail(prefix = "s") {
-  return `${prefix}+${Date.now()}@test-mi.dev`;
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -48,7 +24,7 @@ function uniqueEmail(prefix = "s") {
 test.describe("Admin Students Page", () => {
 
   // T1: Auth — unauthenticated redirect
-  test("T1: redirects to /login when not authenticated", async ({ page }) => {
+  test("redirects to /login when not authenticated", async ({ page }) => {
     await page.goto(`${BASE}/login`);
     await page.evaluate(() => {
       localStorage.removeItem("accessToken");
@@ -60,7 +36,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T2: Auth — non-admin redirect
-  test("T2: redirects to /login when logged in as student role", async ({ page }) => {
+  test("redirects to /login when logged in as student role", async ({ page }) => {
     await page.goto(`${BASE}/login`);
     await page.evaluate(() => {
       localStorage.setItem("accessToken", "fake-token");
@@ -72,7 +48,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T3: Page renders heading, subtitle, stats
-  test("T3: shows Students heading and stats pills", async ({ page }) => {
+  test("shows Students heading and stats pills", async ({ page }) => {
     await loginAndNavigate(page);
     await expect(page.locator("h1")).toHaveText("Students");
     await expect(page.locator("text=Manage student accounts.")).toBeVisible();
@@ -81,22 +57,23 @@ test.describe("Admin Students Page", () => {
   });
 
   // T4: Empty state
-  test("T4: shows empty state when no students exist", async ({ page }) => {
+  test("shows empty state when no students exist", async ({ page }) => {
     await loginAndNavigate(page);
-    const emptyEl = page.locator('[data-testid="empty-no-students"]');
-    const listEl = page.locator(".space-y-4");
-    const hasStudents = await listEl.isVisible().catch(() => false);
-    if (!hasStudents) {
-      await expect(emptyEl).toBeVisible();
-      await expect(page.locator("text=No students yet. Add your first student above.")).toBeVisible();
-    } else {
-      test.info().annotations.push({ type: "note", description: "Students already exist; skipping empty-state assertion" });
-      expect(hasStudents).toBe(true);
-    }
+
+    // This scenario (zero students in the DB) can't be seeded safely against
+    // production — doing so would mean deleting real student accounts. If
+    // the list is non-empty we skip loudly rather than asserting something
+    // trivially true, so a real gap is visible in CI output instead of
+    // hiding behind a green checkmark that verified nothing.
+    const hasStudents = await page.locator(".space-y-4").isVisible().catch(() => false);
+    test.skip(hasStudents, "Students already exist in this environment — empty-DB state cannot be seeded without deleting real data");
+
+    await expect(page.locator('[data-testid="empty-no-students"]')).toBeVisible();
+    await expect(page.locator("text=No students yet. Add your first student above.")).toBeVisible();
   });
 
   // T5: Create student — success, re-fetch, banner with temp password
-  test("T5: creates a student and shows success banner with temp password", async ({ page }) => {
+  test("creates a student and shows success banner with temp password", async ({ page }) => {
     await loginAndNavigate(page);
     const email = uniqueEmail("t5");
 
@@ -129,7 +106,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T6: Create — 409 duplicate email
-  test("T6: shows conflict error when email already exists", async ({ page }) => {
+  test("shows conflict error when email already exists", async ({ page }) => {
     await loginAndNavigate(page);
     const email = uniqueEmail("t6");
 
@@ -156,20 +133,18 @@ test.describe("Admin Students Page", () => {
   });
 
   // T7: Search filters list
-  test("T7: search filters student list and shows no-results state", async ({ page }) => {
+  test("search filters student list and shows no-results state", async ({ page }) => {
     await loginAndNavigate(page);
 
-    // Ensure at least one student exists
-    const empty = page.locator('[data-testid="empty-no-students"]');
-    if (await empty.isVisible().catch(() => false)) {
-      await safeClick(page, '[data-testid="btn-add-student"]');
-      await page.fill('[data-testid="input-display-name"]', "Search Test Student");
-      await page.fill('[data-testid="input-email"]', uniqueEmail("search"));
-      await page.fill('[data-testid="input-hourly-rate"]', "15");
-      await page.click('[data-testid="btn-generate-password"]');
-      await page.click('[data-testid="btn-submit-create"]');
-      await expect(page.locator('[data-testid="success-banner"]')).toBeVisible({ timeout: 15_000 });
-    }
+    // Always seed our own student rather than depending on the DB already
+    // having one — makes the test deterministic regardless of environment.
+    await safeClick(page, '[data-testid="btn-add-student"]');
+    await page.fill('[data-testid="input-display-name"]', "Search Test Student");
+    await page.fill('[data-testid="input-email"]', uniqueEmail("search"));
+    await page.fill('[data-testid="input-hourly-rate"]', "15");
+    await page.click('[data-testid="btn-generate-password"]');
+    await page.click('[data-testid="btn-submit-create"]');
+    await expect(page.locator('[data-testid="success-banner"]')).toBeVisible({ timeout: 15_000 });
 
     await page.fill('[data-testid="search-input"]', "zzz_no_match_xyzzy");
     await expect(page.locator('[data-testid="empty-no-results"]')).toBeVisible();
@@ -180,7 +155,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T8: Edit student inline — card updates
-  test("T8: edit student inline and card updates", async ({ page }) => {
+  test("edit student inline and card updates", async ({ page }) => {
     await loginAndNavigate(page);
     const email = uniqueEmail("t8");
 
@@ -208,7 +183,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T9: Newly created student shows rate pill and Awaiting first login badge
-  test("T9: newly created student shows rate pill and Awaiting first login badge", async ({ page }) => {
+  test("newly created student shows rate pill and Awaiting first login badge", async ({ page }) => {
     await loginAndNavigate(page);
     const email = uniqueEmail("t9");
 
@@ -229,7 +204,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T10: Reset password — confirm panel → banner with new temp password
-  test("T10: reset password shows confirm panel then success banner", async ({ page }) => {
+  test("reset password shows confirm panel then success banner", async ({ page }) => {
     await loginAndNavigate(page);
 
     // Always create our own disposable student for this test — never assume
@@ -259,7 +234,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T11: Turn off access — confirm panel → Turned off badge
-  test("T11: deactivate student updates badge to Turned off", async ({ page }) => {
+  test("deactivate student updates badge to Turned off", async ({ page }) => {
     await loginAndNavigate(page);
     const email = uniqueEmail("t11");
 
@@ -284,7 +259,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T11b: Reactivate — turn deactivated student back on
-  test("T11b: reactivate student restores Active badge and action buttons", async ({ page }) => {
+  test("reactivate student restores Active badge and action buttons", async ({ page }) => {
     await loginAndNavigate(page);
     const email = uniqueEmail("t11b");
 
@@ -318,7 +293,7 @@ test.describe("Admin Students Page", () => {
   // ── Student-specific criteria ─────────────────────────────────────────────
 
   // T12: Create with prepaid bundle — bundle pill renders correctly
-  test("T12: bundle pill shows lessons remaining and expiry date after create", async ({ page }) => {
+  test("bundle pill shows lessons remaining and expiry date after create", async ({ page }) => {
     await loginAndNavigate(page);
     const email = uniqueEmail("t12");
 
@@ -356,7 +331,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T13: Create with PARTIAL bundle — inline error contains "all three fields"
-  test("T13: partial bundle fields produce all-three-fields error", async ({ page }) => {
+  test("partial bundle fields produce all-three-fields error", async ({ page }) => {
     await loginAndNavigate(page);
 
     await safeClick(page, '[data-testid="btn-add-student"]');
@@ -376,7 +351,7 @@ test.describe("Admin Students Page", () => {
 
   // T14: hourly_rate = 0 fails server-side > 0 validation → inline error
   // (blank field triggers native HTML5 required; use 0 to exercise the server error path)
-  test("T14: zero hourly rate produces inline error about rate", async ({ page }) => {
+  test("zero hourly rate produces inline error about rate", async ({ page }) => {
     await loginAndNavigate(page);
 
     await safeClick(page, '[data-testid="btn-add-student"]');
@@ -391,7 +366,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T15: Legacy rate flag — card pill shows "£7.00/hour · Legacy"
-  test("T15: legacy flag ticked shows rate pill with Legacy label", async ({ page }) => {
+  test("legacy flag ticked shows rate pill with Legacy label", async ({ page }) => {
     await loginAndNavigate(page);
     const email = uniqueEmail("t15");
 
@@ -415,7 +390,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T16: Edit student → toggle legacy off → pill loses Legacy label
-  test("T16: editing legacy flag off removes Legacy from rate pill", async ({ page }) => {
+  test("editing legacy flag off removes Legacy from rate pill", async ({ page }) => {
     await loginAndNavigate(page);
     const email = uniqueEmail("t16");
 
@@ -453,7 +428,7 @@ test.describe("Admin Students Page", () => {
   });
 
   // T17: Create form teacher dropdown is populated with active teachers
-  test("T17: create form teacher dropdown is populated with active teachers", async ({ page }) => {
+  test("create form teacher dropdown is populated with active teachers", async ({ page }) => {
     await loginAndNavigate(page);
 
     await safeClick(page, '[data-testid="btn-add-student"]');

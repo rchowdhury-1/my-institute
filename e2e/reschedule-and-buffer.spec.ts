@@ -11,127 +11,22 @@
  *     password or reuse a real teacher's account as a login fixture.
  */
 
-import { test, expect, APIRequestContext } from "@playwright/test";
-
-const API = process.env.API_URL || "http://localhost:5001";
-const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
-if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-  throw new Error(
-    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running these tests.",
-  );
-}
-
-const STUDENT_ID = "3de0a33b-93bf-4041-9ae0-770a290626d9";
-const TEST_TEACHER_EMAIL = "playwright-teacher@phase35test.local";
-const TEST_TEACHER2_EMAIL = "playwright-teacher2@phase35test.local";
-
-async function getToken(request: APIRequestContext, email: string, password: string): Promise<string> {
-  const res = await request.post(`${API}/auth/login`, { data: { email, password } });
-  return (await res.json()).accessToken;
-}
-
-async function getAdminToken(request: APIRequestContext) {
-  return getToken(request, ADMIN_EMAIL, ADMIN_PASSWORD);
-}
-
-async function getStudentToken(request: APIRequestContext) {
-  // Reset student password — send_email: false prevents welcome email
-  const adminToken = await getAdminToken(request);
-  const resetRes = await request.post(`${API}/admin/students/${STUDENT_ID}/reset-password`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    data: { send_email: false },
-  });
-  const { tempPassword } = await resetRes.json();
-  return getToken(request, "playwright-student@phase35test.local", tempPassword);
-}
-
-// Dedicated disposable teacher fixtures, found-or-created by email — mirrors
-// the playwright-student pattern. Tests must NEVER hardcode a real teacher's
-// id/email here: resetting a fixture's password is safe, resetting a real
-// teacher's password (as earlier revisions of this suite did) locks a real
-// person out of their account on every CI run.
-const testTeacherIdCache = new Map<string, string>();
-async function getTestTeacherId(
-  request: APIRequestContext,
-  email: string = TEST_TEACHER_EMAIL,
-  displayName: string = "Playwright Test Teacher"
-): Promise<string> {
-  const cached = testTeacherIdCache.get(email);
-  if (cached) return cached;
-
-  const adminToken = await getAdminToken(request);
-  const findExisting = async () => {
-    const listRes = await request.get(`${API}/admin/teachers`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-    const { teachers } = await listRes.json();
-    return teachers.find((t: { email: string }) => t.email === email);
-  };
-
-  let teacher = await findExisting();
-  if (!teacher) {
-    const createRes = await request.post(`${API}/admin/teachers`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-      data: { display_name: displayName, email, send_email: false },
-    });
-    teacher = createRes.status() === 409 ? await findExisting() : (await createRes.json()).teacher;
-  }
-  testTeacherIdCache.set(email, teacher.id);
-  return teacher.id;
-}
-
-async function getTeacherToken(
-  request: APIRequestContext,
-  email: string = TEST_TEACHER_EMAIL,
-  displayName: string = "Playwright Test Teacher"
-): Promise<string> {
-  const teacherId = await getTestTeacherId(request, email, displayName);
-  const adminToken = await getAdminToken(request);
-  const resetRes = await request.post(`${API}/admin/teachers/${teacherId}/reset-password`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    data: { send_email: false },
-  });
-  const { tempPassword } = await resetRes.json();
-  return getToken(request, email, tempPassword);
-}
-
-// Random offset generator — avoids collisions between repeated test runs.
-// Each test gets a unique far-future time by combining a random base with a counter.
-const randomBase = Math.floor(Math.random() * 500) + 100; // 100-599 hours from now
-let testTimeCounter = 0;
-let proposedCounter = 0;
-
-function uniqueProposedTime(): string {
-  const offsetHours = randomBase + 2000 + proposedCounter++;
-  return new Date(Date.now() + offsetHours * 3600000).toISOString();
-}
-
-// Create a test session. hoursFromNow controls future/past/buffer behaviour.
-// For future sessions (hoursFromNow >= 13), uses a random far-future time.
-// For past/buffer sessions (hoursFromNow < 13), uses exact offset from now.
-async function createTestSession(request: APIRequestContext, hoursFromNow: number) {
-  const token = await getAdminToken(request);
-  let time: string;
-  if (hoursFromNow >= 13) {
-    const offsetHours = randomBase + testTimeCounter++;
-    time = new Date(Date.now() + offsetHours * 3600000).toISOString();
-  } else {
-    time = new Date(Date.now() + hoursFromNow * 3600000).toISOString();
-  }
-  const teacherId = await getTestTeacherId(request);
-  const res = await request.post(`${API}/sessions`, {
-    headers: { Authorization: `Bearer ${token}` },
-    data: { student_id: STUDENT_ID, teacher_id: teacherId, scheduled_at: time, duration_minutes: 60, subject: "quran" },
-  });
-  expect(res.status()).toBe(201);
-  return (await res.json()).session;
-}
-
-async function deleteSession(request: APIRequestContext, id: string) {
-  const token = await getAdminToken(request);
-  await request.delete(`${API}/sessions/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-}
+import { test, expect } from "@playwright/test";
+import {
+  API,
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
+  STUDENT_ID,
+  TEST_TEACHER2_EMAIL,
+  getAdminToken,
+  getStudentToken,
+  getTestTeacherId,
+  getTeacherToken,
+  uniqueProposedTime,
+  createTestSession,
+  createSessionAt,
+  deleteSession,
+} from "./helpers";
 
 // ─── Cancellation Buffer Tests ─────────────────────────────────────────────
 
@@ -227,7 +122,7 @@ test("admin can hit legacy PATCH /sessions/:id/reschedule", async ({ request }) 
 
 // ─── Admin Edit Tests ──────────────────────────────────────────────────────
 
-test("admin edits scheduled_at — session updated, last_modified_by set, notifications fired", async ({ request }) => {
+test("admin edits scheduled_at — session updated and last_modified_by set", async ({ request }) => {
   const session = await createTestSession(request, 48);
   const adminToken = await getAdminToken(request);
   const newTime = uniqueProposedTime();
@@ -242,7 +137,20 @@ test("admin edits scheduled_at — session updated, last_modified_by set, notifi
   expect(body.session.last_modified_by).toBeTruthy();
   expect(body.changes).toContain("scheduled_at");
 
-  // Check student got notification
+  await deleteSession(request, session.id);
+});
+
+test("admin edits scheduled_at — notifies student of the new time", async ({ request }) => {
+  const session = await createTestSession(request, 48);
+  const adminToken = await getAdminToken(request);
+  const newTime = uniqueProposedTime();
+
+  const res = await request.patch(`${API}/admin/sessions/${session.id}`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    data: { scheduled_at: newTime },
+  });
+  expect(res.status()).toBe(200);
+
   const studentToken = await getStudentToken(request);
   const notifRes = await request.get(`${API}/notifications`, {
     headers: { Authorization: `Bearer ${studentToken}` },
@@ -529,18 +437,6 @@ test("reschedule approval notification uses dual-timezone format", async ({ requ
 });
 
 // ─── 24h upcoming buffer tests ──────────────────────────────────────────
-
-// Helper: create a session at an exact time with custom duration
-async function createSessionAt(request: APIRequestContext, scheduledAt: string, durationMinutes: number = 60) {
-  const token = await getAdminToken(request);
-  const teacherId = await getTestTeacherId(request);
-  const res = await request.post(`${API}/sessions`, {
-    headers: { Authorization: `Bearer ${token}` },
-    data: { student_id: STUDENT_ID, teacher_id: teacherId, scheduled_at: scheduledAt, duration_minutes: durationMinutes, subject: "quran" },
-  });
-  expect(res.status()).toBe(201);
-  return (await res.json()).session;
-}
 
 test("session at NOW still appears in student upcoming (3h buffer)", async ({ request }) => {
   const session = await createSessionAt(request, new Date().toISOString());

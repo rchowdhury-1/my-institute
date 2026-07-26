@@ -6,43 +6,15 @@
  *   - Backend running on http://localhost:5000
  */
 
-import { test, expect, Page, APIRequestContext } from "@playwright/test";
-
-const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
-if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-  throw new Error(
-    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running these tests.",
-  );
-}
-const BASE = "http://localhost:3000";
-const API_BASE = "http://localhost:5001";
+import { test, expect, Page } from "@playwright/test";
+import { API as API_BASE, loginAndNavigate as baseLoginAndNavigate, getAdminToken, STUDENT_ID, getTestTeacherId } from "./helpers";
 
 // ── Helper: log in as admin and navigate to /supervisor ─────────────────────
 
 async function loginAndNavigate(page: Page) {
-  await page.goto(`${BASE}/login`);
-  await page.fill('input[type="email"]', ADMIN_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL((url) => !url.href.includes("/login"), {
-    timeout: 20_000,
-  });
-  await page.goto(`${BASE}/supervisor`);
-  await page.waitForURL((url) => url.href.includes("/supervisor"), {
-    timeout: 10_000,
-  });
+  await baseLoginAndNavigate(page, "/supervisor");
   // Wait for the page to load (stats grid renders once data arrives)
   await page.waitForSelector(".grid", { timeout: 10_000 });
-}
-
-/** Get admin JWT by posting credentials directly to the backend */
-async function getAdminToken(request: APIRequestContext): Promise<string> {
-  const res = await request.post(`${API_BASE}/auth/login`, {
-    data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-  });
-  const body = await res.json();
-  return body.accessToken as string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -51,7 +23,7 @@ test.describe("Supervisor Page — Step 5 changes", () => {
 
   // ── S1: Duration dropdown has exactly 4 options, default 60 min ───────────
 
-  test("S1: duration dropdown has 30/60/90/120 min options and defaults to 60", async ({
+  test("duration dropdown has 30/60/90/120 min options and defaults to 60", async ({
     page,
   }) => {
     await loginAndNavigate(page);
@@ -78,32 +50,15 @@ test.describe("Supervisor Page — Step 5 changes", () => {
 
   // ── S2: Create session with 30 min duration, card shows 30 min ────────────
 
-  test("S2: create session with 30 min duration and card shows '30 min'", async ({
+  test("create session with 30 min duration and card shows '30 min'", async ({
     page,
     request,
   }) => {
     await loginAndNavigate(page);
 
-    // Fetch students and teachers from backend to get valid IDs
-    const token = await getAdminToken(request);
-    const [studRes, teachRes] = await Promise.all([
-      request.get(`${API_BASE}/admin/students`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      request.get(`${API_BASE}/admin/teachers`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-    ]);
-    const { students } = await studRes.json();
-    const { teachers } = await teachRes.json();
-
-    if (!students?.length || !teachers?.length) {
-      test.skip(true, "No students or teachers in DB — skipping session creation test");
-      return;
-    }
-
-    const student = students[0];
-    const teacher = teachers[0];
+    // Dedicated disposable fixtures — always exist, found-or-created on demand.
+    const studentId = STUDENT_ID;
+    const teacherId = await getTestTeacherId(request);
 
     // Open session creation form
     await page.click("text=Add Session");
@@ -112,8 +67,8 @@ test.describe("Supervisor Page — Step 5 changes", () => {
     });
 
     // Select student and teacher
-    await page.selectOption('[data-testid="select-student"]', student.id);
-    await page.selectOption('[data-testid="select-teacher"]', teacher.id);
+    await page.selectOption('[data-testid="select-student"]', studentId);
+    await page.selectOption('[data-testid="select-teacher"]', teacherId);
 
     // Set date/time ~1 hour from now to avoid conflicts
     const soon = new Date(Date.now() + 3600 * 1000);
@@ -140,27 +95,15 @@ test.describe("Supervisor Page — Step 5 changes", () => {
 
   // ── S3: Backend rejects duration_minutes: 45 with 400 ────────────────────
 
-  test("S3: backend returns 400 for duration_minutes: 45 (bypassing UI)", async ({
+  test("backend returns 400 for duration_minutes: 45 (bypassing UI)", async ({
     request,
   }) => {
     const token = await getAdminToken(request);
 
-    // Fetch a valid student and teacher to pass required field checks
-    const [studRes, teachRes] = await Promise.all([
-      request.get(`${API_BASE}/admin/students`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      request.get(`${API_BASE}/admin/teachers`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-    ]);
-    const { students } = await studRes.json();
-    const { teachers } = await teachRes.json();
-
-    // Need at least one student and teacher; use real UUIDs so we get past
-    // the required-fields check and hit the duration validation.
-    const studentId = students?.[0]?.id ?? "00000000-0000-0000-0000-000000000001";
-    const teacherId = teachers?.[0]?.id ?? "00000000-0000-0000-0000-000000000002";
+    // Dedicated disposable fixtures — need valid UUIDs to get past the
+    // required-fields check and hit the duration validation.
+    const studentId = STUDENT_ID;
+    const teacherId = await getTestTeacherId(request);
 
     const res = await request.post(`${API_BASE}/sessions`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -180,7 +123,7 @@ test.describe("Supervisor Page — Step 5 changes", () => {
 
   // ── S4: People tab — Manage Teachers button navigates to /admin/teachers ──
 
-  test("S4: People tab Manage Teachers button navigates to /admin/teachers", async ({
+  test("People tab Manage Teachers button navigates to /admin/teachers", async ({
     page,
   }) => {
     await loginAndNavigate(page);
@@ -205,7 +148,7 @@ test.describe("Supervisor Page — Step 5 changes", () => {
 
   // ── S5: People tab — Manage Students button navigates to /admin/students ──
 
-  test("S5: People tab Manage Students button navigates to /admin/students", async ({
+  test("People tab Manage Students button navigates to /admin/students", async ({
     page,
   }) => {
     await loginAndNavigate(page);

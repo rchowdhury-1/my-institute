@@ -7,26 +7,9 @@
  */
 
 import { test, expect, Page } from "@playwright/test";
-
-const BASE = "http://localhost:3000";
-const API = "http://localhost:5001";
-const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
-if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-  throw new Error(
-    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running these tests.",
-  );
-}
+import { API, BASE, loginAndNavigate as loginAsAdmin } from "./helpers";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-async function loginAsAdmin(page: Page) {
-  await page.goto(`${BASE}/login`);
-  await page.fill('input[type="email"]', ADMIN_EMAIL);
-  await page.fill('input[type="password"]', ADMIN_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL((url) => !url.href.includes("/login"), { timeout: 20_000 });
-}
 
 async function getAdminToken(page: Page): Promise<string> {
   return page.evaluate(() => localStorage.getItem("accessToken") ?? "");
@@ -126,8 +109,7 @@ test.describe("Newsfeed system", () => {
 
     // Check homepage — section should be hidden (no homepage posts)
     await page.goto(BASE);
-    await page.waitForTimeout(2000);
-    await expect(page.locator("text=Latest from MY Institute")).not.toBeVisible();
+    await expect(page.locator("text=Latest from MY Institute")).not.toBeVisible({ timeout: 5_000 });
   });
 
   test("4. Admin edits post body → change reflects on /newsfeed", async ({ page }) => {
@@ -164,15 +146,13 @@ test.describe("Newsfeed system", () => {
 
     // Verify gone from public page too
     await page.goto(`${BASE}/newsfeed`);
-    await page.waitForTimeout(2000);
-    await expect(page.locator("text=[TEST] Quote of the Month")).not.toBeVisible();
+    await expect(page.locator("text=[TEST] Quote of the Month")).not.toBeVisible({ timeout: 5_000 });
   });
 
   test("6. Homepage section hidden when zero homepage-flagged posts", async ({ page }) => {
     // Just visit homepage — no homepage-flagged posts should exist after deletion
     await page.goto(BASE);
-    await page.waitForTimeout(2000);
-    await expect(page.locator("text=Latest from MY Institute")).not.toBeVisible();
+    await expect(page.locator("text=Latest from MY Institute")).not.toBeVisible({ timeout: 5_000 });
   });
 
   test("7. Non-admin user cannot access /admin/newsfeed (redirected to login)", async ({ page }) => {

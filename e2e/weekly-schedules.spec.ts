@@ -12,18 +12,15 @@
  */
 
 import { test, expect, APIRequestContext } from "@playwright/test";
-
-const API = process.env.API_URL || "http://localhost:5001";
-const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
-if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-  throw new Error(
-    "Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running these tests.",
-  );
-}
-
-const STUDENT_ID = "3de0a33b-93bf-4041-9ae0-770a290626d9";
-const TEST_TEACHER_EMAIL = "playwright-teacher@phase35test.local";
+import {
+  API,
+  STUDENT_ID,
+  getAdminToken,
+  getStudentToken,
+  getTestTeacherId,
+  getTeacherToken,
+  deleteSession,
+} from "./helpers";
 
 // Random slot times using a wide range (00:00-23:59) with random base.
 // Uses a prime-number step (97 minutes) to spread across the full day
@@ -38,82 +35,13 @@ function uniqueSlotTime(): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-// Use unique far-future dates for attendance tests to avoid teacher conflicts
+// Use unique far-future dates for attendance tests to avoid teacher conflicts.
+// Computed via epoch offset (not string day-arithmetic) so it can never
+// produce an invalid date once the counter runs past a month boundary.
 let attendanceCounter = 0;
 function uniqueAttendanceTime(): string {
-  const day = 10 + attendanceCounter++;
-  return `2026-08-${String(day).padStart(2, "0")}T03:00:00Z`;
-}
-
-async function getToken(
-  request: APIRequestContext,
-  email: string,
-  password: string
-): Promise<string> {
-  const res = await request.post(`${API}/auth/login`, {
-    data: { email, password },
-  });
-  return (await res.json()).accessToken;
-}
-
-async function getAdminToken(request: APIRequestContext) {
-  return getToken(request, ADMIN_EMAIL, ADMIN_PASSWORD);
-}
-
-async function getStudentToken(request: APIRequestContext) {
-  const adminToken = await getAdminToken(request);
-  const resetRes = await request.post(
-    `${API}/admin/students/${STUDENT_ID}/reset-password`,
-    { headers: { Authorization: `Bearer ${adminToken}` }, data: { send_email: false } }
-  );
-  const { tempPassword } = await resetRes.json();
-  return getToken(request, "playwright-student@phase35test.local", tempPassword);
-}
-
-// Dedicated disposable teacher fixture, found-or-created by email — mirrors
-// the playwright-student pattern. Must NEVER be a real teacher's id/email:
-// resetting a fixture's password/pay-rate is safe, doing so to a real
-// teacher's account (as earlier revisions of this suite did) locks a real
-// person out of their account and overwrites their real salary rate on
-// every CI run.
-let testTeacherIdCache: string | null = null;
-async function getTestTeacherId(request: APIRequestContext): Promise<string> {
-  if (testTeacherIdCache) return testTeacherIdCache;
-
-  const adminToken = await getAdminToken(request);
-  const findExisting = async () => {
-    const listRes = await request.get(`${API}/admin/teachers`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-    const { teachers } = await listRes.json();
-    return teachers.find((t: { id: string; email: string }) => t.email === TEST_TEACHER_EMAIL);
-  };
-
-  let teacher = await findExisting();
-  if (!teacher) {
-    const createRes = await request.post(`${API}/admin/teachers`, {
-      headers: { Authorization: `Bearer ${adminToken}` },
-      data: {
-        display_name: "Playwright Test Teacher",
-        email: TEST_TEACHER_EMAIL,
-        send_email: false,
-      },
-    });
-    teacher = createRes.status() === 409 ? await findExisting() : (await createRes.json()).teacher;
-  }
-  testTeacherIdCache = teacher.id;
-  return teacher.id;
-}
-
-async function getTeacherToken(request: APIRequestContext): Promise<string> {
-  const teacherId = await getTestTeacherId(request);
-  const adminToken = await getAdminToken(request);
-  const resetRes = await request.post(`${API}/admin/teachers/${teacherId}/reset-password`, {
-    headers: { Authorization: `Bearer ${adminToken}` },
-    data: { send_email: false },
-  });
-  const { tempPassword } = await resetRes.json();
-  return getToken(request, TEST_TEACHER_EMAIL, tempPassword);
+  const base = Date.UTC(2026, 7, 10, 3, 0, 0); // 2026-08-10T03:00:00Z
+  return new Date(base + attendanceCounter++ * 24 * 3600000).toISOString();
 }
 
 // Helpers
@@ -148,13 +76,6 @@ async function createSchedule(
 async function deleteSchedule(request: APIRequestContext, id: string) {
   const token = await getAdminToken(request);
   await request.delete(`${API}/admin/weekly-schedules/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-}
-
-async function deleteSession(request: APIRequestContext, id: string) {
-  const token = await getAdminToken(request);
-  await request.delete(`${API}/sessions/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
@@ -543,27 +464,26 @@ test("no_show decrements hours balance by session duration (30 min = 0.5)", asyn
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const upcoming = (await schedRes.json()).upcoming_sessions;
+  expect(upcoming.length).toBeGreaterThan(0);
 
-  if (upcoming.length > 0) {
-    // Mark first generated session as no_show
-    const attRes = await request.patch(
-      `${API}/sessions/${upcoming[0].id}/attendance`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { teacher_attended: true, student_attended: false },
-      }
-    );
-    expect(attRes.status()).toBe(200);
-    expect((await attRes.json()).session.status).toBe("no_show");
+  // Mark first generated session as no_show
+  const attRes = await request.patch(
+    `${API}/sessions/${upcoming[0].id}/attendance`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { teacher_attended: true, student_attended: false },
+    }
+  );
+  expect(attRes.status()).toBe(200);
+  expect((await attRes.json()).session.status).toBe("no_show");
 
-    // Check balance decremented by the session's duration in hours (30 min = 0.5)
-    const checkRes = await request.get(
-      `${API}/admin/weekly-schedules/${scheduleId}`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    const updated = (await checkRes.json()).schedule;
-    expect(updated.lessons_remaining).toBe(2.5);
-  }
+  // Check balance decremented by the session's duration in hours (30 min = 0.5)
+  const checkRes = await request.get(
+    `${API}/admin/weekly-schedules/${scheduleId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const updated = (await checkRes.json()).schedule;
+  expect(updated.lessons_remaining).toBe(2.5);
 
   // Clean up the manual session
   await deleteSession(request, session.id);
@@ -587,26 +507,25 @@ test("cancelled_teacher does NOT decrement lessons_remaining", async ({
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const upcoming = (await schedRes.json()).upcoming_sessions;
+  expect(upcoming.length).toBeGreaterThan(0);
 
-  if (upcoming.length > 0) {
-    // Mark as cancelled_teacher
-    const attRes = await request.patch(
-      `${API}/sessions/${upcoming[0].id}/attendance`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { teacher_attended: false, student_attended: false },
-      }
-    );
-    expect(attRes.status()).toBe(200);
-    expect((await attRes.json()).session.status).toBe("cancelled_teacher");
+  // Mark as cancelled_teacher
+  const attRes = await request.patch(
+    `${API}/sessions/${upcoming[0].id}/attendance`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { teacher_attended: false, student_attended: false },
+    }
+  );
+  expect(attRes.status()).toBe(200);
+  expect((await attRes.json()).session.status).toBe("cancelled_teacher");
 
-    // Balance should remain 3
-    const checkRes = await request.get(
-      `${API}/admin/weekly-schedules/${scheduleId}`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    expect((await checkRes.json()).schedule.lessons_remaining).toBe(3);
-  }
+  // Balance should remain 3
+  const checkRes = await request.get(
+    `${API}/admin/weekly-schedules/${scheduleId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  expect((await checkRes.json()).schedule.lessons_remaining).toBe(3);
 
   await deleteSchedule(request, scheduleId);
 });
@@ -698,11 +617,10 @@ test("GET /sessions includes schedule_lessons_remaining", async ({
   const linkedSession = sessions.find(
     (s: Record<string, unknown>) => s.schedule_id === scheduleId
   );
-  if (linkedSession) {
-    // Must be a JSON number, not a string — guards the NUMERIC type parser
-    expect(typeof linkedSession.schedule_lessons_remaining).toBe("number");
-    expect(linkedSession.schedule_lessons_remaining).toBe(7);
-  }
+  expect(linkedSession).toBeTruthy();
+  // Must be a JSON number, not a string — guards the NUMERIC type parser
+  expect(typeof linkedSession.schedule_lessons_remaining).toBe("number");
+  expect(linkedSession.schedule_lessons_remaining).toBe(7);
 
   await deleteSchedule(request, scheduleId);
 });
@@ -800,9 +718,7 @@ test("edit zoom_link → regenerated sessions use new link", async ({
 
 // ─── Salary / pay rate ───────────────────────────────────────────────────
 
-test("set pay rate and verify salary in teacher-hours", async ({
-  request,
-}) => {
+test("PATCH pay-rate updates the teacher's rate", async ({ request }) => {
   const token = await getAdminToken(request);
   const teacherId = await getTestTeacherId(request);
 
@@ -817,6 +733,16 @@ test("set pay rate and verify salary in teacher-hours", async ({
   const payBody = await payRes.json();
   expect(parseFloat(payBody.teacher.pay_rate_per_hour)).toBe(15.0);
   expect(payBody.teacher.pay_currency).toBe("GBP");
+});
+
+test("teacher-hours reflects the updated pay rate and includes salary", async ({ request }) => {
+  const token = await getAdminToken(request);
+  const teacherId = await getTestTeacherId(request);
+
+  await request.patch(`${API}/admin/teachers/${teacherId}/pay-rate`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { pay_rate_per_hour: 15.0, pay_currency: "GBP" },
+  });
 
   const hoursRes = await request.get(
     `${API}/admin/teacher-hours?teacher_id=${teacherId}`,
@@ -941,22 +867,21 @@ test("schedules_summary: attendance decrement reflects immediately", async ({
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const upcoming = (await schedRes.json()).upcoming_sessions;
+  expect(upcoming.length).toBeGreaterThan(0);
 
-  if (upcoming.length > 0) {
-    // Mark as completed
-    await request.patch(`${API}/sessions/${upcoming[0].id}/attendance`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { teacher_attended: true, student_attended: true },
-    });
+  // Mark as completed
+  await request.patch(`${API}/sessions/${upcoming[0].id}/attendance`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { teacher_attended: true, student_attended: true },
+  });
 
-    // Verify summary decremented by 1
-    const studentToken = await getStudentToken(request);
-    const meRes = await request.get(`${API}/students/me`, {
-      headers: { Authorization: `Bearer ${studentToken}` },
-    });
-    const summary = (await meRes.json()).schedules_summary;
-    expect(summary.active_lessons_remaining).toBe(baseRemaining - 1);
-  }
+  // Verify summary decremented by 1
+  const studentToken = await getStudentToken(request);
+  const meRes = await request.get(`${API}/students/me`, {
+    headers: { Authorization: `Bearer ${studentToken}` },
+  });
+  const summary = (await meRes.json()).schedules_summary;
+  expect(summary.active_lessons_remaining).toBe(baseRemaining - 1);
 
   await deleteSchedule(request, scheduleId);
 });
