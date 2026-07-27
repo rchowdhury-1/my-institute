@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
-import { BRAND } from "@/lib/content";
-import { whatsAppUrl, COPY_FEEDBACK_MS } from "@/lib/labels";
 import { INPUT_CLASS as inputClass } from "@/lib/styles";
+import { generatePassword } from "@/lib/adminUtils";
+import CredentialBanner from "@/components/admin/CredentialBanner";
 import {
   Plus,
   X,
@@ -18,8 +18,6 @@ import {
   KeyRound,
   UserX,
   UserCheck,
-  Copy,
-  Check,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -44,40 +42,6 @@ interface CreateForm {
   bio: string;
   temp_password: string;
   send_email: boolean;
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function generatePassword(): string {
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%";
-  const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, (b) => chars[b % chars.length]).join("");
-}
-
-// ─── CopyButton ─────────────────────────────────────────────────────────────
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
-  };
-  return (
-    <button
-      onClick={handleCopy}
-      className="ml-2 p-1 rounded hover:bg-black/5 transition-colors text-charcoal/50 hover:text-charcoal"
-      title="Copy to clipboard"
-    >
-      {copied ? (
-        <Check size={14} className="text-emerald-primary" />
-      ) : (
-        <Copy size={14} />
-      )}
-    </button>
-  );
 }
 
 // ─── Main page ───────────────────────────────────────────────────────────────
@@ -414,71 +378,30 @@ export default function AdminTeachersPage() {
 
         {/* ── Create success banner ───────────────────────────────────── */}
         {successBanner && (
-          <div data-testid="success-banner" className="mb-6 p-4 bg-emerald-primary/10 border border-emerald-primary/20 rounded-2xl">
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div className="text-sm text-charcoal">
-                <p className="font-semibold text-emerald-primary mb-2">Account created for {successBanner.name}</p>
-                <p className="text-charcoal/70 mb-1">Login email: <span className="font-medium text-charcoal">{successBanner.email}</span></p>
-                <p className="text-charcoal/70">
-                  Temporary password:{" "}
-                  <span data-testid="temp-password" className="font-mono font-bold text-charcoal">{successBanner.password}</span>
-                  <CopyButton text={successBanner.password} />
-                </p>
-              </div>
-              <button data-testid="btn-dismiss-success" onClick={() => setSuccessBanner(null)} className="text-charcoal/40 hover:text-charcoal transition-colors mt-0.5">
-                <X size={16} />
-              </button>
-            </div>
-            {successBanner.emailSent ? (
-              <p className="text-xs text-emerald-primary">✓ Welcome email sent</p>
-            ) : (
-              <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl">
-                <p className="text-xs text-amber-700 font-medium">⚠ Welcome email could not be sent — please share these credentials manually.</p>
-                {successBanner.emailError && <p className="text-xs text-amber-600 mt-1">Reason: {successBanner.emailError}</p>}
-                <a
-                  href={whatsAppUrl(BRAND.whatsapp, `Assalamu alaikum! Your My Institute teacher account is ready.\n\nLogin: ${successBanner.email}\nPassword: ${successBanner.password}\n\nPlease log in at https://www.my-institute.com/login and set a new password.`) ?? undefined}
-                  target="_blank" rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors"
-                >
-                  Share via WhatsApp →
-                </a>
-              </div>
-            )}
-          </div>
+          <CredentialBanner
+            variant="create"
+            role="teacher"
+            name={successBanner.name}
+            email={successBanner.email}
+            password={successBanner.password}
+            emailSent={successBanner.emailSent}
+            emailError={successBanner.emailError}
+            onDismiss={() => setSuccessBanner(null)}
+          />
         )}
 
         {/* ── Reset password banner ───────────────────────────────────── */}
         {resetBanner && (
-          <div data-testid="reset-banner" className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div className="text-sm text-charcoal">
-                <p className="font-semibold text-amber-700 mb-2">Password reset for {resetBanner.name}</p>
-                <p className="text-charcoal/70 mb-1">Login email: <span className="font-medium text-charcoal">{resetBanner.email}</span></p>
-                <p className="text-charcoal/70">
-                  New temporary password:{" "}
-                  <span data-testid="reset-temp-password" className="font-mono font-bold text-charcoal">{resetBanner.password}</span>
-                  <CopyButton text={resetBanner.password} />
-                </p>
-              </div>
-              <button onClick={() => setResetBanner(null)} className="text-charcoal/40 hover:text-charcoal transition-colors mt-0.5">
-                <X size={16} />
-              </button>
-            </div>
-            {resetBanner.emailSent ? (
-              <p className="text-xs text-emerald-primary">✓ Password reset email sent</p>
-            ) : (
-              <div className="p-2 bg-red-50 border border-red-200 rounded-xl">
-                <p className="text-xs text-red-700 font-medium">⚠ Email could not be sent — please share the new password manually.</p>
-                <a
-                  href={whatsAppUrl(BRAND.whatsapp, `Your My Institute password has been reset.\n\nLogin: ${resetBanner.email}\nNew password: ${resetBanner.password}\n\nPlease log in and set a new password.`) ?? undefined}
-                  target="_blank" rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors"
-                >
-                  Share via WhatsApp →
-                </a>
-              </div>
-            )}
-          </div>
+          <CredentialBanner
+            variant="reset"
+            role="teacher"
+            name={resetBanner.name}
+            email={resetBanner.email}
+            password={resetBanner.password}
+            emailSent={resetBanner.emailSent}
+            emailError={resetBanner.emailError}
+            onDismiss={() => setResetBanner(null)}
+          />
         )}
 
         {/* ── Create form ─────────────────────────────────────────────── */}
