@@ -8,8 +8,8 @@ const { v4: uuidv4 } = require('uuid');
 const { generateAllSchedules } = require('../lib/schedule-generator');
 const { asyncHandler } = require('../middleware/errors');
 const { validateDuration } = require('../lib/validators');
-const { getDisplayName, safeGenerate } = require('../lib/queries');
-const { ATTENDANCE_EARLY_MS, ATTENDANCE_LATE_MS, RENEWAL_REMINDER_HOURS } = require('../config');
+const { safeGenerate } = require('../lib/queries');
+const { markAttendance } = require('../services/attendance');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -233,123 +233,19 @@ router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supe
   if (req.userRole === 'teacher' && session.teacher_id !== req.userId)
     return res.status(403).json({ error: 'Forbidden' });
 
-  // Time window for teachers: 15 min before to 24h after
-  if (req.userRole === 'teacher') {
-    const sessionStart = new Date(session.scheduled_at);
-    const now = new Date();
-    const windowStart = new Date(sessionStart.getTime() - ATTENDANCE_EARLY_MS);
-    const windowEnd = new Date(sessionStart.getTime() + ATTENDANCE_LATE_MS);
-
-    if (now < windowStart)
-      return res.status(403).json({
-        error: 'Attendance can only be marked from 15 minutes before the session',
-        code: 'ATTENDANCE_TOO_EARLY',
-      });
-    if (now > windowEnd)
-      return res.status(403).json({
-        error: 'Attendance window has closed (24 hours after session). Contact admin.',
-        code: 'ATTENDANCE_WINDOW_CLOSED',
-      });
+  const result = await markAttendance(pool, {
+    session,
+    userId: req.userId,
+    userRole: req.userRole,
+    teacherAttended: teacher_attended,
+    studentAttended: student_attended,
+  });
+  if (result.error) {
+    const { status, error, code } = result;
+    return res.status(status).json(code ? { error, code } : { error });
   }
 
-  // Determine status
-  let newStatus;
-  if (!teacher_attended) {
-    newStatus = 'cancelled_teacher';
-  } else if (student_attended) {
-    newStatus = 'completed';
-  } else {
-    newStatus = 'no_show';
-  }
-
-  const result = await pool.query(
-    `UPDATE sessions
-     SET status = $1,
-         teacher_attended = $2,
-         student_attended = $3,
-         attendance_marked_at = NOW(),
-         attendance_marked_by = $4,
-         updated_at = NOW()
-     WHERE id = $5
-     RETURNING *`,
-    [newStatus, teacher_attended, teacher_attended ? student_attended : null, req.userId, id]
-  );
-
-  const updated = result.rows[0];
-
-  // Decrement hours balance on completed or no_show (the slot was consumed).
-  // Subtracts the session's own duration in hours (30 min = 0.5).
-  // cancelled_teacher does NOT decrement (the slot wasn't consumed).
-  if (newStatus === 'completed' || newStatus === 'no_show') {
-    if (session.schedule_id) {
-      // Schedule-based: decrement weekly_schedules.lessons_remaining (hours)
-      await pool.query(
-        `UPDATE weekly_schedules
-         SET lessons_remaining = GREATEST(0, lessons_remaining - $2::numeric / 60),
-             updated_at = NOW()
-         WHERE id = $1 AND lessons_remaining IS NOT NULL AND lessons_remaining > 0`,
-        [session.schedule_id, session.duration_minutes]
-      );
-
-      // Check balance and notify
-      const sched = await pool.query(
-        'SELECT lessons_remaining FROM weekly_schedules WHERE id = $1',
-        [session.schedule_id]
-      );
-      const balance = sched.rows[0]?.lessons_remaining;
-      if (balance !== null && balance !== undefined) {
-        if (balance <= 0) {
-          // Balance just hit zero — notify student + admins
-          const studentName = (await getDisplayName(pool, session.student_id)) || 'A student';
-          await notify(session.student_id, 'lesson_balance_zero', 'Hours Balance Empty',
-            'You have no hours remaining. Please contact admin to renew.',
-            '/student/sessions');
-          await notifyAdmins('lesson_balance_zero', 'Student Hours Balance Empty',
-            `${studentName} has no hours remaining and needs renewal.`, '/supervisor');
-        } else if (balance <= RENEWAL_REMINDER_HOURS) {
-          await notify(session.student_id, 'renewal_reminder', 'Renew Your Hours',
-            `You have ${balance} hour${balance !== 1 ? 's' : ''} remaining. Contact us to renew.`,
-            '/student/sessions');
-          await notifyAdmins('renewal_reminder', 'Student Hours Renewal',
-            `A student has ${balance} hour${balance !== 1 ? 's' : ''} remaining and needs renewal.`, '/supervisor');
-        }
-      }
-    } else {
-      // Legacy: decrement packages.sessions_remaining (existing logic)
-      const pkg = await pool.query(
-        'SELECT * FROM packages WHERE user_id=$1 ORDER BY purchased_at DESC LIMIT 1',
-        [session.student_id]
-      );
-      if (pkg.rows.length > 0 && pkg.rows[0].sessions_remaining !== null) {
-        const remaining = Math.max(0, pkg.rows[0].sessions_remaining - 1);
-        await pool.query('UPDATE packages SET sessions_remaining=$1 WHERE id=$2', [remaining, pkg.rows[0].id]);
-
-        if (remaining <= 2 && !pkg.rows[0].renewal_reminder_sent) {
-          await pool.query('UPDATE packages SET renewal_reminder_sent=true WHERE id=$1', [pkg.rows[0].id]);
-          await notify(session.student_id, 'renewal_reminder', 'Renew Your Package',
-            `You have ${remaining} session${remaining !== 1 ? 's' : ''} remaining. Contact us to renew.`,
-            '/student/sessions');
-          await notifyAdmins('renewal_reminder', 'Student Package Renewal',
-            `A student has ${remaining} sessions remaining and needs renewal.`, '/supervisor');
-        }
-      }
-    }
-  }
-
-  // Notify student of attendance record
-  const dateTime = formatSessionTime(session.scheduled_at);
-  if (newStatus === 'completed') {
-    await notify(session.student_id, 'attendance_marked', 'Attendance Confirmed',
-      `Attendance confirmed for your session on ${dateTime}`, '/student/sessions');
-  } else if (newStatus === 'no_show') {
-    await notify(session.student_id, 'attendance_marked', 'Marked as No-Show',
-      `You were marked as absent for the session on ${dateTime}`, '/student/sessions');
-  } else if (newStatus === 'cancelled_teacher') {
-    await notify(session.student_id, 'attendance_marked', 'Session Cancelled by Teacher',
-      `The session on ${dateTime} was cancelled by the teacher`, '/student/sessions');
-  }
-
-  res.json({ session: updated });
+  res.json({ session: result.session });
 }));
 
 module.exports = router;
