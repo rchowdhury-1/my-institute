@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
-import { Calendar, Clock, User, X, RefreshCw, AlertTriangle, MessageCircle, List } from "lucide-react";
-import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, computeClockSkew, CANCELLATION_BUFFER_HOURS } from "@/lib/datetime";
+import { Calendar, Clock, User, AlertTriangle, MessageCircle, List } from "lucide-react";
+import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, computeClockSkew } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
 import { BRAND } from "@/lib/content";
@@ -12,6 +12,7 @@ import { subjectLabel, SESSION_STATUS_STYLE, RENEWAL_REMINDER_HOURS, whatsAppUrl
 import PageLoading from "@/components/shared/PageLoading";
 import PageError from "@/components/shared/PageError";
 import JoinSessionButton from "@/components/shared/JoinSessionButton";
+import SessionActions from "@/components/student/SessionActions";
 
 interface Session {
   id: string;
@@ -343,125 +344,27 @@ export default function StudentSessionsPage() {
                   )}
 
                   {/* Actions — check 12h buffer */}
-                  {(() => {
-                    const hoursUntil = (new Date(s.scheduled_at).getTime() - Date.now()) / 3600000;
-                    const withinBuffer = hoursUntil >= 0 && hoursUntil < CANCELLATION_BUFFER_HOURS;
-                    const waText = `Hi, I need to change my session on ${formatSessionTime(s.scheduled_at)}.`;
-                    const waUrl = whatsAppUrl(BRAND.whatsapp, waText) ?? undefined;
-
-                    if (withinBuffer && !pendingReq) {
-                      return (
-                        <div className="border-t border-black/5 pt-3">
-                          <p className="text-charcoal/60 text-sm mb-2">
-                            This session starts soon and can no longer be changed online. Please message Mohammad to request changes.
-                          </p>
-                          <a
-                            href={waUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors"
-                          >
-                            <MessageCircle size={14} />
-                            WhatsApp Mohammad →
-                          </a>
-                        </div>
-                      );
-                    }
-
-                    if (cancelId === s.id) {
-                      return (
-                        <div className="border-t border-black/5 pt-3 space-y-2">
-                          <textarea
-                            value={cancelReason}
-                            onChange={(e) => setCancelReason(e.target.value)}
-                            placeholder="Reason for cancellation (optional)"
-                            rows={2}
-                            className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-red-200 resize-none"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={handleCancel}
-                              disabled={cancelSaving}
-                              className="px-4 py-1.5 rounded-full bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors"
-                            >
-                              {cancelSaving ? "Cancelling…" : "Confirm Cancel"}
-                            </button>
-                            <button
-                              onClick={() => { setCancelId(null); setCancelReason(""); }}
-                              className="px-4 py-1.5 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-black/20 transition-colors"
-                            >
-                              Keep session
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (rescheduleId === s.id) {
-                      return (
-                        <div className="border-t border-black/5 pt-3 space-y-2">
-                          <div className="grid grid-cols-2 gap-2">
-                            <input
-                              type="date"
-                              value={proposedDate}
-                              onChange={(e) => setProposedDate(e.target.value)}
-                              min={new Date().toISOString().split("T")[0]}
-                              className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
-                            />
-                            <select
-                              value={proposedTime}
-                              onChange={(e) => setProposedTime(e.target.value)}
-                              className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
-                            >
-                              <option value="">Select time…</option>
-                              {timeOptions.map((t) => (
-                                <option key={t} value={t}>{t}</option>
-                              ))}
-                            </select>
-                          </div>
-                          {rescheduleError && (
-                            <p className="text-red-500 text-xs">{rescheduleError}</p>
-                          )}
-                          <div className="flex gap-2">
-                            <button
-                              onClick={handleRequestReschedule}
-                              disabled={rescheduleSaving || !proposedDate || !proposedTime}
-                              className="px-4 py-1.5 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors"
-                            >
-                              {rescheduleSaving ? "Submitting…" : "Submit Request"}
-                            </button>
-                            <button
-                              onClick={() => { setRescheduleId(null); setProposedDate(""); setProposedTime(""); setRescheduleError(""); }}
-                              className="px-4 py-1.5 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-black/20 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (!pendingReq) {
-                      return (
-                        <div className="flex gap-2 border-t border-black/5 pt-3">
-                          <button
-                            onClick={() => setRescheduleId(s.id)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-emerald-primary/40 hover:text-emerald-primary transition-colors"
-                          >
-                            <RefreshCw size={13} /> Request Reschedule
-                          </button>
-                          <button
-                            onClick={() => setCancelId(s.id)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-black/10 text-charcoal/60 text-sm hover:border-red-300 hover:text-red-500 transition-colors"
-                          >
-                            <X size={13} /> Cancel
-                          </button>
-                        </div>
-                      );
-                    }
-
-                    return null;
-                  })()}
+                  <SessionActions
+                    session={s}
+                    pendingReq={pendingReq}
+                    cancelId={cancelId}
+                    cancelReason={cancelReason}
+                    setCancelReason={setCancelReason}
+                    cancelSaving={cancelSaving}
+                    handleCancel={handleCancel}
+                    setCancelId={setCancelId}
+                    rescheduleId={rescheduleId}
+                    proposedDate={proposedDate}
+                    setProposedDate={setProposedDate}
+                    proposedTime={proposedTime}
+                    setProposedTime={setProposedTime}
+                    rescheduleError={rescheduleError}
+                    rescheduleSaving={rescheduleSaving}
+                    handleRequestReschedule={handleRequestReschedule}
+                    setRescheduleId={setRescheduleId}
+                    setRescheduleError={setRescheduleError}
+                    timeOptions={timeOptions}
+                  />
                 </div>
                 );
               })}

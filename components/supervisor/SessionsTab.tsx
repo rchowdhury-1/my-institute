@@ -1,13 +1,15 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState } from "react";
 import api from "@/lib/api";
-import { startOfWeek, format, addWeeks } from "date-fns";
 import { Plus, Calendar, ChevronDown, List } from "lucide-react";
 import UserSearchInput from "@/components/shared/UserSearchInput";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 import RescheduleRequestList from "@/components/shared/RescheduleRequestList";
+import SessionFilterBar from "./SessionFilterBar";
 import { isSessionStillUpcoming, zonedInputToISO, otherZoneHint, OPERATIONAL_TZ_LABEL } from "@/lib/datetime";
 import { getAxiosError } from "@/lib/errors";
 import { SESSION_STATUS_LABEL, DURATION_OPTIONS } from "@/lib/labels";
+import { useSessionFilters } from "@/lib/useSessionFilters";
+import { useSessionGrouping } from "@/lib/useSessionGrouping";
 import SessionCard, { type Session } from "./SessionCard";
 import type { User } from "@/app/supervisor/page";
 import type { RescheduleRequest } from "@/lib/useRescheduleRequests";
@@ -18,21 +20,25 @@ const ALL_STATUSES = Object.keys(SESSION_STATUS_LABEL);
 
 interface SessionsTabProps {
   sessions: Session[];
-  setSessions: React.Dispatch<React.SetStateAction<Session[]>>;
+  prependSession: (session: Session) => void;
+  removeSession: (id: string) => void;
+  updateSession: (id: string, patch: Partial<Session>) => void;
   students: User[];
   teachers: User[];
   rescheduleRequests: RescheduleRequest[];
-  setRescheduleRequests: React.Dispatch<React.SetStateAction<RescheduleRequest[]>>;
+  removeRescheduleRequest: (id: string) => void;
   onEditSession: (session: Session) => void;
 }
 
 export default function SessionsTab({
   sessions,
-  setSessions,
+  prependSession,
+  removeSession,
+  updateSession,
   students,
   teachers,
   rescheduleRequests,
-  setRescheduleRequests,
+  removeRescheduleRequest,
   onEditSession,
 }: SessionsTabProps) {
   // create session form
@@ -46,19 +52,20 @@ export default function SessionsTab({
   const [calendarMode, setCalendarMode] = useState<"week" | "month">("week");
   const [calendarTeacherId, setCalendarTeacherId] = useState<string>("");
 
-  // session filters (read from URL on mount)
-  const [filterTeacherId, setFilterTeacherId] = useState<string>("");
-  const [filterStudentId, setFilterStudentId] = useState<string>("");
-  const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set(ALL_STATUSES));
+  const {
+    filterTeacherId,
+    filterStudentId,
+    filterStatuses,
+    handleFilterTeacher,
+    handleFilterStudent,
+    toggleFilterStatus,
+    clearFilters,
+    filteredSessions,
+    hasActiveFilters,
+  } = useSessionFilters(sessions, ALL_STATUSES);
 
-  // Restore filters from URL params on mount
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("teacher")) setFilterTeacherId(params.get("teacher")!);
-    if (params.get("student")) setFilterStudentId(params.get("student")!);
-    if (params.get("status")) setFilterStatuses(new Set(params.get("status")!.split(",")));
-  }, []);
+  const sessionWeeks = useSessionGrouping(filteredSessions);
+
   const [showPast, setShowPast] = useState(false);
 
   // attendance override
@@ -66,83 +73,13 @@ export default function SessionsTab({
   const [attendanceStep, setAttendanceStep] = useState<"teacher" | "student" | null>(null);
   const [attendanceSaving, setAttendanceSaving] = useState(false);
 
-  // URL param sync for filters
-  const updateFilterParams = useCallback((teacher: string, student: string, statuses: Set<string>) => {
-    const params = new URLSearchParams();
-    if (teacher) params.set("teacher", teacher);
-    if (student) params.set("student", student);
-    if (statuses.size < ALL_STATUSES.length) params.set("status", Array.from(statuses).join(","));
-    const qs = params.toString();
-    const url = qs ? `?${qs}` : window.location.pathname;
-    window.history.replaceState(null, "", url);
-  }, []);
-
-  function handleFilterTeacher(id: string) { setFilterTeacherId(id); updateFilterParams(id, filterStudentId, filterStatuses); }
-  function handleFilterStudent(id: string) { setFilterStudentId(id); updateFilterParams(filterTeacherId, id, filterStatuses); }
-  function toggleFilterStatus(status: string) {
-    setFilterStatuses(prev => {
-      const next = new Set(prev);
-      if (next.has(status)) next.delete(status); else next.add(status);
-      updateFilterParams(filterTeacherId, filterStudentId, next);
-      return next;
-    });
-  }
-  function clearFilters() {
-    setFilterTeacherId(""); setFilterStudentId(""); setFilterStatuses(new Set(ALL_STATUSES));
-    updateFilterParams("", "", new Set(ALL_STATUSES));
-  }
-
-  // Filtered sessions
-  const filteredSessions = useMemo(() => {
-    return sessions.filter(s => {
-      if (filterTeacherId && s.teacher_id !== filterTeacherId) return false;
-      if (filterStudentId && s.student_id !== filterStudentId) return false;
-      if (!filterStatuses.has(s.status)) return false;
-      return true;
-    });
-  }, [sessions, filterTeacherId, filterStudentId, filterStatuses]);
-
-  // Group by week
-  const sessionWeeks = useMemo(() => {
-    const now = new Date();
-    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
-    const groups = new Map<string, { label: string; sessions: typeof filteredSessions; isPast: boolean }>();
-    const pastSessions: typeof filteredSessions = [];
-
-    for (const s of filteredSessions) {
-      const d = new Date(s.scheduled_at);
-      const weekStart = startOfWeek(d, { weekStartsOn: 1 });
-      const weekEnd = addWeeks(weekStart, 1);
-      weekEnd.setMilliseconds(weekEnd.getMilliseconds() - 1);
-
-      if (weekStart < currentWeekStart) {
-        pastSessions.push(s);
-        continue;
-      }
-
-      const key = format(weekStart, "yyyy-MM-dd");
-      if (!groups.has(key)) {
-        const label = `Week of ${format(weekStart, "EEE d MMM")} – ${format(weekEnd, "EEE d MMM")}`;
-        groups.set(key, { label, sessions: [], isPast: false });
-      }
-      groups.get(key)!.sessions.push(s);
-    }
-
-    // Sort weeks chronologically
-    const sorted = Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
-
-    return { weeks: sorted, pastSessions, currentWeekKey: format(currentWeekStart, "yyyy-MM-dd") };
-  }, [filteredSessions]);
-
-  const hasActiveFilters = filterTeacherId || filterStudentId || filterStatuses.size < ALL_STATUSES.length;
-
   async function handleAdminAttendance(sessionId: string, teacherAttended: boolean, studentAttended: boolean) {
     setAttendanceSaving(true);
     try {
       const res = await api.patch(`/sessions/${sessionId}/attendance`,
         { teacher_attended: teacherAttended, student_attended: studentAttended }
       );
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, ...res.data.session } : s));
+      updateSession(sessionId, res.data.session);
       setAttendanceId(null);
       setAttendanceStep(null);
     } catch (err) {
@@ -167,11 +104,11 @@ export default function SessionsTab({
       );
       const student = students.find((s) => s.id === sessionForm.student_id);
       const teacher = teachers.find((t) => t.id === sessionForm.teacher_id);
-      setSessions((prev) => [{
+      prependSession({
         ...res.data.session,
         student_name: student?.display_name ?? "",
         teacher_name: teacher?.display_name ?? "",
-      }, ...prev]);
+      });
       setSessionForm({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "60", subject: "quran", zoom_link: "" });
       setShowSessionForm(false);
     } catch (err) {
@@ -186,7 +123,7 @@ export default function SessionsTab({
     setDeleting(id);
     try {
       await api.delete(`/sessions/${id}`);
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+      removeSession(id);
     } catch (err) {
       alert(getAxiosError(err).message);
     } finally {
@@ -200,10 +137,10 @@ export default function SessionsTab({
     if (newSess) {
       const student = students.find((s) => s.id === newSess.student_id);
       const teacher = teachers.find((t) => t.id === newSess.teacher_id);
-      setSessions((prev) => [{ ...newSess, student_name: student?.display_name ?? rr.student_name, teacher_name: teacher?.display_name ?? rr.teacher_name }, ...prev]);
+      prependSession({ ...newSess, student_name: student?.display_name ?? rr.student_name, teacher_name: teacher?.display_name ?? rr.teacher_name });
     }
     // Mark original session as rescheduled in local state
-    setSessions((prev) => prev.map((s) => s.id === rr.session_id ? { ...s, status: "rescheduled" } : s));
+    updateSession(rr.session_id, { status: "rescheduled" });
   }
 
   return (
@@ -341,55 +278,25 @@ export default function SessionsTab({
       <RescheduleRequestList
         variant="detailed"
         requests={rescheduleRequests}
-        setRequests={setRescheduleRequests}
+        removeRequest={removeRescheduleRequest}
         onApproved={handleRescheduleApproved}
       />
 
       {/* Filter bar */}
-      <div className="bg-white rounded-2xl border border-black/5 p-3 mb-4 flex flex-wrap items-center gap-2">
-        <select
-          value={filterTeacherId}
-          onChange={(e) => handleFilterTeacher(e.target.value)}
-          className="px-3 py-1.5 rounded-lg border border-black/10 bg-cream text-xs text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
-        >
-          <option value="">All teachers</option>
-          {teachers.map(t => <option key={t.id} value={t.id}>{t.display_name}</option>)}
-        </select>
-        <div className="w-48">
-          <UserSearchInput
-            users={students}
-            value={filterStudentId}
-            onChange={handleFilterStudent}
-            placeholder="Filter student…"
-          />
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {ALL_STATUSES.map(st => (
-            <button
-              key={st}
-              onClick={() => toggleFilterStatus(st)}
-              className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
-                filterStatuses.has(st)
-                  ? "bg-emerald-primary/10 border-emerald-primary/30 text-emerald-primary"
-                  : "bg-gray-50 border-gray-200 text-gray-400"
-              }`}
-            >
-              {SESSION_STATUS_LABEL[st]}
-            </button>
-          ))}
-        </div>
-        {hasActiveFilters && (
-          <button
-            onClick={clearFilters}
-            className="px-2.5 py-1 rounded-lg text-xs text-red-500 hover:bg-red-50 transition-colors"
-          >
-            Clear
-          </button>
-        )}
-        <span className="text-[10px] text-charcoal/30 ml-auto">
-          {filteredSessions.length} session{filteredSessions.length !== 1 ? "s" : ""}
-        </span>
-      </div>
+      <SessionFilterBar
+        teachers={teachers}
+        students={students}
+        allStatuses={ALL_STATUSES}
+        filterTeacherId={filterTeacherId}
+        filterStudentId={filterStudentId}
+        filterStatuses={filterStatuses}
+        onFilterTeacher={handleFilterTeacher}
+        onFilterStudent={handleFilterStudent}
+        onToggleStatus={toggleFilterStatus}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
+        resultCount={filteredSessions.length}
+      />
 
       {filteredSessions.length === 0 ? (
         <div className="bg-white rounded-2xl border border-black/5 p-8 text-center text-charcoal/30">

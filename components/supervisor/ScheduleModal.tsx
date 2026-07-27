@@ -33,13 +33,14 @@ interface ScheduleModalProps {
   students: User[];
   teachers: User[];
   onClose: () => void;
-  setSchedules: React.Dispatch<React.SetStateAction<Schedule[]>>;
-  setSessions: React.Dispatch<React.SetStateAction<Session[]>>;
+  prependSchedule: (schedule: Schedule) => void;
+  updateSchedule: (id: string, patch: Partial<Schedule>) => void;
+  replaceSessions: (sessions: Session[]) => void;
   // Shared with the schedule-list actions (Reactivate/Generate Now), which
   // display the same result outside this modal — must stay lifted, not
   // owned locally, or those two actions lose their result display.
   scheduleGenResult: ScheduleGeneration | null;
-  setScheduleGenResult: React.Dispatch<React.SetStateAction<ScheduleGeneration | null>>;
+  setScheduleGenResult: (result: ScheduleGeneration | null) => void;
 }
 
 export default function ScheduleModal({
@@ -47,8 +48,9 @@ export default function ScheduleModal({
   students,
   teachers,
   onClose,
-  setSchedules,
-  setSessions,
+  prependSchedule,
+  updateSchedule,
+  replaceSessions,
   scheduleGenResult,
   setScheduleGenResult,
 }: ScheduleModalProps) {
@@ -126,11 +128,11 @@ export default function ScheduleModal({
           zoom_link: scheduleForm.zoom_link || null,
         });
 
-        setSchedules((prev) => prev.map((s) => s.id === editingSchedule.id ? { ...s, ...res.data.schedule } : s));
+        updateSchedule(editingSchedule.id, res.data.schedule);
         if (res.data.generation) setScheduleGenResult(res.data.generation);
         // Refresh sessions list
         const sessRes = await api.get("/admin/sessions");
-        setSessions(sessRes.data.sessions);
+        replaceSessions(sessRes.data.sessions);
       } else {
         const res = await api.post("/admin/weekly-schedules", {
           student_id: scheduleForm.student_id,
@@ -144,11 +146,11 @@ export default function ScheduleModal({
 
         const student = students.find((s) => s.id === scheduleForm.student_id);
         const teacher = teachers.find((t) => t.id === scheduleForm.teacher_id);
-        setSchedules((prev) => [{ ...res.data.schedule, student_name: student?.display_name ?? "", teacher_name: teacher?.display_name ?? "" }, ...prev]);
+        prependSchedule({ ...res.data.schedule, student_name: student?.display_name ?? "", teacher_name: teacher?.display_name ?? "" });
         setScheduleGenResult(res.data.generation);
         // Refresh sessions list
         const sessRes = await api.get("/admin/sessions");
-        setSessions(sessRes.data.sessions);
+        replaceSessions(sessRes.data.sessions);
       }
       if (!scheduleGenResult) onClose();
     } catch (err: unknown) {

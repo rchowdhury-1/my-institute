@@ -41,7 +41,7 @@ export default function SupervisorPage() {
 
   function openScheduleModal(schedule?: Schedule) {
     setEditingSchedule(schedule ?? null);
-    data.setScheduleGenResult(null);
+    data.setGenerationResult(null);
     setShowScheduleModal(true);
   }
 
@@ -51,7 +51,7 @@ export default function SupervisorPage() {
   }
 
   function handleEditSessionSaved(updated: Session, waMsg: EditWaMsg | null) {
-    data.setSessions((prev) => prev.map((s) => s.id === updated.id ? updated : s));
+    data.updateSession(updated.id, updated);
     if (waMsg) setEditWaMsg(waMsg);
     setEditSession(null);
   }
@@ -112,11 +112,13 @@ export default function SupervisorPage() {
         {activeTab === "sessions" && (
           <SessionsTab
             sessions={data.sessions}
-            setSessions={data.setSessions}
+            prependSession={data.prependSession}
+            removeSession={data.removeSession}
+            updateSession={data.updateSession}
             students={data.students}
             teachers={data.teachers}
             rescheduleRequests={data.rescheduleRequests}
-            setRescheduleRequests={data.setRescheduleRequests}
+            removeRescheduleRequest={data.removeRescheduleRequest}
             onEditSession={openEditModal}
           />
         )}
@@ -127,7 +129,7 @@ export default function SupervisorPage() {
             schedules={data.schedules}
             sessions={data.sessions}
             scheduleGenResult={data.scheduleGenResult}
-            setScheduleGenResult={data.setScheduleGenResult}
+            setScheduleGenResult={data.setGenerationResult}
             scheduleActioning={data.scheduleActioning}
             onOpenScheduleModal={openScheduleModal}
             onGenerateNow={data.handleGenerateNow}
@@ -154,10 +156,11 @@ export default function SupervisorPage() {
           students={data.students}
           teachers={data.teachers}
           onClose={() => setShowScheduleModal(false)}
-          setSchedules={data.setSchedules}
-          setSessions={data.setSessions}
+          prependSchedule={data.prependSchedule}
+          updateSchedule={data.updateSchedule}
+          replaceSessions={data.replaceSessions}
           scheduleGenResult={data.scheduleGenResult}
-          setScheduleGenResult={data.setScheduleGenResult}
+          setScheduleGenResult={data.setGenerationResult}
         />
       )}
 

@@ -4,17 +4,16 @@ import { RefreshCw, X as XIcon } from "lucide-react";
 import { formatSessionTime, formatRelative } from "@/lib/datetime";
 import { subjectLabel, whatsAppUrl } from "@/lib/labels";
 import { useRescheduleRequests, type RescheduleRequest } from "@/lib/useRescheduleRequests";
-import type { Dispatch, SetStateAction } from "react";
 
 interface RescheduleRequestListProps {
   variant: "compact" | "detailed";
   requests?: RescheduleRequest[];
-  setRequests?: Dispatch<SetStateAction<RescheduleRequest[]>>;
+  removeRequest?: (id: string) => void;
   onApproved?: (rr: RescheduleRequest, data: { new_session?: unknown }) => void;
 }
 
-export default function RescheduleRequestList({ variant, requests, setRequests, onApproved }: RescheduleRequestListProps) {
-  const rr = useRescheduleRequests({ requests, setRequests, onApproved });
+export default function RescheduleRequestList({ variant, requests, removeRequest, onApproved }: RescheduleRequestListProps) {
+  const rr = useRescheduleRequests({ requests, removeRequest, onApproved });
 
   if (rr.requests.length === 0 && Object.keys(rr.rrResult).length === 0) return null;
 

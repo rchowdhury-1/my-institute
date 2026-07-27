@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useState } from "react";
 import api from "@/lib/api";
 
 export interface RescheduleRequest {
@@ -32,7 +32,7 @@ interface UseRescheduleRequestsOptions {
   // the hook uses these instead of self-fetching. Omit to self-fetch
   // (teacher dashboard).
   requests?: RescheduleRequest[];
-  setRequests?: Dispatch<SetStateAction<RescheduleRequest[]>>;
+  removeRequest?: (id: string) => void;
   onApproved?: (rr: RescheduleRequest, data: { new_session?: unknown }) => void;
 }
 
@@ -41,7 +41,7 @@ export function useRescheduleRequests(options: UseRescheduleRequestsOptions = {}
   const [localRequests, setLocalRequests] = useState<RescheduleRequest[]>([]);
   const [loading, setLoading] = useState(selfManaged);
   const requests = options.requests ?? localRequests;
-  const setRequests = options.setRequests ?? setLocalRequests;
+  const removeRequest = options.removeRequest ?? ((id: string) => setLocalRequests((prev) => prev.filter((r) => r.id !== id)));
 
   useEffect(() => {
     if (!selfManaged) return;
@@ -63,7 +63,7 @@ export function useRescheduleRequests(options: UseRescheduleRequestsOptions = {}
     setRrError((p) => ({ ...p, [rr.id]: "" }));
     try {
       const res = await api.patch(`/reschedule-requests/${rr.id}/approve`, {});
-      setRequests((prev) => prev.filter((r) => r.id !== rr.id));
+      removeRequest(rr.id);
       setRrResult((p) => ({ ...p, [rr.id]: { action: "approved", phone: rr.student_phone, proposedAt: rr.proposed_at } }));
       options.onApproved?.(rr, res.data);
     } catch (err: unknown) {
@@ -83,7 +83,7 @@ export function useRescheduleRequests(options: UseRescheduleRequestsOptions = {}
     setRrError((p) => ({ ...p, [rr.id]: "" }));
     try {
       await api.patch(`/reschedule-requests/${rr.id}/reject`, { rejection_reason: rrRejectReason || undefined });
-      setRequests((prev) => prev.filter((r) => r.id !== rr.id));
+      removeRequest(rr.id);
       setRrResult((p) => ({ ...p, [rr.id]: { action: "rejected", phone: rr.student_phone, originalAt: rr.original_scheduled_at, reason: rrRejectReason } }));
       setRrRejectId(null);
       setRrRejectReason("");

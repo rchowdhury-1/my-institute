@@ -10,7 +10,7 @@ interface SchedulesTabProps {
   schedules: Schedule[];
   sessions: Session[];
   scheduleGenResult: ScheduleGeneration | null;
-  setScheduleGenResult: React.Dispatch<React.SetStateAction<ScheduleGeneration | null>>;
+  setScheduleGenResult: (result: ScheduleGeneration | null) => void;
   scheduleActioning: string | null;
   onOpenScheduleModal: (schedule?: Schedule) => void;
   onGenerateNow: (id: string) => void;

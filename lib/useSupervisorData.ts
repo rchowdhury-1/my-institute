@@ -51,6 +51,40 @@ export function useSupervisorData(authChecked: boolean) {
       .finally(() => setLoading(false));
   }, [authChecked]);
 
+  // ─── Named, intention-revealing mutators (replace raw setState escapes) ───
+
+  function replaceSessions(next: Session[]) {
+    setSessions(next);
+  }
+
+  function prependSession(session: Session) {
+    setSessions((prev) => [session, ...prev]);
+  }
+
+  function removeSession(id: string) {
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  function updateSession(id: string, patch: Partial<Session>) {
+    setSessions((prev) => prev.map((s) => s.id === id ? { ...s, ...patch } : s));
+  }
+
+  function prependSchedule(schedule: Schedule) {
+    setSchedules((prev) => [schedule, ...prev]);
+  }
+
+  function updateSchedule(id: string, patch: Partial<Schedule>) {
+    setSchedules((prev) => prev.map((s) => s.id === id ? { ...s, ...patch } : s));
+  }
+
+  function setGenerationResult(result: ScheduleGeneration | null) {
+    setScheduleGenResult(result);
+  }
+
+  function removeRescheduleRequest(id: string) {
+    setRescheduleRequests((prev) => prev.filter((r) => r.id !== id));
+  }
+
   async function handleDeactivateSchedule(id: string) {
     const futureCount = sessions.filter(s => isFutureScheduledSessionOf(s, id)).length;
     if (!confirm(`This will remove ${futureCount} future session${futureCount !== 1 ? "s" : ""}. The schedule will be moved to Archived. You can reactivate it later if needed.`)) return;
@@ -58,7 +92,7 @@ export function useSupervisorData(authChecked: boolean) {
     setScheduleActioning(id);
     try {
       await api.delete(`/admin/weekly-schedules/${id}`);
-      setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: false } : s));
+      updateSchedule(id, { is_active: false });
       setSessions(prev => prev.filter(s => !isFutureScheduledSessionOf(s, id)));
     } catch (err) {
       reportError(err);
@@ -71,10 +105,10 @@ export function useSupervisorData(authChecked: boolean) {
     setScheduleActioning(id);
     try {
       const res = await api.post(`/admin/weekly-schedules/${id}/reactivate`, {});
-      setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: true } : s));
-      setScheduleGenResult(res.data.generation);
+      updateSchedule(id, { is_active: true });
+      setGenerationResult(res.data.generation);
       const sessRes = await api.get("/admin/sessions");
-      setSessions(sessRes.data.sessions);
+      replaceSessions(sessRes.data.sessions);
     } catch (err) {
       reportError(err);
     } finally {
@@ -86,10 +120,10 @@ export function useSupervisorData(authChecked: boolean) {
     setScheduleActioning(id);
     try {
       const res = await api.post(`/admin/weekly-schedules/${id}/generate`, {});
-      setScheduleGenResult(res.data.generation);
+      setGenerationResult(res.data.generation);
       if (res.data.generation.created > 0) {
         const sessRes = await api.get("/admin/sessions");
-        setSessions(sessRes.data.sessions);
+        replaceSessions(sessRes.data.sessions);
       }
     } catch (err) {
       reportError(err);
@@ -99,13 +133,21 @@ export function useSupervisorData(authChecked: boolean) {
   }
 
   return {
-    sessions, setSessions,
+    sessions,
     students, teachers,
-    schedules, setSchedules,
-    rescheduleRequests, setRescheduleRequests,
+    schedules,
+    rescheduleRequests,
     loading, error,
-    scheduleGenResult, setScheduleGenResult,
+    scheduleGenResult,
     scheduleActioning,
+    replaceSessions,
+    prependSession,
+    removeSession,
+    updateSession,
+    prependSchedule,
+    updateSchedule,
+    setGenerationResult,
+    removeRescheduleRequest,
     handleDeactivateSchedule,
     handleReactivateSchedule,
     handleGenerateNow,
