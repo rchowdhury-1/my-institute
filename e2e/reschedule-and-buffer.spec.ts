@@ -107,7 +107,7 @@ test("student cannot hit legacy PATCH /sessions/:id/reschedule", async ({ reques
 test("admin can hit legacy PATCH /sessions/:id/reschedule", async ({ request }) => {
   const session = await createTestSession(request, 48);
   const adminToken = await getAdminToken(request);
-  const newTime = "2026-07-28T06:00:00Z";
+  const newTime = new Date(Date.now() + 72 * 3600000).toISOString();
   const res = await request.patch(`${API}/sessions/${session.id}/reschedule`, {
     headers: { Authorization: `Bearer ${adminToken}` },
     data: { scheduled_at: newTime },
@@ -245,7 +245,7 @@ test("duplicate request while pending → 409", async ({ request }) => {
 
   const res2 = await request.post(`${API}/reschedule-requests`, {
     headers: { Authorization: `Bearer ${studentToken}` },
-    data: { session_id: session.id, proposed_at: "2026-08-28T06:00:00Z" },
+    data: { session_id: session.id, proposed_at: uniqueProposedTime() },
   });
   expect(res2.status()).toBe(409);
 
@@ -257,7 +257,7 @@ test("student cannot reschedule within 12h buffer → 403", async ({ request }) 
   const studentToken = await getStudentToken(request);
   const res = await request.post(`${API}/reschedule-requests`, {
     headers: { Authorization: `Bearer ${studentToken}` },
-    data: { session_id: session.id, proposed_at: "2026-08-29T05:00:00Z" },
+    data: { session_id: session.id, proposed_at: uniqueProposedTime() },
   });
   expect(res.status()).toBe(403);
   const body = await res.json();
@@ -343,7 +343,7 @@ test("student cannot create request for someone else's session", async ({ reques
   const sessRes = await request.post(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${adminToken}` },
     data: { student_id: "bf4b7e99-548d-4a09-834c-656bb6ca83bc", teacher_id: teacherId,
-            scheduled_at: "2026-07-29T05:00:00Z", duration_minutes: 60, subject: "quran" },
+            scheduled_at: new Date(Date.now() + 72 * 3600000).toISOString(), duration_minutes: 60, subject: "quran" },
   });
   const session = (await sessRes.json()).session;
   const studentToken = await getStudentToken(request);

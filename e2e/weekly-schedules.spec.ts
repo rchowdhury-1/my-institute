@@ -38,9 +38,11 @@ function uniqueSlotTime(): string {
 // Use unique far-future dates for attendance tests to avoid teacher conflicts.
 // Computed via epoch offset (not string day-arithmetic) so it can never
 // produce an invalid date once the counter runs past a month boundary.
+// Anchored on Date.now() (not a hardcoded calendar date) so this suite has
+// no expiry date.
 let attendanceCounter = 0;
 function uniqueAttendanceTime(): string {
-  const base = Date.UTC(2026, 7, 10, 3, 0, 0); // 2026-08-10T03:00:00Z
+  const base = Date.now() + 60 * 24 * 3600000; // ~60 days from now
   return new Date(base + attendanceCounter++ * 24 * 3600000).toISOString();
 }
 
