@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync-shared": "node scripts/sync-shared.js",
+    "check-shared-sync": "node scripts/sync-shared.js --check",
+    "test:datetime": "tsx lib/datetime.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -34,6 +37,7 @@
     "eslint-config-next": "14.2.35",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }

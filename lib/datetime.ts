@@ -1,79 +1,41 @@
 import { format } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
+import {
+  LONDON_TZ,
+  CAIRO_TZ,
+  OPERATIONAL_TZ,
+  JOIN_WINDOW_HOURS,
+  EARLY_JOIN_MINUTES,
+  UPCOMING_BUFFER_HOURS,
+  CANCELLATION_BUFFER_HOURS,
+  ATTENDANCE_EARLY_MS,
+  ATTENDANCE_LATE_MS,
+} from "./shared/constants";
+import { toDate, dualTime, datePart, timeIn, formatSessionTime } from "./shared/datetime";
 
-export const LONDON = "Europe/London";
-export const CAIRO = "Africa/Cairo";
+export const LONDON = LONDON_TZ;
+export const CAIRO = CAIRO_TZ;
 
-/**
- * Named time thresholds. Backend twins live in backend/src/config.js until
- * B11 unifies cross-tier constants — keep both sides in sync by hand until
- * then.
- */
-export const JOIN_WINDOW_HOURS = 3;
-export const EARLY_JOIN_MINUTES = 15;
-export const UPCOMING_BUFFER_HOURS = 3;
-export const CANCELLATION_BUFFER_HOURS = 12;
-export const ATTENDANCE_EARLY_MS = EARLY_JOIN_MINUTES * 60 * 1000;
-export const ATTENDANCE_LATE_MS = 24 * 60 * 60 * 1000;
+// Cross-tier source of truth: lib/shared/constants.ts (backend consumes a
+// generated copy — see scripts/sync-shared.js). Re-exported here so every
+// existing `@/lib/datetime` import site keeps working unchanged.
+export {
+  OPERATIONAL_TZ,
+  JOIN_WINDOW_HOURS,
+  EARLY_JOIN_MINUTES,
+  UPCOMING_BUFFER_HOURS,
+  CANCELLATION_BUFFER_HOURS,
+  ATTENDANCE_EARLY_MS,
+  ATTENDANCE_LATE_MS,
+  timeIn,
+  formatSessionTime,
+};
 
-/**
- * The single timezone admin-entered wall-clock times are anchored to
- * (schedule slots, one-off session create/edit). Must stay in sync with
- * OPERATIONAL_TZ in backend/src/lib/schedule-generator.js. If this value
- * changes, all active schedules must be wiped and regenerated
- * (POST /cron/regenerate-all).
- */
-export const OPERATIONAL_TZ = CAIRO;
 /** Human label for OPERATIONAL_TZ, shown on time inputs. */
 export const OPERATIONAL_TZ_LABEL = OPERATIONAL_TZ === CAIRO ? "Egypt time" : "UK time";
 /** The "other" zone shown as a live hint next to time inputs. */
 const HINT_TZ = OPERATIONAL_TZ === CAIRO ? LONDON : CAIRO;
 const HINT_TZ_LABEL = OPERATIONAL_TZ === CAIRO ? "UK" : "Cairo";
-
-function toDate(input: Date | string | null | undefined): Date | null {
-  if (input == null) return null;
-  const d = typeof input === "string" ? new Date(input) : input;
-  return isNaN(d.getTime()) ? null : d;
-}
-
-/** Short timezone label for Europe/London: "BST" in summer, "GMT" in winter */
-function londonLabel(d: Date): string {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: LONDON,
-    timeZoneName: "short",
-  }).formatToParts(d);
-  return parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT";
-}
-
-/** Format time in a given IANA timezone as "HH:mm" */
-export function timeIn(d: Date, tz: string): string {
-  return format(toZonedTime(d, tz), "HH:mm");
-}
-
-/** "14:00 BST · 16:00 Cairo" */
-function dualTime(d: Date): string {
-  return `${timeIn(d, LONDON)} ${londonLabel(d)} · ${timeIn(d, CAIRO)} Cairo`;
-}
-
-/** Date portion: "Mon 22 Jun" or "Mon 22 Jun 2027" if not current year */
-function datePart(d: Date): string {
-  const zoned = toZonedTime(d, LONDON);
-  const base = format(zoned, "EEE d MMM");
-  return zoned.getFullYear() === new Date().getFullYear()
-    ? base
-    : `${base} ${zoned.getFullYear()}`;
-}
-
-/**
- * Full session display: "Mon 22 Jun · 14:00 BST · 16:00 Cairo"
- */
-export function formatSessionTime(
-  date: Date | string | null | undefined
-): string {
-  const d = toDate(date);
-  if (!d) return "";
-  return `${datePart(d)} · ${dualTime(d)}`;
-}
 
 /**
  * Date only: "Mon 22 Jun" (or "Mon 22 Jun 2027")

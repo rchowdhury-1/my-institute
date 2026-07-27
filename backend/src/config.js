@@ -4,6 +4,8 @@
  * H10a/M4/M7 register, since several are directly asserted on by CI.
  */
 
+const { ATTENDANCE_EARLY_MS, ATTENDANCE_LATE_MS, RENEWAL_REMINDER_HOURS } = require('./lib/shared.generated');
+
 const MS_PER_MINUTE = 60 * 1000;
 const MS_PER_HOUR = 60 * MS_PER_MINUTE;
 const MS_PER_DAY = 24 * MS_PER_HOUR;
@@ -16,9 +18,9 @@ const REFRESH_TOKEN_MAX_AGE_MS = REFRESH_TOKEN_TTL_DAYS * MS_PER_DAY;
 const MIN_PASSWORD_LENGTH = 8;
 
 // ─── Sessions / attendance ───────────────────────────────────────────────────
-const ATTENDANCE_EARLY_MS = 15 * MS_PER_MINUTE;
-const ATTENDANCE_LATE_MS = 24 * MS_PER_HOUR;
-const RENEWAL_REMINDER_HOURS = 2;
+// ATTENDANCE_EARLY_MS, ATTENDANCE_LATE_MS, RENEWAL_REMINDER_HOURS: cross-tier
+// shared values — see lib/shared/constants.ts (source of truth) and
+// scripts/sync-shared.js (regenerates ./lib/shared.generated.js).
 
 // ─── Scheduling ──────────────────────────────────────────────────────────────
 const HORIZON_DAYS = 28; // 4-week rolling window

@@ -6,19 +6,18 @@
  * to UTC before inserting sessions. DST transitions are handled by
  * date-fns-tz automatically.
  *
- * OPERATIONAL_TZ must stay in sync with the frontend constant in
- * lib/datetime.ts. Changing it changes the meaning of every stored slot
- * time — all active schedules must be wiped and regenerated afterwards
- * (POST /cron/regenerate-all), otherwise on-demand generation creates
- * duplicate sessions at the shifted instants.
+ * OPERATIONAL_TZ is the cross-tier shared value (lib/shared/constants.ts is
+ * the source of truth; see scripts/sync-shared.js). Changing it changes the
+ * meaning of every stored slot time — all active schedules must be wiped and
+ * regenerated afterwards (POST /cron/regenerate-all), otherwise on-demand
+ * generation creates duplicate sessions at the shifted instants.
  */
 const { pool } = require('../db');
 const { fromZonedTime, toZonedTime } = require('date-fns-tz');
 const { addDays, subDays, startOfDay, format } = require('date-fns');
 const { v4: uuidv4 } = require('uuid');
 const { HORIZON_DAYS } = require('../config');
-
-const OPERATIONAL_TZ = 'Africa/Cairo';
+const { OPERATIONAL_TZ } = require('./shared.generated');
 const VALID_SUBJECTS = ['quran', 'arabic', 'islamic_studies'];
 
 const DAY_MAP = {

@@ -1,3 +1,7 @@
+import { RENEWAL_REMINDER_HOURS } from "./shared/constants";
+
+export { RENEWAL_REMINDER_HOURS };
+
 export const SUBJECT_LABELS: Record<string, string> = {
   quran: "Quran",
   arabic: "Arabic",
@@ -45,10 +49,6 @@ export const COPY_FEEDBACK_MS = 2000;
 // balance — distinct from RENEWAL_REMINDER_HOURS, which is the backend's
 // own reminder-notification trigger shown to students.
 export const LOW_BALANCE_AMBER_HOURS = 4;
-
-// Backend twin: RENEWAL_REMINDER_HOURS in backend/src/config.js — keep in
-// sync until B11 unifies cross-tier constants.
-export const RENEWAL_REMINDER_HOURS = 2;
 
 export function whatsAppUrl(phone: string | null | undefined, message?: string): string | null {
   const num = (phone || "").replace(/[^0-9]/g, "");

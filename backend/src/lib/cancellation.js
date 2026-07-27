@@ -1,6 +1,10 @@
 const { MS_PER_HOUR } = require('../config');
+const { CANCELLATION_BUFFER_HOURS } = require('./shared.generated');
 
-const BUFFER_HOURS = Number(process.env.CANCELLATION_BUFFER_HOURS) || 12;
+// CANCELLATION_BUFFER_HOURS (shared default) can still be overridden per
+// environment — this override is backend-only and not part of the
+// cross-tier sync; the frontend always uses the shared default.
+const BUFFER_HOURS = Number(process.env.CANCELLATION_BUFFER_HOURS) || CANCELLATION_BUFFER_HOURS;
 
 /**
  * Check whether a student is allowed to cancel or request-reschedule a session.
