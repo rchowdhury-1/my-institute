@@ -2,7 +2,7 @@ import { useState } from "react";
 import api from "@/lib/api";
 import UserSearchInput from "@/components/shared/UserSearchInput";
 import { formatHours, otherZoneHint, OPERATIONAL_TZ_LABEL } from "@/lib/datetime";
-import { DURATION_OPTIONS } from "@/lib/labels";
+import { DURATION_OPTIONS, DAY_LABELS, ALL_DAYS } from "@/lib/labels";
 import type { Session } from "./SessionCard";
 import type { User } from "@/app/supervisor/page";
 
@@ -27,11 +27,6 @@ export interface ScheduleGeneration {
   skipped: number;
   conflicts: string[];
 }
-
-const DAY_LABELS: Record<string, string> = {
-  mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
-};
-const ALL_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 interface ScheduleModalProps {
   editingSchedule: Schedule | null;
@@ -108,8 +103,6 @@ export default function ScheduleModal({
   }
 
   async function handleSaveSchedule() {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setScheduleConfirm(false);
 
     const slots = ALL_DAYS

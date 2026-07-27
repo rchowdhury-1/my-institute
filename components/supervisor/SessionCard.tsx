@@ -1,6 +1,6 @@
 import { Repeat, Pencil, Trash2 } from "lucide-react";
 import { formatSessionTime } from "@/lib/datetime";
-import { SESSION_STATUS_STYLE } from "@/lib/labels";
+import { SESSION_STATUS_STYLE, SESSION_STATUS_LABEL } from "@/lib/labels";
 
 export interface Session {
   id: string;
@@ -38,7 +38,7 @@ interface SessionCardProps {
 }
 
 export default function SessionCard({
-  session: s,
+  session,
   isPast,
   needsAttendance,
   deleting,
@@ -58,36 +58,36 @@ export default function SessionCard({
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
           <p className="font-semibold text-charcoal text-sm truncate">
-            {s.student_name} ↔ {s.teacher_name}
+            {session.student_name} ↔ {session.teacher_name}
           </p>
           <p className="text-charcoal/50 text-xs mt-0.5">
-            {formatSessionTime(s.scheduled_at)} · {s.duration_minutes} min
+            {formatSessionTime(session.scheduled_at)} · {session.duration_minutes} min
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {s.schedule_id && (
+          {session.schedule_id && (
             <Repeat size={12} className="text-emerald-primary/40" />
           )}
-          {s.teacher_attended != null && (
+          {session.teacher_attended != null && (
             <span className="text-xs text-charcoal/30 flex items-center gap-0.5">
-              {s.teacher_attended ? "T✓" : "T✗"}
-              {s.student_attended != null && (s.student_attended ? " S✓" : " S✗")}
+              {session.teacher_attended ? "T✓" : "T✗"}
+              {session.student_attended != null && (session.student_attended ? " S✓" : " S✗")}
             </span>
           )}
-          <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${SESSION_STATUS_STYLE[s.status] ? `${SESSION_STATUS_STYLE[s.status].bg} ${SESSION_STATUS_STYLE[s.status].text}` : "bg-gray-100 text-gray-600"}`}>
-            {s.status === "cancelled_teacher" ? "teacher cancelled" : s.status === "no_show" ? "no show" : s.status}
+          <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${SESSION_STATUS_STYLE[session.status] ? `${SESSION_STATUS_STYLE[session.status].bg} ${SESSION_STATUS_STYLE[session.status].text}` : "bg-gray-100 text-gray-600"}`}>
+            {SESSION_STATUS_LABEL[session.status] ?? session.status}
           </span>
-          {s.status === "scheduled" && !isPast && (
+          {session.status === "scheduled" && !isPast && (
             <>
               <button
-                onClick={() => onEdit(s)}
+                onClick={() => onEdit(session)}
                 className="p-1.5 rounded-lg text-charcoal/30 hover:text-emerald-primary hover:bg-emerald-primary/5 transition-colors"
               >
                 <Pencil size={14} />
               </button>
               <button
-                onClick={() => onDelete(s.id)}
-                disabled={deleting === s.id}
+                onClick={() => onDelete(session.id)}
+                disabled={deleting === session.id}
                 className="p-1.5 rounded-lg text-charcoal/30 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
               >
                 <Trash2 size={14} />
@@ -96,7 +96,7 @@ export default function SessionCard({
           )}
           {needsAttendance && (
             <button
-              onClick={() => onStartAttendance(s.id)}
+              onClick={() => onStartAttendance(session.id)}
               className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium hover:bg-amber-200 transition-colors"
             >
               Mark Attendance
@@ -104,7 +104,7 @@ export default function SessionCard({
           )}
         </div>
       </div>
-      {attendanceId === s.id && (
+      {attendanceId === session.id && (
         <div className="mt-3 pt-3 border-t border-black/5">
           {attendanceStep === "teacher" && (
             <div className="space-y-2">
@@ -114,7 +114,7 @@ export default function SessionCard({
                   className="px-3 py-1.5 rounded-full bg-emerald-primary text-white text-xs font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
                   Yes
                 </button>
-                <button onClick={() => onAdminAttendance(s.id, false, false)} disabled={attendanceSaving}
+                <button onClick={() => onAdminAttendance(session.id, false, false)} disabled={attendanceSaving}
                   className="px-3 py-1.5 rounded-full bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors">
                   No (Teacher Cancelled)
                 </button>
@@ -129,11 +129,11 @@ export default function SessionCard({
             <div className="space-y-2">
               <p className="text-sm font-medium text-charcoal">Did the student attend?</p>
               <div className="flex gap-2">
-                <button onClick={() => onAdminAttendance(s.id, true, true)} disabled={attendanceSaving}
+                <button onClick={() => onAdminAttendance(session.id, true, true)} disabled={attendanceSaving}
                   className="px-3 py-1.5 rounded-full bg-emerald-primary text-white text-xs font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
                   Yes (Completed)
                 </button>
-                <button onClick={() => onAdminAttendance(s.id, true, false)} disabled={attendanceSaving}
+                <button onClick={() => onAdminAttendance(session.id, true, false)} disabled={attendanceSaving}
                   className="px-3 py-1.5 rounded-full bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 disabled:opacity-60 transition-colors">
                   No (No-Show)
                 </button>

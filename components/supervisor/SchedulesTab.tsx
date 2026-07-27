@@ -1,13 +1,10 @@
 import { useState } from "react";
 import { Plus, X as XIcon, AlertTriangle, Search, Pencil, Play, Archive, ChevronDown, Repeat } from "lucide-react";
-import { subjectLabel, LOW_BALANCE_AMBER_HOURS } from "@/lib/labels";
+import { subjectLabel, LOW_BALANCE_AMBER_HOURS, DAY_LABELS } from "@/lib/labels";
 import { formatHours } from "@/lib/datetime";
+import CopyButton from "@/components/shared/CopyButton";
 import type { Schedule, ScheduleGeneration } from "./ScheduleModal";
 import type { Session } from "./SessionCard";
-
-const DAY_LABELS: Record<string, string> = {
-  mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
-};
 
 interface SchedulesTabProps {
   schedules: Schedule[];
@@ -147,13 +144,7 @@ export default function SchedulesTab({
                       <span className="text-[11px] text-blue-600 truncate max-w-[200px]" title={sched.zoom_link}>
                         🔗 {sched.zoom_link.replace(/^https?:\/\//, '').slice(0, 30)}{sched.zoom_link.replace(/^https?:\/\//, '').length > 30 ? '…' : ''}
                       </span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(sched.zoom_link!); }}
-                        className="text-[10px] text-charcoal/30 hover:text-charcoal/60 transition-colors"
-                        title="Copy link"
-                      >
-                        Copy
-                      </button>
+                      <CopyButton text={sched.zoom_link} />
                     </div>
                   )}
                 </div>

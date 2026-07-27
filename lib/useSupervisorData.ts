@@ -8,6 +8,14 @@ import type { Schedule, ScheduleGeneration } from "@/components/supervisor/Sched
 import type { RescheduleRequest } from "@/components/supervisor/SessionsTab";
 import type { User } from "@/app/supervisor/page";
 
+function isFutureScheduledSessionOf(session: Session, scheduleId: string) {
+  return session.schedule_id === scheduleId && session.status === "scheduled" && new Date(session.scheduled_at) > new Date();
+}
+
+function reportError(err: unknown) {
+  alert(getAxiosError(err).message);
+}
+
 export function useSupervisorData(authChecked: boolean) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [students, setStudents] = useState<User[]>([]);
@@ -44,26 +52,22 @@ export function useSupervisorData(authChecked: boolean) {
   }, [authChecked]);
 
   async function handleDeactivateSchedule(id: string) {
-    const futureCount = sessions.filter(s => s.schedule_id === id && s.status === "scheduled" && new Date(s.scheduled_at) > new Date()).length;
+    const futureCount = sessions.filter(s => isFutureScheduledSessionOf(s, id)).length;
     if (!confirm(`This will remove ${futureCount} future session${futureCount !== 1 ? "s" : ""}. The schedule will be moved to Archived. You can reactivate it later if needed.`)) return;
 
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setScheduleActioning(id);
     try {
       await api.delete(`/admin/weekly-schedules/${id}`);
       setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: false } : s));
-      setSessions(prev => prev.filter(s => !(s.schedule_id === id && s.status === "scheduled" && new Date(s.scheduled_at) > new Date())));
+      setSessions(prev => prev.filter(s => !isFutureScheduledSessionOf(s, id)));
     } catch (err) {
-      alert(getAxiosError(err).message);
+      reportError(err);
     } finally {
       setScheduleActioning(null);
     }
   }
 
   async function handleReactivateSchedule(id: string) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setScheduleActioning(id);
     try {
       const res = await api.post(`/admin/weekly-schedules/${id}/reactivate`, {});
@@ -72,15 +76,13 @@ export function useSupervisorData(authChecked: boolean) {
       const sessRes = await api.get("/admin/sessions");
       setSessions(sessRes.data.sessions);
     } catch (err) {
-      alert(getAxiosError(err).message);
+      reportError(err);
     } finally {
       setScheduleActioning(null);
     }
   }
 
   async function handleGenerateNow(id: string) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setScheduleActioning(id);
     try {
       const res = await api.post(`/admin/weekly-schedules/${id}/generate`, {});
@@ -90,7 +92,7 @@ export function useSupervisorData(authChecked: boolean) {
         setSessions(sessRes.data.sessions);
       }
     } catch (err) {
-      alert(getAxiosError(err).message);
+      reportError(err);
     } finally {
       setScheduleActioning(null);
     }

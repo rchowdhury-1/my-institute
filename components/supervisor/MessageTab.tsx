@@ -18,8 +18,6 @@ export default function MessageTab({ students, teachers }: MessageTabProps) {
 
   async function handleSendMessage() {
     if (!msgForm.receiver_id || !msgForm.content.trim()) return;
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setSending(true);
     try {
       await api.post("/messages",

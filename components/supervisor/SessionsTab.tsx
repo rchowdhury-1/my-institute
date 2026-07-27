@@ -26,7 +26,7 @@ export interface RescheduleRequest {
   created_at: string;
 }
 
-const ALL_STATUSES = ["scheduled", "completed", "cancelled", "rescheduled", "no_show", "cancelled_teacher"] as const;
+const ALL_STATUSES = Object.keys(SESSION_STATUS_LABEL);
 
 interface SessionsTabProps {
   sessions: Session[];
@@ -156,8 +156,6 @@ export default function SessionsTab({
   const hasActiveFilters = filterTeacherId || filterStudentId || filterStatuses.size < ALL_STATUSES.length;
 
   async function handleAdminAttendance(sessionId: string, teacherAttended: boolean, studentAttended: boolean) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setAttendanceSaving(true);
     try {
       const res = await api.patch(`/sessions/${sessionId}/attendance`,
@@ -174,8 +172,6 @@ export default function SessionsTab({
   }
 
   async function handleCreateSession() {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setCreating(true);
     try {
       const res = await api.post("/sessions",
@@ -206,8 +202,6 @@ export default function SessionsTab({
 
   async function handleDeleteSession(id: string) {
     if (!confirm("Delete this session?")) return;
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setDeleting(id);
     try {
       await api.delete(`/sessions/${id}`);
@@ -220,8 +214,6 @@ export default function SessionsTab({
   }
 
   async function handleApproveRequest(rr: RescheduleRequest) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setRrActioning(rr.id);
     setRrError((p) => ({ ...p, [rr.id]: "" }));
     try {
@@ -251,8 +243,6 @@ export default function SessionsTab({
   }
 
   async function handleRejectRequest(rr: RescheduleRequest) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setRrActioning(rr.id);
     setRrError((p) => ({ ...p, [rr.id]: "" }));
     try {

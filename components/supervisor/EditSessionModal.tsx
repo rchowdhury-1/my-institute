@@ -30,9 +30,6 @@ export default function EditSessionModal({ session, teachers, onClose, onSaved }
   const [editError, setEditError] = useState("");
 
   async function handleEditSession() {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
-
     // Confirmation for teacher change
     if (editForm.teacher_id && editForm.teacher_id !== session.teacher_id) {
       const newTeacher = teachers.find((t) => t.id === editForm.teacher_id);

@@ -39,6 +39,11 @@ export const SESSION_STATUS_LABEL: Record<string, string> = {
   cancelled_teacher: "Teacher cancelled",
 };
 
+export const DAY_LABELS: Record<string, string> = {
+  mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
+};
+export const ALL_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
 export const DURATION_OPTIONS = [30, 60, 90, 120] as const;
 
 // "Copied!" feedback duration on CopyButton components (admin/teachers,
