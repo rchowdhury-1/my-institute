@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import Button from "@/components/shared/Button";
+import { AUTH_INPUT_CLASS } from "@/lib/styles";
+import { dashboardPathForRole } from "@/lib/labels";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -46,13 +48,7 @@ export default function ChangePasswordPage() {
       );
 
       const role = localStorage.getItem("userRole");
-      if (role === "admin" || role === "supervisor") {
-        router.push("/supervisor");
-      } else if (role === "teacher") {
-        router.push("/teacher/dashboard");
-      } else {
-        router.push("/student/dashboard");
-      }
+      router.push(dashboardPathForRole(role));
     } catch (err: unknown) {
       setStatus("error");
       const message =
@@ -66,8 +62,7 @@ export default function ChangePasswordPage() {
   // avoids a flash of the form before the redirect fires.
   if (!authChecked) return null;
 
-  const inputClass =
-    "w-full px-4 py-3 rounded-xl border border-black/10 bg-white text-charcoal placeholder:text-charcoal/35 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 focus:border-emerald-primary transition-all text-sm";
+  const inputClass = AUTH_INPUT_CLASS;
 
   return (
     <main className="min-h-screen bg-cream flex items-center justify-center px-4">

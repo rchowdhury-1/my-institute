@@ -66,82 +66,32 @@ export default function Pricing() {
               </div>
 
               <ul className="space-y-3 mb-8 flex-1">
-                <li className="flex items-center gap-3">
-                  <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      pkg.featured ? "bg-white/20" : "bg-emerald-primary/10"
-                    }`}
-                  >
-                    <Check
-                      size={12}
-                      className={pkg.featured ? "text-white" : "text-emerald-primary"}
-                    />
-                  </div>
-                  <span
-                    className={`text-sm ${
-                      pkg.featured ? "text-white/85" : "text-charcoal/70"
-                    }`}
-                  >
-                    {pkg.lessons} lessons per month
-                  </span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      pkg.featured ? "bg-white/20" : "bg-emerald-primary/10"
-                    }`}
-                  >
-                    <Check
-                      size={12}
-                      className={pkg.featured ? "text-white" : "text-emerald-primary"}
-                    />
-                  </div>
-                  <span
-                    className={`text-sm ${
-                      pkg.featured ? "text-white/85" : "text-charcoal/70"
-                    }`}
-                  >
-                    {pkg.duration}
-                  </span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      pkg.featured ? "bg-white/20" : "bg-emerald-primary/10"
-                    }`}
-                  >
-                    <Check
-                      size={12}
-                      className={pkg.featured ? "text-white" : "text-emerald-primary"}
-                    />
-                  </div>
-                  <span
-                    className={`text-sm ${
-                      pkg.featured ? "text-white/85" : "text-charcoal/70"
-                    }`}
-                  >
-                    One-to-one with expert teacher
-                  </span>
-                </li>
-                <li className="flex items-center gap-3">
-                  <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      pkg.featured ? "bg-white/20" : "bg-emerald-primary/10"
-                    }`}
-                  >
-                    <Check
-                      size={12}
-                      className={pkg.featured ? "text-white" : "text-emerald-primary"}
-                    />
-                  </div>
-                  <span
-                    className={`text-sm ${
-                      pkg.featured ? "text-white/85" : "text-charcoal/70"
-                    }`}
-                  >
-                    Flexible scheduling
-                  </span>
-                </li>
+                {[
+                  `${pkg.lessons} lessons per month`,
+                  pkg.duration,
+                  "One-to-one with expert teacher",
+                  "Flexible scheduling",
+                ].map((feature) => (
+                  <li key={feature} className="flex items-center gap-3">
+                    <div
+                      className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        pkg.featured ? "bg-white/20" : "bg-emerald-primary/10"
+                      }`}
+                    >
+                      <Check
+                        size={12}
+                        className={pkg.featured ? "text-white" : "text-emerald-primary"}
+                      />
+                    </div>
+                    <span
+                      className={`text-sm ${
+                        pkg.featured ? "text-white/85" : "text-charcoal/70"
+                      }`}
+                    >
+                      {feature}
+                    </span>
+                  </li>
+                ))}
               </ul>
 
               <Button

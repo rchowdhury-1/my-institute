@@ -55,6 +55,12 @@ export const COPY_FEEDBACK_MS = 2000;
 // own reminder-notification trigger shown to students.
 export const LOW_BALANCE_AMBER_HOURS = 4;
 
+export function dashboardPathForRole(role?: string | null): string {
+  if (role === "admin" || role === "supervisor") return "/supervisor";
+  if (role === "teacher") return "/teacher/dashboard";
+  return "/student/dashboard";
+}
+
 export function whatsAppUrl(phone: string | null | undefined, message?: string): string | null {
   const num = (phone || "").replace(/[^0-9]/g, "");
   if (!num) return null;

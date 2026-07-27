@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import Button from "@/components/shared/Button";
+import { AUTH_INPUT_CLASS } from "@/lib/styles";
+import { dashboardPathForRole } from "@/lib/labels";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -35,13 +37,7 @@ export default function LoginPage() {
         return;
       }
 
-      if (user.role === "admin" || user.role === "supervisor") {
-        router.push("/supervisor");
-      } else if (user.role === "teacher") {
-        router.push("/teacher/dashboard");
-      } else {
-        router.push("/student/dashboard");
-      }
+      router.push(dashboardPathForRole(user.role));
     } catch (err: unknown) {
       setStatus("error");
       const message =
@@ -51,8 +47,7 @@ export default function LoginPage() {
     }
   };
 
-  const inputClass =
-    "w-full px-4 py-3 rounded-xl border border-black/10 bg-white text-charcoal placeholder:text-charcoal/35 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 focus:border-emerald-primary transition-all text-sm";
+  const inputClass = AUTH_INPUT_CLASS;
 
   return (
     <main className="min-h-screen bg-cream flex items-center justify-center px-4">

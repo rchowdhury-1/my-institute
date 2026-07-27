@@ -5,6 +5,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import WhatsAppButton from "@/components/layout/WhatsAppButton";
 import { Analytics } from "@vercel/analytics/react";
+import { SITE_URL } from "@/lib/content";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -18,9 +19,6 @@ const inter = Inter({
   display: "swap",
 });
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://my-institute-eight.vercel.app";
-
 export const metadata: Metadata = {
   title: {
     template: "My Institute | %s",
@@ -28,7 +26,7 @@ export const metadata: Metadata = {
   },
   description:
     "Online Quran, Arabic, and Islamic studies lessons for all ages. Expert teachers, flexible scheduling, one-to-one private lessons.",
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL(SITE_URL),
   openGraph: {
     siteName: "My Institute",
     type: "website",

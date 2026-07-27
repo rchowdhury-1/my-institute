@@ -10,6 +10,7 @@ import Badge from "@/components/shared/Badge";
 import Section from "@/components/shared/Section";
 import AnimatedSection from "@/components/shared/AnimatedSection";
 import Button from "@/components/shared/Button";
+import { AUTH_INPUT_CLASS } from "@/lib/styles";
 
 function formatWhatsAppMessage(data: RevertInput): string {
   return [
@@ -84,8 +85,7 @@ export default function LearnAboutIslamClient() {
     }
   };
 
-  const inputClass =
-    "w-full px-4 py-3 rounded-xl border border-black/10 bg-white text-charcoal placeholder:text-charcoal/35 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 focus:border-emerald-primary transition-all text-sm";
+  const inputClass = AUTH_INPUT_CLASS;
 
   return (
     <>

@@ -1,6 +1,6 @@
 import api from "@/lib/api";
-
-const WHATSAPP_NUMBER = "201067827621";
+import { BRAND } from "@/lib/content";
+import { whatsAppUrl } from "@/lib/labels";
 
 interface SubmitWithWhatsAppOptions<T> {
   endpoint: string;
@@ -15,7 +15,7 @@ export async function submitWithWhatsApp<T>({
 }: SubmitWithWhatsAppOptions<T>) {
   const res = await api.post(endpoint, formData);
   const message = whatsappTemplate(formData);
-  const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-  window.open(url, "_blank");
+  const url = whatsAppUrl(BRAND.whatsapp, message);
+  window.open(url ?? undefined, "_blank");
   return res;
 }

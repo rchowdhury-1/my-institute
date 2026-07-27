@@ -17,6 +17,8 @@ export const BRAND: BrandInfo = {
 // External student exam portal, built and hosted by Mohammad
 export const EXAM_PORTAL_URL = "https://mohammad69850.github.io/my-institute-exam";
 
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://my-institute-eight.vercel.app";
+
 // Fallback inbox for the public form routes (app/api/contact, /free-trial,
 // /scholarship) when CONTACT_EMAIL isn't set in the environment.
 export const FALLBACK_CONTACT_EMAIL = BRAND.email;
