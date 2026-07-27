@@ -49,7 +49,8 @@ router.post('/register', asyncHandler(async (req, res) => {
       if (payload.role !== 'admin')
         return res.status(403).json({ error: 'Only admins can create teacher or admin accounts' });
       role = requestedRole;
-    } catch {
+    } catch (err) {
+      console.error('[auth/register] role-escalation token check failed:', err);
       return res.status(403).json({ error: 'Only admins can create teacher or admin accounts' });
     }
   }
@@ -155,7 +156,8 @@ router.post('/refresh', async (req, res) => {
     const role = userResult.rows[0]?.role || 'student';
 
     res.json({ accessToken: signAccess(payload.userId, role) });
-  } catch {
+  } catch (err) {
+    console.error('[auth/refresh]', err);
     res.status(401).json({ error: 'Invalid refresh token' });
   }
 });
@@ -199,7 +201,8 @@ router.get('/me', async (req, res) => {
     );
     if (!result.rows[0]) return res.status(404).json({ error: 'User not found' });
     res.json({ user: result.rows[0] });
-  } catch {
+  } catch (err) {
+    console.error('[auth/me]', err);
     res.status(401).json({ error: 'Invalid token' });
   }
 });

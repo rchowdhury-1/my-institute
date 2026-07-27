@@ -52,15 +52,17 @@ const allowedOrigins = [
   'http://localhost:3001',
 ].filter(Boolean);
 
-console.log('CORS — allowedOrigins:', JSON.stringify(allowedOrigins));
+if (process.env.DEBUG_CORS) {
+  console.log('CORS — allowedOrigins:', JSON.stringify(allowedOrigins));
+}
 
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    console.log('CORS REJECT — origin:', JSON.stringify(origin));
-    console.log('CORS REJECT — expected:', JSON.stringify(process.env.CLIENT_URL));
-    console.log('CORS REJECT — also expected:', JSON.stringify(process.env.FRONTEND_URL));
+    if (process.env.DEBUG_CORS) {
+      console.warn('CORS REJECT:', JSON.stringify({ origin, clientUrl: process.env.CLIENT_URL, frontendUrl: process.env.FRONTEND_URL }));
+    }
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -111,7 +113,7 @@ const PORT = process.env.PORT || 5000;
 initDb()
   .then(() => {
     const resendKey = process.env.RESEND_API_KEY;
-    console.log(`RESEND_API_KEY: ${resendKey ? resendKey.slice(0, 6) + '...' : 'NOT SET — welcome emails disabled'}`);
+    console.log(`RESEND_API_KEY: ${resendKey ? 'set' : 'NOT SET — welcome emails disabled'}`);
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
   .catch((err) => {

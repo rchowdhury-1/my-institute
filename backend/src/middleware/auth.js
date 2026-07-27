@@ -11,7 +11,8 @@ function requireAuth(req, res, next) {
     req.userId = payload.userId;
     req.userRole = payload.role;
     next();
-  } catch {
+  } catch (err) {
+    console.warn('[auth] token verification failed:', err.message);
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 }

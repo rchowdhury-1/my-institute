@@ -4,7 +4,8 @@ const { CANCELLATION_BUFFER_HOURS } = require('./shared.generated');
 // CANCELLATION_BUFFER_HOURS (shared default) can still be overridden per
 // environment — this override is backend-only and not part of the
 // cross-tier sync; the frontend always uses the shared default.
-const BUFFER_HOURS = Number(process.env.CANCELLATION_BUFFER_HOURS) || CANCELLATION_BUFFER_HOURS;
+const envBufferHours = Number(process.env.CANCELLATION_BUFFER_HOURS);
+const BUFFER_HOURS = Number.isFinite(envBufferHours) ? envBufferHours : CANCELLATION_BUFFER_HOURS;
 
 /**
  * Check whether a student is allowed to cancel or request-reschedule a session.
