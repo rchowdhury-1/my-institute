@@ -8,23 +8,18 @@ const router = express.Router();
 router.use(requireAuth);
 
 // ─── POST /reschedule-requests ─────────────────────────────────────────────
-router.post('/', requireRole('student'), async (req, res) => {
+router.post('/', requireRole('student'), asyncHandler(async (req, res) => {
   const { session_id, proposed_at } = req.body;
   if (!session_id || !proposed_at)
     return res.status(400).json({ error: 'session_id and proposed_at are required' });
 
-  try {
-    const result = await createRescheduleRequest(pool, {
-      studentId: req.userId,
-      sessionId: session_id,
-      proposedAt: proposed_at,
-    });
-    res.status(result.status).json(result.body);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+  const result = await createRescheduleRequest(pool, {
+    studentId: req.userId,
+    sessionId: session_id,
+    proposedAt: proposed_at,
+  });
+  res.status(result.status).json(result.body);
+}));
 
 // ─── DELETE /reschedule-requests/:id ───────────────────────────────────────
 router.delete('/:id', requireRole('student'), asyncHandler(async (req, res) => {
@@ -89,19 +84,14 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // ─── PATCH /reschedule-requests/:id/approve ────────────────────────────────
-router.patch('/:id/approve', requireRole('teacher', 'admin', 'supervisor'), async (req, res) => {
-  try {
-    const result = await approveRescheduleRequest(pool, {
-      requestId: req.params.id,
-      userId: req.userId,
-      userRole: req.userRole,
-    });
-    res.status(result.status).json(result.body);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+router.patch('/:id/approve', requireRole('teacher', 'admin', 'supervisor'), asyncHandler(async (req, res) => {
+  const result = await approveRescheduleRequest(pool, {
+    requestId: req.params.id,
+    userId: req.userId,
+    userRole: req.userRole,
+  });
+  res.status(result.status).json(result.body);
+}));
 
 // ─── PATCH /reschedule-requests/:id/reject ─────────────────────────────────
 router.patch('/:id/reject', requireRole('teacher', 'admin', 'supervisor'), asyncHandler(async (req, res) => {
