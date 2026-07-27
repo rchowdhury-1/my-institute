@@ -6,6 +6,7 @@ import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
 import { INPUT_CLASS as inputClass } from "@/lib/styles";
 import { generatePassword } from "@/lib/adminUtils";
+import { usePersonAdmin } from "@/lib/usePersonAdmin";
 import CredentialBanner from "@/components/admin/CredentialBanner";
 import PersonCard from "@/components/admin/PersonCard";
 import {
@@ -72,10 +73,52 @@ export default function AdminStudentsPage() {
   const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [token, setToken] = useState<string | null>(null);
 
-  const [students, setStudents] = useState<Student[]>([]);
+  const admin = usePersonAdmin<Student>("student", {
+    buildEditForm: (student) => ({
+      display_name: student.display_name,
+      email: student.email,
+      phone: student.phone ?? "",
+      guardian_name: student.guardian_name ?? "",
+      teacher_id: student.teacher_id ?? "",
+      hourly_rate: student.hourly_rate ?? "",
+      currency: student.currency as Student["currency"],
+      is_legacy_pricing: student.is_legacy_pricing,
+      pricing_notes: student.pricing_notes ?? "",
+    }),
+    buildEditPayload: (form) => ({
+      display_name: form.display_name,
+      email: form.email,
+      phone: (form.phone as string) || null,
+      guardian_name: (form.guardian_name as string) || null,
+      teacher_id: (form.teacher_id as string) || null,
+      hourly_rate: form.hourly_rate,
+      currency: form.currency,
+      is_legacy_pricing: form.is_legacy_pricing,
+      pricing_notes: (form.pricing_notes as string) || null,
+    }),
+  });
+  const {
+    items: students,
+    loading,
+    loadError: error,
+    fetchItems: fetchStudents,
+    editingId,
+    editForm,
+    editLoading,
+    editError,
+    startEdit,
+    updateEditForm,
+    handleEditSave,
+    cancelEdit,
+    resetBanner,
+    setResetBanner,
+    accountActionFor,
+    startAction,
+    confirmAction,
+    cancelAction,
+  } = admin;
+
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Create form
@@ -102,23 +145,6 @@ export default function AdminStudentsPage() {
 
   // Banners
   const [successBanner, setSuccessBanner] = useState<{ name: string; password: string; email: string; emailSent: boolean; emailError?: string } | null>(null);
-  const [resetBanner, setResetBanner] = useState<{ studentId: string; name: string; password: string; email: string; emailSent: boolean; emailError?: string } | null>(null);
-
-  // Per-card state
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<Student>>({});
-  const [editLoading, setEditLoading] = useState(false);
-  const [editError, setEditError] = useState("");
-
-  const [resetConfirmId, setResetConfirmId] = useState<string | null>(null);
-  const [resetLoading, setResetLoading] = useState(false);
-
-  const [deactivateConfirmId, setDeactivateConfirmId] = useState<string | null>(null);
-  const [deactivateLoading, setDeactivateLoading] = useState(false);
-  const [deactivateError, setDeactivateError] = useState<{ id: string; message: string } | null>(null);
-
-  const [reactivateConfirmId, setReactivateConfirmId] = useState<string | null>(null);
-  const [reactivateLoading, setReactivateLoading] = useState(false);
 
   // ── Auth guard ────────────────────────────────────────────────────────────
 
@@ -127,19 +153,6 @@ export default function AdminStudentsPage() {
   }, [authChecked]);
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
-
-  const fetchStudents = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get("/admin/students");
-      setStudents(res.data.students ?? res.data);
-    } catch (err) {
-      console.error('Fetch students error:', err);
-      setError("Failed to load students. Please refresh the page.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   const fetchTeachers = useCallback(async () => {
     try {
@@ -261,143 +274,6 @@ export default function AdminStudentsPage() {
       );
     } finally {
       setCreateLoading(false);
-    }
-  };
-
-  // ── Edit ──────────────────────────────────────────────────────────────────
-
-  const startEdit = (student: Student) => {
-    setEditingId(student.id);
-    setEditForm({
-      display_name: student.display_name,
-      email: student.email,
-      phone: student.phone ?? "",
-      guardian_name: student.guardian_name ?? "",
-      teacher_id: student.teacher_id ?? "",
-      hourly_rate: student.hourly_rate ?? "",
-      currency: student.currency as Student["currency"],
-      is_legacy_pricing: student.is_legacy_pricing,
-      pricing_notes: student.pricing_notes ?? "",
-    });
-    setEditError("");
-    setResetConfirmId(null);
-    setDeactivateConfirmId(null);
-  };
-
-  const handleEditSave = async (studentId: string) => {
-    setEditError("");
-    setEditLoading(true);
-    try {
-      const res = await api.patch(
-        `/admin/students/${studentId}`,
-        {
-          display_name: editForm.display_name,
-          email: editForm.email,
-          phone: (editForm.phone as string) || null,
-          guardian_name: (editForm.guardian_name as string) || null,
-          teacher_id: (editForm.teacher_id as string) || null,
-          hourly_rate: editForm.hourly_rate,
-          currency: editForm.currency,
-          is_legacy_pricing: editForm.is_legacy_pricing,
-          pricing_notes: (editForm.pricing_notes as string) || null,
-        }
-      );
-      const updated: Partial<Student> = res.data.student ?? res.data;
-      // Merge — PATCH response doesn't include package fields, keep existing ones
-      setStudents((prev) =>
-        prev.map((s) => (s.id === studentId ? { ...s, ...updated } : s))
-      );
-      setEditingId(null);
-    } catch (err) {
-      const { status, message } = getAxiosError(err);
-      setEditError(
-        status === 409
-          ? "Someone with this email address already exists."
-          : message
-      );
-    } finally {
-      setEditLoading(false);
-    }
-  };
-
-  // ── Reset password ────────────────────────────────────────────────────────
-
-  const handleResetPassword = async (student: Student) => {
-    setResetLoading(true);
-    try {
-      const res = await api.post(
-        `/admin/students/${student.id}/reset-password`,
-        {}
-      );
-      const tempPassword: string = res.data.tempPassword ?? res.data.temp_password;
-      setResetBanner({
-        studentId: student.id,
-        name: student.display_name,
-        password: tempPassword,
-        email: student.email,
-        emailSent: res.data.email_sent ?? false,
-        emailError: res.data.email_error || undefined,
-      });
-      setResetConfirmId(null);
-      setStudents((prev) =>
-        prev.map((s) =>
-          s.id === student.id ? { ...s, must_change_password: true } : s
-        )
-      );
-    } catch (err) {
-      console.error('Reset password error:', err);
-      alert(getAxiosError(err).message);
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
-  // ── Deactivate ────────────────────────────────────────────────────────────
-
-  const handleDeactivate = async (student: Student) => {
-    setDeactivateLoading(true);
-    setDeactivateError(null);
-    try {
-      await api.patch(
-        `/admin/students/${student.id}`,
-        { is_active: false }
-      );
-      setStudents((prev) =>
-        prev.map((s) => (s.id === student.id ? { ...s, is_active: false } : s))
-      );
-      setDeactivateConfirmId(null);
-    } catch (err) {
-      const { status, message } = getAxiosError(err);
-      setDeactivateError({
-        id: student.id,
-        message:
-          status === 409
-            ? "This student has upcoming lessons and cannot be turned off."
-            : message,
-      });
-    } finally {
-      setDeactivateLoading(false);
-    }
-  };
-
-  // ── Reactivate ───────────────────────────────────────────────────────────
-
-  const handleReactivate = async (student: Student) => {
-    setReactivateLoading(true);
-    try {
-      await api.patch(
-        `/admin/students/${student.id}`,
-        { is_active: true }
-      );
-      setStudents((prev) =>
-        prev.map((s) => (s.id === student.id ? { ...s, is_active: true } : s))
-      );
-      setReactivateConfirmId(null);
-    } catch (err) {
-      // Reactivation has no blocking conditions
-      console.error("[admin/students] failed to reactivate:", err);
-    } finally {
-      setReactivateLoading(false);
     }
   };
 
@@ -672,25 +548,19 @@ export default function AdminStudentsPage() {
                 editLoading={editLoading}
                 editError={editError}
                 onEditStart={() => startEdit(student)}
-                onEditFormChange={(patch) => setEditForm((f) => ({ ...f, ...patch }))}
+                onEditFormChange={(patch) => updateEditForm(patch)}
                 onEditSave={() => handleEditSave(student.id)}
-                onEditCancel={() => setEditingId(null)}
-                resetConfirm={resetConfirmId === student.id}
-                resetLoading={resetLoading}
-                onResetStart={() => { setResetConfirmId(student.id); setDeactivateConfirmId(null); setEditingId(null); }}
-                onResetConfirm={() => handleResetPassword(student)}
-                onResetCancel={() => setResetConfirmId(null)}
-                deactivateConfirm={deactivateConfirmId === student.id}
-                deactivateLoading={deactivateLoading}
-                deactivateError={deactivateError?.id === student.id ? deactivateError.message : null}
-                onDeactivateStart={() => { setDeactivateConfirmId(student.id); setDeactivateError(null); setResetConfirmId(null); setEditingId(null); }}
-                onDeactivateConfirm={() => handleDeactivate(student)}
-                onDeactivateCancel={() => { setDeactivateConfirmId(null); setDeactivateError(null); }}
-                reactivateConfirm={reactivateConfirmId === student.id}
-                reactivateLoading={reactivateLoading}
-                onReactivateStart={() => { setReactivateConfirmId(student.id); setDeactivateConfirmId(null); setResetConfirmId(null); setEditingId(null); }}
-                onReactivateConfirm={() => handleReactivate(student)}
-                onReactivateCancel={() => setReactivateConfirmId(null)}
+                onEditCancel={() => cancelEdit()}
+                accountAction={accountActionFor(student)}
+                onActionStart={(type) => startAction(type, student.id)}
+                onActionConfirm={() => {
+                  const action = accountActionFor(student);
+                  if (action) confirmAction(action.type, student);
+                }}
+                onActionCancel={() => {
+                  const action = accountActionFor(student);
+                  if (action) cancelAction(action.type);
+                }}
                 inputClass={inputClass}
               />
             ))}

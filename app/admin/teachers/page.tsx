@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
 import { INPUT_CLASS as inputClass } from "@/lib/styles";
 import { generatePassword } from "@/lib/adminUtils";
+import { usePersonAdmin } from "@/lib/usePersonAdmin";
 import CredentialBanner from "@/components/admin/CredentialBanner";
 import PersonCard from "@/components/admin/PersonCard";
 import {
@@ -47,9 +48,37 @@ export default function AdminTeachersPage() {
   const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [token, setToken] = useState<string | null>(null);
 
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const admin = usePersonAdmin<Teacher>("teacher", {
+    buildEditForm: (teacher) => ({
+      display_name: teacher.display_name,
+      email: teacher.email,
+      phone: teacher.phone ?? "",
+      bio: teacher.bio ?? "",
+      specialisation: teacher.specialisation ?? "",
+    }),
+  });
+  const {
+    items: teachers,
+    setItems: setTeachers,
+    loading,
+    loadError,
+    fetchItems: fetchTeachers,
+    editingId,
+    editForm,
+    editLoading,
+    editError,
+    startEdit,
+    updateEditForm,
+    handleEditSave,
+    cancelEdit,
+    resetBanner,
+    setResetBanner,
+    accountActionFor,
+    startAction,
+    confirmAction,
+    cancelAction,
+  } = admin;
+
   const [searchQuery, setSearchQuery] = useState("");
 
   // Create form
@@ -75,33 +104,6 @@ export default function AdminTeachersPage() {
     emailSent: boolean;
     emailError?: string;
   } | null>(null);
-  const [resetBanner, setResetBanner] = useState<{
-    teacherId: string;
-    name: string;
-    password: string;
-    email: string;
-    emailSent: boolean;
-    emailError?: string;
-  } | null>(null);
-
-  // Per-card state
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<Teacher>>({});
-  const [editLoading, setEditLoading] = useState(false);
-  const [editError, setEditError] = useState("");
-
-  const [resetConfirmId, setResetConfirmId] = useState<string | null>(null);
-  const [resetLoading, setResetLoading] = useState(false);
-
-  const [deactivateConfirmId, setDeactivateConfirmId] = useState<string | null>(null);
-  const [deactivateLoading, setDeactivateLoading] = useState(false);
-  const [deactivateError, setDeactivateError] = useState<{
-    id: string;
-    message: string;
-  } | null>(null);
-
-  const [reactivateConfirmId, setReactivateConfirmId] = useState<string | null>(null);
-  const [reactivateLoading, setReactivateLoading] = useState(false);
 
   // ── Auth guard ──────────────────────────────────────────────────────────
 
@@ -110,19 +112,6 @@ export default function AdminTeachersPage() {
   }, [authChecked]);
 
   // ── Fetch teachers ──────────────────────────────────────────────────────
-
-  const fetchTeachers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get("/admin/teachers");
-      setTeachers(res.data.teachers ?? res.data);
-    } catch (err) {
-      console.error('Fetch teachers error:', err);
-      setLoadError("Failed to load teachers. Please refresh the page.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (authChecked && token) fetchTeachers();
@@ -204,130 +193,6 @@ export default function AdminTeachersPage() {
       );
     } finally {
       setCreateLoading(false);
-    }
-  };
-
-  // ── Edit ────────────────────────────────────────────────────────────────
-
-  const startEdit = (teacher: Teacher) => {
-    setEditingId(teacher.id);
-    setEditForm({
-      display_name: teacher.display_name,
-      email: teacher.email,
-      phone: teacher.phone ?? "",
-      bio: teacher.bio ?? "",
-      specialisation: teacher.specialisation ?? "",
-    });
-    setEditError("");
-    setResetConfirmId(null);
-    setDeactivateConfirmId(null);
-  };
-
-  const handleEditSave = async (teacherId: string) => {
-    setEditError("");
-    setEditLoading(true);
-    try {
-      const res = await api.patch(`/admin/teachers/${teacherId}`, editForm);
-      const updated: Teacher = res.data.teacher ?? res.data;
-      setTeachers((prev) =>
-        prev.map((t) => (t.id === teacherId ? { ...t, ...updated } : t))
-      );
-      setEditingId(null);
-    } catch (err) {
-      const { status, message } = getAxiosError(err);
-      setEditError(
-        status === 409
-          ? "Someone with this email address already exists."
-          : message
-      );
-    } finally {
-      setEditLoading(false);
-    }
-  };
-
-  // ── Reset password ──────────────────────────────────────────────────────
-
-  const handleResetPassword = async (teacher: Teacher) => {
-    setResetLoading(true);
-    try {
-      const res = await api.post(
-        `/admin/teachers/${teacher.id}/reset-password`,
-        {}
-      );
-      const tempPassword: string =
-        res.data.temp_password ?? res.data.tempPassword;
-      setResetBanner({
-        teacherId: teacher.id,
-        name: teacher.display_name,
-        password: tempPassword,
-        email: teacher.email,
-        emailSent: res.data.email_sent ?? false,
-        emailError: res.data.email_error || undefined,
-      });
-      setResetConfirmId(null);
-      setTeachers((prev) =>
-        prev.map((t) =>
-          t.id === teacher.id ? { ...t, must_change_password: true } : t
-        )
-      );
-    } catch (err) {
-      console.error('Reset password error:', err);
-      alert(getAxiosError(err).message);
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
-  // ── Deactivate ──────────────────────────────────────────────────────────
-
-  const handleDeactivate = async (teacher: Teacher) => {
-    setDeactivateLoading(true);
-    setDeactivateError(null);
-    try {
-      await api.patch(
-        `/admin/teachers/${teacher.id}`,
-        { is_active: false }
-      );
-      setTeachers((prev) =>
-        prev.map((t) =>
-          t.id === teacher.id ? { ...t, is_active: false } : t
-        )
-      );
-      setDeactivateConfirmId(null);
-    } catch (err) {
-      const { status, message } = getAxiosError(err);
-      setDeactivateError({
-        id: teacher.id,
-        message:
-          status === 409
-            ? "This teacher has upcoming lessons and cannot be turned off."
-            : message,
-      });
-    } finally {
-      setDeactivateLoading(false);
-    }
-  };
-
-  // ── Reactivate ──────────────────────────────────────────────────────────
-
-  const handleReactivate = async (teacher: Teacher) => {
-    setReactivateLoading(true);
-    try {
-      await api.patch(
-        `/admin/teachers/${teacher.id}`,
-        { is_active: true }
-      );
-      setTeachers((prev) =>
-        prev.map((t) =>
-          t.id === teacher.id ? { ...t, is_active: true } : t
-        )
-      );
-      setReactivateConfirmId(null);
-    } catch (err) {
-      // Reactivation has no blocking conditions
-      console.error("[admin/teachers] failed to reactivate:", err);
-    } finally {
-      setReactivateLoading(false);
     }
   };
 
@@ -649,43 +514,19 @@ export default function AdminTeachersPage() {
                 editLoading={editLoading}
                 editError={editError}
                 onEditStart={() => startEdit(teacher)}
-                onEditFormChange={(patch) =>
-                  setEditForm((f) => ({ ...f, ...patch }))
-                }
+                onEditFormChange={(patch) => updateEditForm(patch)}
                 onEditSave={() => handleEditSave(teacher.id)}
-                onEditCancel={() => setEditingId(null)}
-                resetConfirm={resetConfirmId === teacher.id}
-                resetLoading={resetLoading}
-                onResetStart={() => {
-                  setResetConfirmId(teacher.id);
-                  setDeactivateConfirmId(null);
-                  setEditingId(null);
+                onEditCancel={() => cancelEdit()}
+                accountAction={accountActionFor(teacher)}
+                onActionStart={(type) => startAction(type, teacher.id)}
+                onActionConfirm={() => {
+                  const action = accountActionFor(teacher);
+                  if (action) confirmAction(action.type, teacher);
                 }}
-                onResetConfirm={() => handleResetPassword(teacher)}
-                onResetCancel={() => setResetConfirmId(null)}
-                deactivateConfirm={deactivateConfirmId === teacher.id}
-                deactivateLoading={deactivateLoading}
-                deactivateError={
-                  deactivateError?.id === teacher.id
-                    ? deactivateError.message
-                    : null
-                }
-                onDeactivateStart={() => {
-                  setDeactivateConfirmId(teacher.id);
-                  setDeactivateError(null);
-                  setResetConfirmId(null);
-                  setEditingId(null);
+                onActionCancel={() => {
+                  const action = accountActionFor(teacher);
+                  if (action) cancelAction(action.type);
                 }}
-                onDeactivateConfirm={() => handleDeactivate(teacher)}
-                onDeactivateCancel={() => {
-                  setDeactivateConfirmId(null);
-                  setDeactivateError(null);
-                }}
-                reactivateConfirm={reactivateConfirmId === teacher.id}
-                reactivateLoading={reactivateLoading}
-                onReactivateStart={() => { setReactivateConfirmId(teacher.id); setDeactivateConfirmId(null); setResetConfirmId(null); setEditingId(null); }}
-                onReactivateConfirm={() => handleReactivate(teacher)}
-                onReactivateCancel={() => setReactivateConfirmId(null)}
                 inputClass={inputClass}
               />
             ))}
