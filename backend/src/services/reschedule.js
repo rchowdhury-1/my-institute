@@ -4,6 +4,52 @@ const { canStudentCancel } = require('../lib/cancellation');
 const { formatSessionTime } = require('../lib/datetime');
 const { hasTeacherConflict } = require('../lib/queries');
 
+// Notifications are best-effort side effects, not part of an operation's
+// success criteria: a persisted (committed/updated) request must never be
+// reported to the client as failed just because a downstream notify() call
+// threw. Any error here is logged with request/recipient context and
+// swallowed — never rethrown.
+async function safeNotify(context, fn) {
+  try {
+    await fn();
+  } catch (err) {
+    console.error(`[reschedule] notification failed (${context})`, err);
+  }
+}
+
+// Notifies whichever party did NOT take the action (approve/reject): if a
+// teacher acted, notify admins; if an admin/supervisor acted, notify the
+// teacher. Shared by approve and reject — only the message strings differ.
+async function notifyCounterparty(requestId, userRole, { teacherId, studentName }, { type, title, adminMessage, teacherMessage, link }) {
+  if (userRole === 'teacher') {
+    await safeNotify(`request ${requestId} admins`, () =>
+      notifyAdmins(type, title, adminMessage(studentName), link));
+  } else {
+    await safeNotify(`request ${requestId} teacher ${teacherId}`, () =>
+      notify(teacherId, type, title, teacherMessage(studentName), '/teacher/dashboard'));
+  }
+}
+
+// Runs the sequential authorization/business-rule checks for creating a
+// reschedule request. Returns the first failing { status, body }, or null
+// if every check passes.
+function validateRescheduleRequest(session, proposedDate, pending) {
+  if (!session)
+    return { status: 404, body: { error: 'Session not found' } };
+
+  if (session.status !== 'scheduled')
+    return { status: 400, body: { error: 'This session is no longer active' } };
+
+  const bufferCheck = canStudentCancel(session);
+  if (!bufferCheck.allowed)
+    return { status: 403, body: { error: bufferCheck.reason, code: bufferCheck.code } };
+
+  if (pending.rows.length > 0)
+    return { status: 409, body: { error: 'A reschedule request is already pending for this session' } };
+
+  return null;
+}
+
 // Creates a reschedule request. Returns { status, body } — callers should
 // respond with exactly that status/body. Throws only on a genuinely
 // unexpected DB error (the route's catch-all handles that, matching the
@@ -16,7 +62,6 @@ async function createRescheduleRequest(pool, { studentId, sessionId, proposedAt 
     return { status: 400, body: { error: 'Proposed time must be in the future' } };
 
   try {
-    // 1. Session exists and belongs to this student
     const sessRes = await pool.query(
       `SELECT s.*, st.display_name AS student_name, t.display_name AS teacher_name
        FROM sessions s
@@ -24,31 +69,19 @@ async function createRescheduleRequest(pool, { studentId, sessionId, proposedAt 
        JOIN users t  ON t.id  = s.teacher_id
        WHERE s.id = $1`, [sessionId]
     );
-    if (sessRes.rows.length === 0)
-      return { status: 404, body: { error: 'Session not found' } };
     const session = sessRes.rows[0];
 
-    if (session.student_id !== studentId)
+    if (session && session.student_id !== studentId)
       return { status: 403, body: { error: 'Forbidden' } };
 
-    // 2. Session must be scheduled
-    if (session.status !== 'scheduled')
-      return { status: 400, body: { error: 'This session is no longer active' } };
-
-    // 3. 12-hour buffer / past session check
-    const bufferCheck = canStudentCancel(session);
-    if (!bufferCheck.allowed)
-      return { status: 403, body: { error: bufferCheck.reason, code: bufferCheck.code } };
-
-    // 4. No existing pending request
     const pending = await pool.query(
       `SELECT id FROM reschedule_requests WHERE session_id = $1 AND status = 'pending'`,
       [sessionId]
     );
-    if (pending.rows.length > 0)
-      return { status: 409, body: { error: 'A reschedule request is already pending for this session' } };
 
-    // 5. Teacher availability — overlap check
+    const validationError = validateRescheduleRequest(session, proposedDate, pending);
+    if (validationError) return validationError;
+
     const hasConflict = await hasTeacherConflict(pool, {
       teacherId: session.teacher_id,
       scheduledAt: proposedDate.toISOString(),
@@ -64,7 +97,6 @@ async function createRescheduleRequest(pool, { studentId, sessionId, proposedAt 
         },
       };
 
-    // 6. Insert request
     const id = uuidv4();
     const result = await pool.query(
       `INSERT INTO reschedule_requests (id, session_id, student_id, teacher_id, proposed_at)
@@ -72,15 +104,17 @@ async function createRescheduleRequest(pool, { studentId, sessionId, proposedAt 
       [id, sessionId, session.student_id, session.teacher_id, proposedDate.toISOString()]
     );
 
-    // 7. Notify teacher + admins
+    // Notify teacher + admins (best-effort — insert already succeeded).
     const origTime = formatSessionTime(session.scheduled_at);
     const newTime = formatSessionTime(proposedDate);
-    await notify(session.teacher_id, 'reschedule_requested', 'Reschedule Requested',
-      `${session.student_name} wants to reschedule from ${origTime} to ${newTime}`,
-      '/teacher/dashboard');
-    await notifyAdmins('reschedule_requested', 'Reschedule Requested',
-      `${session.student_name} wants to reschedule from ${origTime} to ${newTime}`,
-      '/supervisor');
+    await safeNotify(`request ${id} teacher ${session.teacher_id}`, () =>
+      notify(session.teacher_id, 'reschedule_requested', 'Reschedule Requested',
+        `${session.student_name} wants to reschedule from ${origTime} to ${newTime}`,
+        '/teacher/dashboard'));
+    await safeNotify(`request ${id} admins`, () =>
+      notifyAdmins('reschedule_requested', 'Reschedule Requested',
+        `${session.student_name} wants to reschedule from ${origTime} to ${newTime}`,
+        '/supervisor'));
 
     return { status: 201, body: { request: result.rows[0] } };
   } catch (err) {
@@ -91,14 +125,44 @@ async function createRescheduleRequest(pool, { studentId, sessionId, proposedAt 
   }
 }
 
+// Sends the post-commit notifications for a successful approval: the
+// student is notified their session moved, and the counterparty (the side
+// that did not take the approve action) is notified too. Called AFTER the
+// transaction commits, using the safe-notify pattern — a notify failure
+// here must never turn a persisted approval into a client-visible failure.
+async function notifyRescheduleApproved(rescheduleRequest, userRole, newTime) {
+  await safeNotify(`request ${rescheduleRequest.id} student ${rescheduleRequest.student_id}`, () =>
+    notify(rescheduleRequest.student_id, 'reschedule_approved', 'Reschedule Approved',
+      `Your session has been rescheduled to ${newTime}`,
+      '/student/sessions'));
+
+  await notifyCounterparty(
+    rescheduleRequest.id,
+    userRole,
+    { teacherId: rescheduleRequest.teacher_id, studentName: rescheduleRequest.student_name },
+    {
+      type: 'reschedule_approved',
+      title: 'Reschedule Approved',
+      adminMessage: (studentName) => `${studentName}'s session was approved and rescheduled to ${newTime}`,
+      teacherMessage: (studentName) => `${studentName}'s session was rescheduled to ${newTime}`,
+    }
+  );
+}
+
 // Approves a pending reschedule request: conflict re-check, close the old
-// session, insert the new one, update the request, notify — all inside one
-// transaction (all-or-nothing). Returns { status, body }; throws only on a
-// genuinely unexpected DB error, after rolling back and releasing the
-// client (the route's catch-all then does the same 500 response + log as
-// the original inline try/catch).
+// session, insert the new one, update the request — all inside one
+// transaction (all-or-nothing). Notifications are sent AFTER commit and are
+// best-effort (see notifyRescheduleApproved / F17): a notify failure never
+// rolls back or fails an already-committed approval. Returns { status,
+// body }; throws only on a genuinely unexpected DB error during the
+// transaction itself, after rolling back and releasing the client (the
+// route's catch-all then does the same 500 response + log as the original
+// inline try/catch).
 async function approveRescheduleRequest(pool, { requestId, userId, userRole }) {
   const client = await pool.connect();
+  let rescheduleRequest;
+  let newSession;
+  let updatedRequest;
   try {
     await client.query('BEGIN');
 
@@ -116,7 +180,7 @@ async function approveRescheduleRequest(pool, { requestId, userId, userRole }) {
       await client.query('ROLLBACK');
       return { status: 404, body: { error: 'Request not found' } };
     }
-    const rescheduleRequest = reqRes.rows[0];
+    rescheduleRequest = reqRes.rows[0];
 
     if (rescheduleRequest.status !== 'pending') {
       await client.query('ROLLBACK');
@@ -166,6 +230,7 @@ async function approveRescheduleRequest(pool, { requestId, userId, userRole }) {
        rescheduleRequest.zoom_link, rescheduleRequest.rate_at_creation, rescheduleRequest.currency_at_creation,
        rescheduleRequest.session_id]
     );
+    newSession = newSessRes.rows[0];
 
     // 3. Update request
     const updatedReq = await client.query(
@@ -174,31 +239,23 @@ async function approveRescheduleRequest(pool, { requestId, userId, userRole }) {
        WHERE id = $2 RETURNING *`,
       [userId, requestId]
     );
+    updatedRequest = updatedReq.rows[0];
 
     await client.query('COMMIT');
-
-    // Notify student
-    const newTime = formatSessionTime(rescheduleRequest.proposed_at);
-    await notify(rescheduleRequest.student_id, 'reschedule_approved', 'Reschedule Approved',
-      `Your session has been rescheduled to ${newTime}`,
-      '/student/sessions');
-
-    // Notify the other party (if teacher approved, notify admins; if admin approved, notify teacher)
-    if (userRole === 'teacher') {
-      await notifyAdmins('reschedule_approved', 'Reschedule Approved',
-        `${rescheduleRequest.student_name}'s session was approved and rescheduled to ${newTime}`, '/supervisor');
-    } else {
-      await notify(rescheduleRequest.teacher_id, 'reschedule_approved', 'Reschedule Approved',
-        `${rescheduleRequest.student_name}'s session was rescheduled to ${newTime}`, '/teacher/dashboard');
-    }
-
-    return { status: 200, body: { request: updatedReq.rows[0], new_session: newSessRes.rows[0] } };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
   } finally {
     client.release();
   }
+
+  // Post-commit: best-effort notifications. A failure here must NOT be
+  // reported to the client as a failed approval (F17) — the approval is
+  // already durably persisted at this point.
+  const newTime = formatSessionTime(rescheduleRequest.proposed_at);
+  await notifyRescheduleApproved(rescheduleRequest, userRole, newTime);
+
+  return { status: 200, body: { request: updatedRequest, new_session: newSession } };
 }
 
 // Rejects a pending reschedule request. Returns { status, body }.
@@ -231,23 +288,35 @@ async function rejectRescheduleRequest(pool, { requestId, userId, userRole, reje
     [userId, rejectionReason || null, requestId]
   );
 
-  // Notify student
+  // Post-update: best-effort notifications (F17) — the rejection is already
+  // durably persisted, so a notify failure must not be surfaced as an error.
   const origTime = formatSessionTime(rescheduleRequest.original_scheduled_at);
   const reasonText = rejectionReason ? ` Reason: ${rejectionReason}` : '';
-  await notify(rescheduleRequest.student_id, 'reschedule_rejected', 'Reschedule Rejected',
-    `Your reschedule request for ${origTime} was not approved.${reasonText}`,
-    '/student/sessions');
+  await safeNotify(`request ${requestId} student ${rescheduleRequest.student_id}`, () =>
+    notify(rescheduleRequest.student_id, 'reschedule_rejected', 'Reschedule Rejected',
+      `Your reschedule request for ${origTime} was not approved.${reasonText}`,
+      '/student/sessions'));
 
-  // Notify the other party
-  if (userRole === 'teacher') {
-    await notifyAdmins('reschedule_rejected', 'Reschedule Rejected',
-      `${rescheduleRequest.student_name}'s reschedule request was rejected`, '/supervisor');
-  } else {
-    await notify(rescheduleRequest.teacher_id, 'reschedule_rejected', 'Reschedule Rejected',
-      `${rescheduleRequest.student_name}'s reschedule request was rejected`, '/teacher/dashboard');
-  }
+  await notifyCounterparty(
+    requestId,
+    userRole,
+    { teacherId: rescheduleRequest.teacher_id, studentName: rescheduleRequest.student_name },
+    {
+      type: 'reschedule_rejected',
+      title: 'Reschedule Rejected',
+      adminMessage: (studentName) => `${studentName}'s reschedule request was rejected`,
+      teacherMessage: (studentName) => `${studentName}'s reschedule request was rejected`,
+    }
+  );
 
   return { status: 200, body: { request: result.rows[0] } };
 }
 
-module.exports = { createRescheduleRequest, approveRescheduleRequest, rejectRescheduleRequest };
+module.exports = {
+  createRescheduleRequest,
+  approveRescheduleRequest,
+  rejectRescheduleRequest,
+  validateRescheduleRequest,
+  notifyRescheduleApproved,
+  notifyCounterparty,
+};

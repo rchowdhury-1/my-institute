@@ -34,12 +34,20 @@ function deriveAttendanceStatus(teacherAttended, studentAttended) {
   return 'no_show';
 }
 
+// Renders "${n} unit" or "${n} units" — shared by every low-balance /
+// renewal-reminder message so a count of exactly 1 is never pluralized.
+function pluralize(n, unit) {
+  return `${n} ${unit}${n !== 1 ? 's' : ''}`;
+}
+
 // LOCKED decrement rules: completed/no_show consume the slot (decrement by
 // duration_minutes/60); cancelled_teacher does not decrement. Clamped at 0.
 // Schedule-based sessions decrement weekly_schedules.lessons_remaining
 // (hours); legacy sessions decrement packages.sessions_remaining (count).
+// Pure persistence only — returns the resulting balance info needed for the
+// notification decision, but does not itself send notifications.
 async function decrementBalance(pool, session, status) {
-  if (status !== 'completed' && status !== 'no_show') return;
+  if (status !== 'completed' && status !== 'no_show') return null;
 
   if (session.schedule_id) {
     await pool.query(
@@ -55,41 +63,74 @@ async function decrementBalance(pool, session, status) {
       [session.schedule_id]
     );
     const balance = sched.rows[0]?.lessons_remaining;
-    if (balance !== null && balance !== undefined) {
-      if (balance <= 0) {
-        const studentName = (await getDisplayName(pool, session.student_id)) || 'A student';
-        await notify(session.student_id, 'lesson_balance_zero', 'Hours Balance Empty',
-          'You have no hours remaining. Please contact admin to renew.',
-          '/student/sessions');
-        await notifyAdmins('lesson_balance_zero', 'Student Hours Balance Empty',
-          `${studentName} has no hours remaining and needs renewal.`, '/supervisor');
-      } else if (balance <= RENEWAL_REMINDER_HOURS) {
-        await notify(session.student_id, 'renewal_reminder', 'Renew Your Hours',
-          `You have ${balance} hour${balance !== 1 ? 's' : ''} remaining. Contact us to renew.`,
-          '/student/sessions');
-        await notifyAdmins('renewal_reminder', 'Student Hours Renewal',
-          `A student has ${balance} hour${balance !== 1 ? 's' : ''} remaining and needs renewal.`, '/supervisor');
-      }
-    }
-  } else {
-    const pkg = await pool.query(
-      'SELECT * FROM packages WHERE user_id=$1 ORDER BY purchased_at DESC LIMIT 1',
-      [session.student_id]
-    );
-    if (pkg.rows.length > 0 && pkg.rows[0].sessions_remaining !== null) {
-      const remaining = Math.max(0, pkg.rows[0].sessions_remaining - 1);
-      await pool.query('UPDATE packages SET sessions_remaining=$1 WHERE id=$2', [remaining, pkg.rows[0].id]);
-
-      if (remaining <= 2 && !pkg.rows[0].renewal_reminder_sent) {
-        await pool.query('UPDATE packages SET renewal_reminder_sent=true WHERE id=$1', [pkg.rows[0].id]);
-        await notify(session.student_id, 'renewal_reminder', 'Renew Your Package',
-          `You have ${remaining} session${remaining !== 1 ? 's' : ''} remaining. Contact us to renew.`,
-          '/student/sessions');
-        await notifyAdmins('renewal_reminder', 'Student Package Renewal',
-          `A student has ${remaining} sessions remaining and needs renewal.`, '/supervisor');
-      }
-    }
+    return { kind: 'schedule', balance };
   }
+
+  const pkg = await pool.query(
+    'SELECT * FROM packages WHERE user_id=$1 ORDER BY purchased_at DESC LIMIT 1',
+    [session.student_id]
+  );
+  if (pkg.rows.length > 0 && pkg.rows[0].sessions_remaining !== null) {
+    const remaining = Math.max(0, pkg.rows[0].sessions_remaining - 1);
+    await pool.query('UPDATE packages SET sessions_remaining=$1 WHERE id=$2', [remaining, pkg.rows[0].id]);
+
+    let reminderSent = false;
+    if (remaining <= 2 && !pkg.rows[0].renewal_reminder_sent) {
+      await pool.query('UPDATE packages SET renewal_reminder_sent=true WHERE id=$1', [pkg.rows[0].id]);
+      reminderSent = true;
+    }
+    return { kind: 'package', remaining, reminderSent };
+  }
+
+  return null;
+}
+
+// Evaluates the zero/low-balance thresholds against the result of
+// decrementBalance and sends the appropriate student + admin notifications.
+// Kept separate from decrementBalance so persistence and notification
+// concerns don't share one function (F48).
+async function notifyIfLowBalance(pool, session, balanceResult) {
+  if (!balanceResult) return;
+
+  if (balanceResult.kind === 'schedule') {
+    const { balance } = balanceResult;
+    if (balance === null || balance === undefined) return;
+
+    if (balance <= 0) {
+      const studentName = (await getDisplayName(pool, session.student_id)) || 'A student';
+      await notify(session.student_id, 'lesson_balance_zero', 'Hours Balance Empty',
+        'You have no hours remaining. Please contact admin to renew.',
+        '/student/sessions');
+      await notifyAdmins('lesson_balance_zero', 'Student Hours Balance Empty',
+        `${studentName} has no hours remaining and needs renewal.`, '/supervisor');
+    } else if (balance <= RENEWAL_REMINDER_HOURS) {
+      await notify(session.student_id, 'renewal_reminder', 'Renew Your Hours',
+        `You have ${pluralize(balance, 'hour')} remaining. Contact us to renew.`,
+        '/student/sessions');
+      await notifyAdmins('renewal_reminder', 'Student Hours Renewal',
+        `A student has ${pluralize(balance, 'hour')} remaining and needs renewal.`, '/supervisor');
+    }
+    return;
+  }
+
+  // kind === 'package'
+  const { remaining, reminderSent } = balanceResult;
+  if (reminderSent) {
+    await notify(session.student_id, 'renewal_reminder', 'Renew Your Package',
+      `You have ${pluralize(remaining, 'session')} remaining. Contact us to renew.`,
+      '/student/sessions');
+    await notifyAdmins('renewal_reminder', 'Student Package Renewal',
+      `A student has ${pluralize(remaining, 'session')} remaining and needs renewal.`, '/supervisor');
+  }
+}
+
+// Decrements the appropriate balance and sends any resulting zero/low-
+// balance notifications. Combines decrementBalance + notifyIfLowBalance for
+// callers (e.g. markAttendance) that want the original single-call
+// behavior.
+async function decrementBalanceAndNotify(pool, session, status) {
+  const balanceResult = await decrementBalance(pool, session, status);
+  await notifyIfLowBalance(pool, session, balanceResult);
 }
 
 async function notifyAttendanceMarked(session, status) {
@@ -129,10 +170,18 @@ async function markAttendance(pool, { session, userId, userRole, teacherAttended
   );
   const updated = result.rows[0];
 
-  await decrementBalance(pool, session, newStatus);
+  await decrementBalanceAndNotify(pool, session, newStatus);
   await notifyAttendanceMarked(session, newStatus);
 
   return { session: updated };
 }
 
-module.exports = { markAttendance, checkAttendanceWindow, deriveAttendanceStatus, decrementBalance };
+module.exports = {
+  markAttendance,
+  checkAttendanceWindow,
+  deriveAttendanceStatus,
+  decrementBalance,
+  decrementBalanceAndNotify,
+  notifyIfLowBalance,
+  pluralize,
+};
