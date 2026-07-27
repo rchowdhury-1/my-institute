@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
-import { RefreshCw, X as XIcon, CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
-import { formatSessionDate, formatTimeOnly, formatSessionTime, formatRelative, isSessionStillUpcoming, computeClockSkew, isToday, ATTENDANCE_EARLY_MS, ATTENDANCE_LATE_MS } from "@/lib/datetime";
+import { CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-react";
+import { formatSessionDate, formatTimeOnly, isSessionStillUpcoming, computeClockSkew, isToday, ATTENDANCE_EARLY_MS, ATTENDANCE_LATE_MS } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { useLogout } from "@/lib/useLogout";
 import { getAxiosError } from "@/lib/errors";
 import SessionCalendar from "@/components/shared/SessionCalendar";
-import { subjectLabel, SESSION_STATUS_STYLE, SESSION_STATUS_LABEL, whatsAppUrl } from "@/lib/labels";
+import { subjectLabel, SESSION_STATUS_STYLE, SESSION_STATUS_LABEL } from "@/lib/labels";
 import PageLoading from "@/components/shared/PageLoading";
 import PageError from "@/components/shared/PageError";
 import JoinSessionButton from "@/components/shared/JoinSessionButton";
+import RescheduleRequestList from "@/components/shared/RescheduleRequestList";
 
 interface Lesson {
   id: string;
@@ -33,20 +34,6 @@ interface Teacher {
   email: string;
 }
 
-interface RescheduleRequest {
-  id: string;
-  session_id: string;
-  proposed_at: string;
-  status: string;
-  original_scheduled_at: string;
-  duration_minutes: number;
-  subject: string;
-  student_name: string;
-  student_phone: string;
-  teacher_name: string;
-  created_at: string;
-}
-
 export default function TeacherDashboard() {
   const handleLogout = useLogout();
   const { authChecked } = useAuthGuard(["teacher"]);
@@ -57,12 +44,6 @@ export default function TeacherDashboard() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
-  const [rescheduleRequests, setRescheduleRequests] = useState<RescheduleRequest[]>([]);
-  const [rrActioning, setRrActioning] = useState<string | null>(null);
-  const [rrRejectId, setRrRejectId] = useState<string | null>(null);
-  const [rrRejectReason, setRrRejectReason] = useState("");
-  const [rrResult, setRrResult] = useState<Record<string, { action: "approved" | "rejected"; phone?: string; proposedAt?: string; originalAt?: string; reason?: string }>>({});
-  const [rrError, setRrError] = useState<Record<string, string>>({});
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [calendarMode, setCalendarMode] = useState<"week" | "month">("week");
 
@@ -72,13 +53,11 @@ export default function TeacherDashboard() {
     Promise.all([
       api.get("/teachers/me"),
       api.get("/teachers/lessons"),
-      api.get("/reschedule-requests?status=pending"),
     ])
-      .then(([meRes, lessonsRes, rrRes]) => {
+      .then(([meRes, lessonsRes]) => {
         setTeacher(meRes.data.user);
         setLessons(lessonsRes.data.lessons);
         setSkewMs(computeClockSkew(lessonsRes.data.server_time));
-        setRescheduleRequests(rrRes.data.requests ?? []);
       })
       .catch(() => setError("Failed to load dashboard. Please sign in again."))
       .finally(() => setLoading(false));
@@ -124,48 +103,6 @@ export default function TeacherDashboard() {
       setSaving(null);
     }
   };
-
-  async function handleApproveRequest(rr: RescheduleRequest) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
-    setRrActioning(rr.id);
-    setRrError((p) => ({ ...p, [rr.id]: "" }));
-    try {
-      await api.patch(`/reschedule-requests/${rr.id}/approve`, {}
-      );
-      setRescheduleRequests((prev) => prev.filter((r) => r.id !== rr.id));
-      setRrResult((p) => ({ ...p, [rr.id]: { action: "approved", phone: rr.student_phone, proposedAt: rr.proposed_at } }));
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { code?: string; error?: string } } };
-      if (e.response?.data?.code === "TEACHER_CONFLICT") {
-        setRrError((p) => ({ ...p, [rr.id]: "Conflict detected — another session has been scheduled at this time. Please reject this request." }));
-      } else {
-        setRrError((p) => ({ ...p, [rr.id]: e.response?.data?.error || "Failed to approve." }));
-      }
-    } finally {
-      setRrActioning(null);
-    }
-  }
-
-  async function handleRejectRequest(rr: RescheduleRequest) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
-    setRrActioning(rr.id);
-    try {
-      await api.patch(`/reschedule-requests/${rr.id}/reject`,
-        { rejection_reason: rrRejectReason || undefined }
-      );
-      setRescheduleRequests((prev) => prev.filter((r) => r.id !== rr.id));
-      setRrResult((p) => ({ ...p, [rr.id]: { action: "rejected", phone: rr.student_phone, originalAt: rr.original_scheduled_at, reason: rrRejectReason } }));
-      setRrRejectId(null);
-      setRrRejectReason("");
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } };
-      setRrError((p) => ({ ...p, [rr.id]: e.response?.data?.error || "Failed to reject." }));
-    } finally {
-      setRrActioning(null);
-    }
-  }
 
   if (loading) {
     return <PageLoading />;
@@ -234,93 +171,7 @@ export default function TeacherDashboard() {
 
         {viewMode === "list" && <>
         {/* Reschedule Requests */}
-        {(rescheduleRequests.length > 0 || Object.keys(rrResult).length > 0) && (
-          <section className="mb-10">
-            <h2 className="font-display text-xl font-bold text-charcoal mb-4 flex items-center gap-2">
-              <RefreshCw size={18} className="text-amber-500" />
-              Reschedule Requests
-              {rescheduleRequests.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
-                  {rescheduleRequests.length}
-                </span>
-              )}
-            </h2>
-            <div className="space-y-3">
-              {rescheduleRequests.map((rr) => (
-                <div key={rr.id} className="bg-white rounded-2xl border border-amber-200 p-5">
-                  <div className="space-y-1 mb-3">
-                    <p className="font-semibold text-charcoal text-sm">{rr.student_name}</p>
-                    <p className="text-charcoal/50 text-xs">
-                      Current: {formatSessionTime(rr.original_scheduled_at)}
-                    </p>
-                    <p className="text-emerald-primary text-xs font-medium">
-                      Proposed: {formatSessionTime(rr.proposed_at)}
-                    </p>
-                    <p className="text-charcoal/30 text-xs">{formatRelative(rr.created_at)}</p>
-                  </div>
-                  {rrRejectId === rr.id ? (
-                    <div className="space-y-2">
-                      <textarea
-                        value={rrRejectReason}
-                        onChange={(e) => setRrRejectReason(e.target.value)}
-                        placeholder="Reason for rejection (optional)"
-                        rows={2}
-                        className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-red-200 resize-none"
-                      />
-                      <div className="flex gap-2">
-                        <button onClick={() => handleRejectRequest(rr)} disabled={rrActioning === rr.id}
-                          className="px-4 py-1.5 rounded-full bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors">
-                          {rrActioning === rr.id ? "Rejecting…" : "Confirm Reject"}
-                        </button>
-                        <button onClick={() => { setRrRejectId(null); setRrRejectReason(""); }}
-                          className="px-4 py-1.5 rounded-full border border-black/10 text-charcoal/60 text-xs transition-colors">
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <button onClick={() => handleApproveRequest(rr)} disabled={rrActioning === rr.id}
-                        className="px-3 py-1.5 rounded-full bg-emerald-primary text-white text-xs font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
-                        {rrActioning === rr.id ? "…" : "Approve"}
-                      </button>
-                      <button onClick={() => setRrRejectId(rr.id)} disabled={rrActioning === rr.id}
-                        className="px-3 py-1.5 rounded-full border border-black/10 text-charcoal/60 text-xs font-semibold hover:border-red-300 hover:text-red-500 disabled:opacity-60 transition-colors">
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                  {rrError[rr.id] && <p className="mt-2 text-red-500 text-xs">{rrError[rr.id]}</p>}
-                </div>
-              ))}
-              {Object.entries(rrResult).map(([id, result]) => {
-                const waMsg = result.action === "approved"
-                  ? `Assalamu alaikum! Your session has been rescheduled to ${formatSessionTime(result.proposedAt || "")}. See you then insha'Allah! — My Institute`
-                  : `Assalamu alaikum, unfortunately your reschedule request for ${formatSessionTime(result.originalAt || "")} could not be approved.${result.reason ? ` ${result.reason}` : ""} Please contact us to arrange an alternative. — My Institute`;
-                const url = whatsAppUrl(result.phone, waMsg);
-                return (
-                  <div key={id} className="bg-white rounded-2xl border border-black/5 p-4 flex items-center justify-between gap-4">
-                    <p className={`text-sm font-medium ${result.action === "approved" ? "text-emerald-primary" : "text-charcoal/60"}`}>
-                      {result.action === "approved" ? "Approved ✓" : "Rejected"}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      {url && (
-                        <a href={url} target="_blank" rel="noopener noreferrer"
-                          className="px-3 py-1.5 rounded-full bg-green-500 text-white text-xs font-semibold hover:bg-green-600 transition-colors">
-                          Send WhatsApp to student →
-                        </a>
-                      )}
-                      <button onClick={() => setRrResult((p) => { const n = { ...p }; delete n[id]; return n; })}
-                        className="text-charcoal/30 hover:text-charcoal/60 transition-colors">
-                        <XIcon size={14} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
+        <RescheduleRequestList variant="compact" />
 
         {/* Today's schedule */}
         <section className="mb-10">
