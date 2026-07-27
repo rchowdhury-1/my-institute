@@ -7,9 +7,13 @@ import { COPY_FEEDBACK_MS } from "@/lib/labels";
 export default function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
+      })
+      .catch((err) => console.error("[CopyButton] copy failed:", err));
   };
   return (
     <button

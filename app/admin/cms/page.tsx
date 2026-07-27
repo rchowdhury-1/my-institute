@@ -33,6 +33,9 @@ export default function AdminCmsPage() {
   const [items, setItems] = useState<Record<SectionKey, CmsItem[]>>({
     advertisements: [], islam_info: [], honor_list: [], quotes: [],
   });
+  const [loadError, setLoadError] = useState<Record<SectionKey, boolean>>({
+    advertisements: false, islam_info: false, honor_list: false, quotes: false,
+  });
   const [loading, setLoading] = useState<Record<SectionKey, boolean>>({
     advertisements: true, islam_info: false, honor_list: false, quotes: false,
   });
@@ -54,11 +57,13 @@ export default function AdminCmsPage() {
   async function fetchSection(type: SectionKey) {
     if (!loading[type] && items[type].length > 0) return; // already loaded
     setLoading(prev => ({ ...prev, [type]: true }));
+    setLoadError(prev => ({ ...prev, [type]: false }));
     try {
       const res = await api.get(`/cms/admin/${type}`);
       setItems(prev => ({ ...prev, [type]: res.data.items }));
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error(`[admin/cms] failed to fetch ${type}:`, err);
+      setLoadError(prev => ({ ...prev, [type]: true }));
     } finally {
       setLoading(prev => ({ ...prev, [type]: false }));
     }
@@ -181,6 +186,7 @@ export default function AdminCmsPage() {
 
   const currentItems = items[activeTab];
   const isLoading = loading[activeTab];
+  const hasLoadError = loadError[activeTab];
 
   return (
     <main className="min-h-screen bg-cream">
@@ -229,6 +235,16 @@ export default function AdminCmsPage() {
         {isLoading ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-4 border-emerald-primary/30 border-t-emerald-primary rounded-full animate-spin" />
+          </div>
+        ) : hasLoadError ? (
+          <div className="bg-white rounded-2xl border border-red-200 p-10 text-center text-sm">
+            <p className="text-red-500 mb-2">Failed to load this section.</p>
+            <button
+              onClick={() => fetchSection(activeTab)}
+              className="text-emerald-primary text-xs font-semibold hover:underline"
+            >
+              Retry
+            </button>
           </div>
         ) : currentItems.length === 0 ? (
           <div className="bg-white rounded-2xl border border-black/5 p-10 text-center text-charcoal/30 text-sm">

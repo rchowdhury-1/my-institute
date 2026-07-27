@@ -59,7 +59,8 @@ export default function ScholarshipApplicants() {
           ? { ...a, sponsors: [...a.sponsors, { id: res.data.sponsor.id, sponsor_name: form.sponsor_name, months_sponsored: parseInt(form.months_sponsored) || 1, payment_status: "pending" }] }
           : a
       ));
-    } catch {
+    } catch (err) {
+      console.error("[ScholarshipApplicants] sponsor submit failed:", err);
       alert("Failed to submit sponsorship.");
     } finally {
       setSubmitting(false);

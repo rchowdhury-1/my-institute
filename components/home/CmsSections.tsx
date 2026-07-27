@@ -13,7 +13,8 @@ async function fetchSection(type: string): Promise<CmsItem[]> {
     if (!res.ok) return [];
     const data = await res.json();
     return data.items ?? [];
-  } catch {
+  } catch (err) {
+    console.error(`[CmsSections] failed to fetch ${type}:`, err);
     return [];
   }
 }

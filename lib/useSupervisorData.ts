@@ -36,7 +36,10 @@ export function useSupervisorData(authChecked: boolean) {
         setRescheduleRequests(rrRes.data.requests ?? []);
         setSchedules(schedRes.data.schedules ?? []);
       })
-      .catch(() => setError("Failed to load data. You may not have permission."))
+      .catch((err) => {
+        console.error("useSupervisorData: failed to load dashboard data", err);
+        setError("Failed to load data. You may not have permission.");
+      })
       .finally(() => setLoading(false));
   }, [authChecked]);
 

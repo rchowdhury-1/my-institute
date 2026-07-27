@@ -12,7 +12,7 @@ export function useLogout() {
   const router = useRouter();
 
   return async () => {
-    await api.post("/auth/logout", {}).catch(() => {});
+    await api.post("/auth/logout", {}).catch((err) => console.warn("logout API call failed", err));
     localStorage.clear();
     document.cookie = "userRole=; path=/; max-age=0";
     router.push("/login");

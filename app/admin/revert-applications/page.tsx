@@ -38,6 +38,7 @@ export default function AdminRevertApplicationsPage() {
   const router = useRouter();
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusError, setStatusError] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const t = localStorage.getItem("accessToken");
@@ -54,6 +55,7 @@ export default function AdminRevertApplicationsPage() {
   }, [router]);
 
   const handleStatusChange = async (id: string, newStatus: string) => {
+    setStatusError((prev) => ({ ...prev, [id]: "" }));
     try {
       const res = await api.patch(
         `/admin/revert-applications/${id}`,
@@ -62,8 +64,9 @@ export default function AdminRevertApplicationsPage() {
       setApplications((prev) =>
         prev.map((a) => (a.id === id ? res.data.application : a))
       );
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[admin/revert-applications] failed to update status:", err);
+      setStatusError((prev) => ({ ...prev, [id]: "Failed to update status." }));
     }
   };
 
@@ -117,20 +120,25 @@ export default function AdminRevertApplicationsPage() {
                     </p>
                   </div>
 
-                  <select
-                    value={app.status}
-                    onChange={(e) =>
-                      handleStatusChange(app.id, e.target.value)
-                    }
-                    data-testid="status-select"
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium border-0 cursor-pointer ${STATUS_STYLE[app.status]} focus:outline-none focus:ring-2 focus:ring-emerald-primary/30`}
-                  >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s.charAt(0).toUpperCase() + s.slice(1)}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex flex-col items-end gap-1">
+                    <select
+                      value={app.status}
+                      onChange={(e) =>
+                        handleStatusChange(app.id, e.target.value)
+                      }
+                      data-testid="status-select"
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border-0 cursor-pointer ${STATUS_STYLE[app.status]} focus:outline-none focus:ring-2 focus:ring-emerald-primary/30`}
+                    >
+                      {STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {s.charAt(0).toUpperCase() + s.slice(1)}
+                        </option>
+                      ))}
+                    </select>
+                    {statusError[app.id] && (
+                      <p className="text-xs text-red-500">{statusError[app.id]}</p>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

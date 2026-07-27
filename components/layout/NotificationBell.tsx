@@ -38,8 +38,8 @@ export default function NotificationBell() {
       const res = await api.get("/notifications");
       setNotifications(res.data.notifications.slice(0, 10));
       setUnreadCount(res.data.unread_count);
-    } catch {
-      // silently ignore — user may not be logged in
+    } catch (err) {
+      console.error("[NotificationBell] failed to fetch notifications:", err);
     }
   }
 

@@ -65,6 +65,7 @@ export default function StudentExamsPage() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resultRows, setResultRows] = useState<ResultRow[]>([]);
+  const [resultsError, setResultsError] = useState(false);
   const [examScore, setExamScore] = useState<{ score: number; max_score: number } | null>(null);
   const submittingRef = useRef(false);
 
@@ -131,10 +132,14 @@ export default function StudentExamsPage() {
   async function viewResults(exam: AssignedExam) {
     setActiveExam(exam);
     setExamScore({ score: exam.score ?? 0, max_score: exam.max_score });
+    setResultsError(false);
     try {
       const res = await api.get(`/exams/${exam.exam_id}/results`);
       setResultRows(res.data.results);
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error("[student/exams] failed to load result details:", err);
+      setResultsError(true);
+    }
     setView("results");
   }
 
@@ -240,6 +245,10 @@ export default function StudentExamsPage() {
                 {pct >= 70 ? "Well done!" : "Keep practising!"}
               </p>
             </div>
+          )}
+
+          {resultsError && (
+            <p className="text-sm text-red-500 text-center">Couldn&apos;t load question details, try again.</p>
           )}
 
           {resultRows.length > 0 && (
