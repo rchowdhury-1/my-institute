@@ -1,23 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import api from "@/lib/api";
-import { Send, Users, GraduationCap, Newspaper, Heart, Clock, X as XIcon } from "lucide-react";
-import Link from "next/link";
+import { useState } from "react";
+import { X as XIcon } from "lucide-react";
 import { formatSessionTime } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { useLogout } from "@/lib/useLogout";
-import { getAxiosError } from "@/lib/errors";
 import { whatsAppUrl } from "@/lib/labels";
+import { useSupervisorData } from "@/lib/useSupervisorData";
 import PageLoading from "@/components/shared/PageLoading";
 import PageError from "@/components/shared/PageError";
 import { type Session } from "@/components/supervisor/SessionCard";
-import ScheduleModal, { type Schedule, type ScheduleGeneration } from "@/components/supervisor/ScheduleModal";
+import ScheduleModal, { type Schedule } from "@/components/supervisor/ScheduleModal";
 import EditSessionModal, { type EditWaMsg } from "@/components/supervisor/EditSessionModal";
 import SchedulesTab from "@/components/supervisor/SchedulesTab";
-import SessionsTab, { type RescheduleRequest } from "@/components/supervisor/SessionsTab";
-
-const TOAST_MS = 3000;
+import SessionsTab from "@/components/supervisor/SessionsTab";
+import PeopleTab from "@/components/supervisor/PeopleTab";
+import MessageTab from "@/components/supervisor/MessageTab";
 
 export interface User {
   id: string;
@@ -29,132 +27,22 @@ export interface User {
 export default function SupervisorPage() {
   const handleLogout = useLogout();
   const { authChecked } = useAuthGuard(["admin", "supervisor"]);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [students, setStudents] = useState<User[]>([]);
-  const [teachers, setTeachers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const data = useSupervisorData(authChecked);
   const messagingEnabled = process.env.NEXT_PUBLIC_FEATURE_MESSAGING === "true";
   const [activeTab, setActiveTab] = useState<"sessions" | "schedules" | "people" | "message">("sessions");
-
-  // reschedule requests
-  const [rescheduleRequests, setRescheduleRequests] = useState<RescheduleRequest[]>([]);
 
   // edit session modal
   const [editSession, setEditSession] = useState<Session | null>(null);
   const [editWaMsg, setEditWaMsg] = useState<EditWaMsg | null>(null);
 
-  // schedules
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  // schedule modal
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
-  const [scheduleGenResult, setScheduleGenResult] = useState<ScheduleGeneration | null>(null);
-  const [scheduleActioning, setScheduleActioning] = useState<string | null>(null);
-
-  // message form
-  const [msgForm, setMsgForm] = useState({ receiver_id: "", content: "" });
-  const [sending, setSending] = useState(false);
-  const [msgSent, setMsgSent] = useState(false);
-
-  useEffect(() => {
-    if (!authChecked) return;
-
-    Promise.all([
-      api.get("/admin/sessions"),
-      api.get("/admin/students"),
-      api.get("/admin/teachers"),
-      api.get("/reschedule-requests?status=pending"),
-      api.get("/admin/weekly-schedules"),
-    ])
-      .then(([sessRes, studRes, teachRes, rrRes, schedRes]) => {
-        setSessions(sessRes.data.sessions);
-        setStudents(studRes.data.students);
-        setTeachers(teachRes.data.teachers);
-        setRescheduleRequests(rrRes.data.requests ?? []);
-        setSchedules(schedRes.data.schedules ?? []);
-      })
-      .catch(() => setError("Failed to load data. You may not have permission."))
-      .finally(() => setLoading(false));
-  }, [authChecked]);
-
-  // ─── Schedule handlers ────────────────────────────────────────────────────
 
   function openScheduleModal(schedule?: Schedule) {
     setEditingSchedule(schedule ?? null);
-    setScheduleGenResult(null);
+    data.setScheduleGenResult(null);
     setShowScheduleModal(true);
-  }
-
-  async function handleDeactivateSchedule(id: string) {
-    const futureCount = sessions.filter(s => s.schedule_id === id && s.status === "scheduled" && new Date(s.scheduled_at) > new Date()).length;
-    if (!confirm(`This will remove ${futureCount} future session${futureCount !== 1 ? "s" : ""}. The schedule will be moved to Archived. You can reactivate it later if needed.`)) return;
-
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
-    setScheduleActioning(id);
-    try {
-      await api.delete(`/admin/weekly-schedules/${id}`);
-      setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: false } : s));
-      setSessions(prev => prev.filter(s => !(s.schedule_id === id && s.status === "scheduled" && new Date(s.scheduled_at) > new Date())));
-    } catch (err) {
-      alert(getAxiosError(err).message);
-    } finally {
-      setScheduleActioning(null);
-    }
-  }
-
-  async function handleReactivateSchedule(id: string) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
-    setScheduleActioning(id);
-    try {
-      const res = await api.post(`/admin/weekly-schedules/${id}/reactivate`, {});
-      setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: true } : s));
-      setScheduleGenResult(res.data.generation);
-      const sessRes = await api.get("/admin/sessions");
-      setSessions(sessRes.data.sessions);
-    } catch (err) {
-      alert(getAxiosError(err).message);
-    } finally {
-      setScheduleActioning(null);
-    }
-  }
-
-  async function handleGenerateNow(id: string) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
-    setScheduleActioning(id);
-    try {
-      const res = await api.post(`/admin/weekly-schedules/${id}/generate`, {});
-      setScheduleGenResult(res.data.generation);
-      if (res.data.generation.created > 0) {
-        const sessRes = await api.get("/admin/sessions");
-        setSessions(sessRes.data.sessions);
-      }
-    } catch (err) {
-      alert(getAxiosError(err).message);
-    } finally {
-      setScheduleActioning(null);
-    }
-  }
-
-  async function handleSendMessage() {
-    if (!msgForm.receiver_id || !msgForm.content.trim()) return;
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
-    setSending(true);
-    try {
-      await api.post("/messages",
-        { receiver_id: msgForm.receiver_id, content: msgForm.content.trim() }
-      );
-      setMsgForm({ receiver_id: "", content: "" });
-      setMsgSent(true);
-      setTimeout(() => setMsgSent(false), TOAST_MS);
-    } catch (err) {
-      alert(getAxiosError(err).message);
-    } finally {
-      setSending(false);
-    }
   }
 
   function openEditModal(s: Session) {
@@ -163,16 +51,16 @@ export default function SupervisorPage() {
   }
 
   function handleEditSessionSaved(updated: Session, waMsg: EditWaMsg | null) {
-    setSessions((prev) => prev.map((s) => s.id === updated.id ? updated : s));
+    data.setSessions((prev) => prev.map((s) => s.id === updated.id ? updated : s));
     if (waMsg) setEditWaMsg(waMsg);
     setEditSession(null);
   }
 
-  if (loading) {
+  if (data.loading) {
     return <PageLoading />;
   }
-  if (error) {
-    return <PageError message={error} />;
+  if (data.error) {
+    return <PageError message={data.error} />;
   }
 
   return (
@@ -192,9 +80,9 @@ export default function SupervisorPage() {
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-4 mb-8">
           {[
-            { label: "Total Sessions", value: sessions.length },
-            { label: "Students", value: students.length },
-            { label: "Teachers", value: teachers.length },
+            { label: "Total Sessions", value: data.sessions.length },
+            { label: "Students", value: data.students.length },
+            { label: "Teachers", value: data.teachers.length },
           ].map((stat) => (
             <div key={stat.label} className="bg-white rounded-2xl border border-black/5 p-5 text-center">
               <p className="font-display text-3xl font-bold text-emerald-primary">{stat.value}</p>
@@ -223,12 +111,12 @@ export default function SupervisorPage() {
         {/* Sessions tab */}
         {activeTab === "sessions" && (
           <SessionsTab
-            sessions={sessions}
-            setSessions={setSessions}
-            students={students}
-            teachers={teachers}
-            rescheduleRequests={rescheduleRequests}
-            setRescheduleRequests={setRescheduleRequests}
+            sessions={data.sessions}
+            setSessions={data.setSessions}
+            students={data.students}
+            teachers={data.teachers}
+            rescheduleRequests={data.rescheduleRequests}
+            setRescheduleRequests={data.setRescheduleRequests}
             onEditSession={openEditModal}
           />
         )}
@@ -236,127 +124,26 @@ export default function SupervisorPage() {
         {/* Schedules tab */}
         {activeTab === "schedules" && (
           <SchedulesTab
-            schedules={schedules}
-            sessions={sessions}
-            scheduleGenResult={scheduleGenResult}
-            setScheduleGenResult={setScheduleGenResult}
-            scheduleActioning={scheduleActioning}
+            schedules={data.schedules}
+            sessions={data.sessions}
+            scheduleGenResult={data.scheduleGenResult}
+            setScheduleGenResult={data.setScheduleGenResult}
+            scheduleActioning={data.scheduleActioning}
             onOpenScheduleModal={openScheduleModal}
-            onGenerateNow={handleGenerateNow}
-            onDeactivate={handleDeactivateSchedule}
-            onReactivate={handleReactivateSchedule}
+            onGenerateNow={data.handleGenerateNow}
+            onDeactivate={data.handleDeactivateSchedule}
+            onReactivate={data.handleReactivateSchedule}
           />
         )}
 
         {/* People tab */}
         {activeTab === "people" && (
-          <div>
-          <div className="flex flex-wrap gap-3 mb-6">
-            <Link
-              href="/admin/teachers"
-              data-testid="link-manage-teachers"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
-            >
-              <Users size={15} /> Manage Teachers →
-            </Link>
-            <Link
-              href="/admin/students"
-              data-testid="link-manage-students"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
-            >
-              <GraduationCap size={15} /> Manage Students →
-            </Link>
-            <Link
-              href="/admin/newsfeed"
-              data-testid="link-manage-newsfeed"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
-            >
-              <Newspaper size={15} /> Manage Community →
-            </Link>
-            <Link
-              href="/admin/salaries"
-              data-testid="link-teacher-salaries"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
-            >
-              <Clock size={15} /> Teacher Salaries →
-            </Link>
-            <Link
-              href="/admin/revert-applications"
-              data-testid="link-manage-reverts"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors"
-            >
-              <Heart size={15} /> Revert Applications →
-            </Link>
-          </div>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <h2 className="font-display text-xl font-bold text-charcoal mb-4">
-                Students <span className="text-sm font-normal text-charcoal/40">({students.length})</span>
-              </h2>
-              <div className="space-y-2">
-                {students.map((s) => (
-                  <div key={s.id} className="bg-white rounded-2xl border border-black/5 px-4 py-3">
-                    <p className="font-semibold text-charcoal text-sm">{s.display_name}</p>
-                    <p className="text-charcoal/40 text-xs">{s.email}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h2 className="font-display text-xl font-bold text-charcoal mb-4">
-                Teachers <span className="text-sm font-normal text-charcoal/40">({teachers.length})</span>
-              </h2>
-              <div className="space-y-2">
-                {teachers.map((t) => (
-                  <div key={t.id} className="bg-white rounded-2xl border border-black/5 px-4 py-3">
-                    <p className="font-semibold text-charcoal text-sm">{t.display_name}</p>
-                    <p className="text-charcoal/40 text-xs">{t.email}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          </div>
+          <PeopleTab students={data.students} teachers={data.teachers} />
         )}
 
         {/* Message tab */}
         {activeTab === "message" && messagingEnabled && (
-          <div className="max-w-lg">
-            <h2 className="font-display text-xl font-bold text-charcoal mb-4">Send Message</h2>
-            <div className="bg-white rounded-2xl border border-black/5 p-6 space-y-3">
-              <select
-                value={msgForm.receiver_id}
-                onChange={(e) => setMsgForm((p) => ({ ...p, receiver_id: e.target.value }))}
-                className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30"
-              >
-                <option value="">Select recipient…</option>
-                <optgroup label="Students">
-                  {students.map((s) => <option key={s.id} value={s.id}>{s.display_name}</option>)}
-                </optgroup>
-                <optgroup label="Teachers">
-                  {teachers.map((t) => <option key={t.id} value={t.id}>{t.display_name}</option>)}
-                </optgroup>
-              </select>
-              <textarea
-                value={msgForm.content}
-                onChange={(e) => setMsgForm((p) => ({ ...p, content: e.target.value }))}
-                placeholder="Your message…"
-                rows={4}
-                className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 resize-none"
-              />
-              {msgSent && (
-                <p className="text-emerald-primary text-sm font-medium">Message sent successfully!</p>
-              )}
-              <button
-                onClick={handleSendMessage}
-                disabled={sending || !msgForm.receiver_id || !msgForm.content.trim()}
-                className="flex items-center gap-2 px-5 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors"
-              >
-                <Send size={14} />
-                {sending ? "Sending…" : "Send Message"}
-              </button>
-            </div>
-          </div>
+          <MessageTab students={data.students} teachers={data.teachers} />
         )}
       </div>
 
@@ -364,13 +151,13 @@ export default function SupervisorPage() {
       {showScheduleModal && (
         <ScheduleModal
           editingSchedule={editingSchedule}
-          students={students}
-          teachers={teachers}
+          students={data.students}
+          teachers={data.teachers}
           onClose={() => setShowScheduleModal(false)}
-          setSchedules={setSchedules}
-          setSessions={setSessions}
-          scheduleGenResult={scheduleGenResult}
-          setScheduleGenResult={setScheduleGenResult}
+          setSchedules={data.setSchedules}
+          setSessions={data.setSessions}
+          scheduleGenResult={data.scheduleGenResult}
+          setScheduleGenResult={data.setScheduleGenResult}
         />
       )}
 
@@ -379,7 +166,7 @@ export default function SupervisorPage() {
         <EditSessionModal
           key={editSession.id}
           session={editSession}
-          teachers={teachers}
+          teachers={data.teachers}
           onClose={() => setEditSession(null)}
           onSaved={handleEditSessionSaved}
         />
