@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Plus, Trash2, Edit2, Check, X, ChevronUp, ChevronDown } from "lucide-react";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface CmsItem {
   id: string;
@@ -28,7 +28,7 @@ type SectionKey = typeof SECTION_TYPES[number]["key"];
 const emptyForm = { title: "", content: "", image_url: "", position: "0" };
 
 export default function AdminCmsPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [activeTab, setActiveTab] = useState<SectionKey>("advertisements");
   const [items, setItems] = useState<Record<SectionKey, CmsItem[]>>({
     advertisements: [], islam_info: [], honor_list: [], quotes: [],
@@ -47,12 +47,10 @@ export default function AdminCmsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    const role = localStorage.getItem("userRole");
-    if (!token || (role !== "admin" && role !== "supervisor")) { router.push("/login"); return; }
+    if (!authChecked) return;
     fetchSection("advertisements");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [authChecked]);
 
   async function fetchSection(type: SectionKey) {
     if (!loading[type] && items[type].length > 0) return; // already loaded

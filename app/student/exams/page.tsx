@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { ClipboardList, CheckCircle, XCircle, Clock } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface AssignedExam {
   id: string; // assignment id
@@ -54,7 +54,7 @@ function formatTime(seconds: number) {
 }
 
 export default function StudentExamsPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard();
   const [exams, setExams] = useState<AssignedExam[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "taking" | "results">("list");
@@ -70,13 +70,12 @@ export default function StudentExamsPage() {
   const submittingRef = useRef(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (!token) { router.push("/login"); return; }
+    if (!authChecked) return;
     api.get("/exams")
       .then(res => setExams(res.data.exams))
       .catch((err) => console.error("[student/exams] failed to load exams:", err))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   useEffect(() => {
     if (view !== "taking" || timeLeft === null) return;

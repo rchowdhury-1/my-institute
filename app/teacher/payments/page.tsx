@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { DollarSign } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Payment {
   id: string;
@@ -23,18 +23,17 @@ const statusStyle: Record<string, string> = {
 };
 
 export default function TeacherPaymentsPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (!token) { router.push("/login"); return; }
+    if (!authChecked) return;
     api.get("/payments")
       .then(res => setPayments(res.data.payments))
       .catch((err) => console.error("[teacher/payments] failed to load:", err))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   const totalEarned = payments.filter(p => p.status === "paid").reduce((s, p) => s + parseFloat(p.total_amount), 0);
   const totalPending = payments.filter(p => p.status === "pending").reduce((s, p) => s + parseFloat(p.total_amount), 0);

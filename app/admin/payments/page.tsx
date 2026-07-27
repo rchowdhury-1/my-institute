@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { DollarSign, Check, Plus } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Teacher {
   id: string;
@@ -55,7 +55,7 @@ function formatDate(iso: string) {
 }
 
 export default function AdminPaymentsPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [tab, setTab] = useState<"teacher" | "student">("teacher");
 
   // teacher payments
@@ -82,9 +82,7 @@ export default function AdminPaymentsPage() {
   });
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    const role = localStorage.getItem("userRole");
-    if (!token || (role !== "admin" && role !== "supervisor")) { router.push("/login"); return; }
+    if (!authChecked) return;
     Promise.all([
       api.get("/payments"),
       api.get("/admin/teachers"),
@@ -96,7 +94,7 @@ export default function AdminPaymentsPage() {
       setStudentPayments(sPayRes.data.payments ?? []);
       setStudents(studRes.data.students ?? []);
     }).catch((err) => console.error("[admin/payments] failed to load:", err)).finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   async function handleGenerate() {
     if (!genForm.teacher_id || !genForm.month || !genForm.year) return;

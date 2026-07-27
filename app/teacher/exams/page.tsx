@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Plus, Trash2, ClipboardList, Users } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Question {
   question: string;
@@ -45,7 +45,7 @@ function emptyQuestion(): Question {
 }
 
 export default function TeacherExamsPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard();
   const [view, setView] = useState<"list" | "create" | "results">("list");
   const [exams, setExams] = useState<Exam[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -65,8 +65,7 @@ export default function TeacherExamsPage() {
   const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (!token) { router.push("/login"); return; }
+    if (!authChecked) return;
     Promise.all([
       api.get("/exams"),
       api.get("/admin/students").catch(() => ({ data: { students: [] } })),
@@ -74,7 +73,7 @@ export default function TeacherExamsPage() {
       setExams(examRes.data.exams);
       setStudents(studRes.data.students);
     }).catch((err) => console.error("[teacher/exams] failed to load:", err)).finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   async function handleCreate() {
     if (!form.title || questions.some(q => !q.question || q.options.some(o => !o))) {

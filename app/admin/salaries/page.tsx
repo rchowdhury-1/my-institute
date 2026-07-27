@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { ChevronLeft, ChevronRight, Banknote } from "lucide-react";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface TeacherSalary {
   teacher_id: string;
@@ -34,7 +34,7 @@ function currencySymbol(c: string) {
 }
 
 export default function SalariesPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [month, setMonth] = useState(getMonthStr(new Date()));
   const [teachers, setTeachers] = useState<TeacherSalary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,14 +44,7 @@ export default function SalariesPage() {
   const [rateSaving, setRateSaving] = useState(false);
 
   useEffect(() => {
-    const role = localStorage.getItem("userRole");
-    if (role !== "admin" && role !== "supervisor") {
-      router.push("/login");
-      return;
-    }
-  }, [router]);
-
-  useEffect(() => {
+    if (!authChecked) return;
     setLoading(true);
     api
       .get(`/admin/teacher-hours?month=${month}`)
@@ -61,7 +54,7 @@ export default function SalariesPage() {
       })
       .catch(() => setError("Failed to load salary data"))
       .finally(() => setLoading(false));
-  }, [month]);
+  }, [authChecked, month]);
 
   const shiftMonth = (delta: number) => {
     const [y, m] = month.split("-").map(Number);

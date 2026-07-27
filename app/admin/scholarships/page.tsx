@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Users, ChevronDown, ChevronUp } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Sponsor {
   id: string;
@@ -23,20 +23,18 @@ interface Applicant {
 }
 
 export default function AdminScholarshipsPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [applicants, setApplicants] = useState<Applicant[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    const role = localStorage.getItem("userRole");
-    if (!token || (role !== "admin" && role !== "supervisor")) { router.push("/login"); return; }
+    if (!authChecked) return;
     api.get("/scholarships/applicants")
       .then(res => setApplicants(res.data.applicants))
       .catch((err) => console.error("[admin/scholarships] failed to load applicants:", err))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   if (loading) {
     return <PageLoading />;

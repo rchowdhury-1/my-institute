@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Plus, Trash2, PlayCircle, ChevronDown, ChevronUp } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Lesson {
   id: string;
@@ -26,7 +26,7 @@ interface Course {
 }
 
 export default function AdminCoursesPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -40,14 +40,12 @@ export default function AdminCoursesPage() {
   const [addingLesson, setAddingLesson] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    const role = localStorage.getItem("userRole");
-    if (!token || (role !== "admin" && role !== "supervisor")) { router.push("/login"); return; }
+    if (!authChecked) return;
     api.get("/courses")
       .then(res => setCourses(res.data.courses))
       .catch((err) => console.error("[admin/courses] failed to load:", err))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   async function handleCreate() {
     if (!form.title) return;

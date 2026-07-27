@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Plus, ChevronDown, ChevronUp, BookOpen } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Student {
   id: string;
@@ -45,7 +45,7 @@ const statusStyle: Record<string, string> = {
 };
 
 export default function TeacherHomeworkPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard();
   const [students, setStudents] = useState<Student[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,8 +64,7 @@ export default function TeacherHomeworkPage() {
   const [submissions, setSubmissions] = useState<Record<string, Submission[]>>({});
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (!token) { router.push("/login"); return; }
+    if (!authChecked) return;
 
     Promise.all([
       api.get("/homework"),
@@ -77,7 +76,7 @@ export default function TeacherHomeworkPage() {
       })
       .catch((err) => console.error("[teacher/homework] failed to load:", err))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   async function handleCreate() {
     if (!form.student_id || !form.title) return;

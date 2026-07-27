@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Send, MessageCircle } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Conversation {
   other_id: string;
@@ -28,7 +28,7 @@ function formatTime(iso: string) {
 }
 
 export default function TeacherMessagesPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard();
   const [myId, setMyId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
@@ -39,16 +39,15 @@ export default function TeacherMessagesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
+    if (!authChecked) return;
     const id = localStorage.getItem("userId");
-    if (!token || !id) { router.push("/login"); return; }
     setMyId(id);
 
     api.get("/messages/conversations")
       .then((res) => setConversations(res.data.conversations))
       .catch((err) => console.error("[teacher/messages] failed to load conversations:", err))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   async function openConversation(conv: Conversation) {
     const token = localStorage.getItem("accessToken");

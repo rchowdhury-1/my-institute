@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { Users } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Application {
   id: string;
@@ -35,24 +35,19 @@ function formatDate(iso: string) {
 }
 
 export default function AdminRevertApplicationsPage() {
-  const router = useRouter();
+  const { authChecked } = useAuthGuard(["admin", "supervisor"]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusError, setStatusError] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const t = localStorage.getItem("accessToken");
-    const role = localStorage.getItem("userRole");
-    if (!t || (role !== "admin" && role !== "supervisor")) {
-      router.push("/login");
-      return;
-    }
+    if (!authChecked) return;
     api
       .get("/admin/revert-applications")
       .then((res) => setApplications(res.data.applications))
       .catch((err) => console.error("[admin/revert-applications] failed to load:", err))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authChecked]);
 
   const handleStatusChange = async (id: string, newStatus: string) => {
     setStatusError((prev) => ({ ...prev, [id]: "" }));
