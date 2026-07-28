@@ -98,9 +98,9 @@ Backend route trees for exams, teacher-salary payments, messaging, recorded cour
 
 ## Testing & CI
 
-- **API/e2e tests** — Playwright specs in `e2e/` (10 files) run against a live backend: `npx playwright test`. Credentials come from `TEST_ADMIN_EMAIL` / `TEST_ADMIN_PASSWORD` env vars (never hardcoded).
-- **Unit tests** — `npx tsx lib/datetime.test.ts` covers the join-window, clock-skew, and timezone round-trip logic.
-- **CI** — `.github/workflows/api-tests.yml` runs the core API suite (`e2e/reschedule-and-buffer.spec.ts`, 27 tests) against the production backend on push/PR to master, with a Render cold-start warm-up step; the other specs are run locally. `regenerate-sessions.yml` is a manual-only maintenance job for after an `OPERATIONAL_TZ` change.
+- **API/e2e tests** — Playwright specs in `e2e/` (11 files, 124 tests) run against a live backend: `npx playwright test`. Credentials come from `TEST_ADMIN_EMAIL` / `TEST_ADMIN_PASSWORD` env vars (never hardcoded).
+- **Unit tests** — `npm run test:datetime` (`lib/datetime.test.ts`, 31 tests) covers the join-window, clock-skew, and timezone round-trip logic.
+- **CI** — `.github/workflows/api-tests.yml` runs the core API suite (`e2e/reschedule-and-buffer.spec.ts` + `e2e/auth.spec.ts`, 28 tests) against the production backend on push/PR to master, with a Render cold-start warm-up step; the other specs are run locally. `regenerate-sessions.yml` is a manual-only maintenance job for after an `OPERATIONAL_TZ` change.
 
 ## Deployment
 

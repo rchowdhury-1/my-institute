@@ -138,10 +138,12 @@ Despite the name, no cron job calls these — generation is on-demand (see below
 
 **pg NUMERIC parsing.** `src/db.js` registers a global type parser converting `NUMERIC` columns to JS numbers (node-postgres returns them as strings by default). All numeric API fields are real JSON numbers; a CI test guards this.
 
-**Notifications** (`src/lib/notify.js`) fan out in-app rows (and email where configured) on session/schedule events. Generation errors inside listing routes are caught and logged rather than failing the request — surfaced via Sentry when configured.
+**Notifications** (`src/lib/notify.js`) fan out in-app rows (and email where configured) on session/schedule events. Generation errors inside listing routes are caught and logged rather than failing the request — surfaced via Sentry when configured. Post-commit/post-update notifications in `src/services/reschedule.js` are wrapped in a `safeNotify` helper that logs failures and never rethrows — a notification failure must never turn an already-persisted operation into a client-visible error.
+
+**Services** (`src/services/`) — business logic that owns a transaction or a multi-step operation lives here, not in the route handler: `reschedule.js` (create/approve/reject), `attendance.js` (mark attendance + balance decrement/notify), `exams.js` (`submitExam` — grading transaction). Routes stay thin: auth/role guards, request parsing, and translating the service's `{status, body}` result into a response.
 
 **Schema.** 25 tables. Money is `DECIMAL`, statuses have CHECK constraints, FKs index every hot path; `sessions.rescheduled_from` is `ON DELETE SET NULL` (migration 019). The legacy `lessons` table was dropped in migration 017.
 
 ## Tests
 
-The Playwright specs in `../e2e/` exercise this API directly (auth, schedules, sessions, attendance, reschedules, homework, admin flows). They run against a live backend URL (`API_URL`) with credentials from `TEST_ADMIN_EMAIL` / `TEST_ADMIN_PASSWORD` env vars; CI runs the core suite (`reschedule-and-buffer.spec.ts`) against production on every push to master.
+The Playwright specs in `../e2e/` exercise this API directly (auth, schedules, sessions, attendance, reschedules, homework, admin flows). They run against a live backend URL (`API_URL`) with credentials from `TEST_ADMIN_EMAIL` / `TEST_ADMIN_PASSWORD` env vars; CI runs the core suite (`reschedule-and-buffer.spec.ts` + `auth.spec.ts`, 28 tests) against production on every push to master.
