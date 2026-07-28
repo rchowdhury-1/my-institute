@@ -36,6 +36,34 @@ router.post('/students', asyncHandler(async (req, res) => {
   res.status(result.status).json({ student: result.user, tempPassword: result.tempPassword, ...result.emailResult });
 }));
 
+// Checks email format/uniqueness, teacher existence, hourly-rate bounds, and
+// currency whitelist for a student edit. Returns { status, error } on
+// failure, null when the edit may proceed.
+async function validateStudentEdit(body, existingStudent) {
+  const { email, teacher_id, hourly_rate, currency } = body;
+
+  if (email) {
+    if (!isValidEmail(email))
+      return { status: 400, error: 'Please enter a valid email address' };
+    const dup = await pool.query('SELECT id FROM users WHERE email=$1 AND id!=$2', [email.trim().toLowerCase(), existingStudent.id]);
+    if (dup.rows.length > 0)
+      return { status: 409, error: 'Someone with this email address already exists' };
+  }
+
+  if (teacher_id) {
+    const teacher = await assertTeacherExists(pool, teacher_id);
+    if (!teacher)
+      return { status: 400, error: 'Assigned teacher not found' };
+  }
+
+  if (hourly_rate != null && (isNaN(parseFloat(hourly_rate)) || parseFloat(hourly_rate) <= 0))
+    return { status: 400, error: 'Hourly rate must be a positive number' };
+  if (currency && !SUPPORTED_CURRENCIES.includes(currency))
+    return { status: 400, error: 'Currency must be GBP or EGP' };
+
+  return null;
+}
+
 // PATCH /admin/students/:id — edit a student
 router.patch('/students/:id', asyncHandler(async (req, res) => {
   const {
@@ -47,24 +75,9 @@ router.patch('/students/:id', asyncHandler(async (req, res) => {
   if (existing.rows.length === 0)
     return res.status(404).json({ error: 'Student not found' });
 
-  if (email) {
-    if (!isValidEmail(email))
-      return res.status(400).json({ error: 'Please enter a valid email address' });
-    const dup = await pool.query('SELECT id FROM users WHERE email=$1 AND id!=$2', [email.trim().toLowerCase(), req.params.id]);
-    if (dup.rows.length > 0)
-      return res.status(409).json({ error: 'Someone with this email address already exists' });
-  }
-
-  if (teacher_id) {
-    const teacher = await assertTeacherExists(pool, teacher_id);
-    if (!teacher)
-      return res.status(400).json({ error: 'Assigned teacher not found' });
-  }
-
-  if (hourly_rate != null && (isNaN(parseFloat(hourly_rate)) || parseFloat(hourly_rate) <= 0))
-    return res.status(400).json({ error: 'Hourly rate must be a positive number' });
-  if (currency && !SUPPORTED_CURRENCIES.includes(currency))
-    return res.status(400).json({ error: 'Currency must be GBP or EGP' });
+  const validationError = await validateStudentEdit(req.body, existing.rows[0]);
+  if (validationError)
+    return res.status(validationError.status).json({ error: validationError.error });
 
   const result = await pool.query(
     `UPDATE users

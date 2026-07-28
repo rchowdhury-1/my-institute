@@ -8,14 +8,14 @@ const { EMAIL_WINDOW_MS, EMAIL_MAX_SENDS } = require('../config');
 
 const TEST_DOMAINS = [
   '@test.local',
-  '@phase33test.local',
-  '@phase34test.local',
-  '@phase35test.local',
-  '@phase36test.local',
   '@example.com',
   '@mailinator.com',
   '@example.local',
 ];
+
+// Matches @phaseNNtest.local for any project phase — replaces a growing
+// list of one-hardcoded-literal-per-phase entries.
+const PHASE_TEST_DOMAIN_PATTERN = /^@phase\d+test\.local$/;
 
 const TEST_PATTERNS = [
   '+emailtest@',
@@ -31,6 +31,8 @@ function isTestRecipient(email) {
   if (!email || typeof email !== 'string') return false;
   const lower = email.toLowerCase().trim();
   if (TEST_DOMAINS.some(d => lower.endsWith(d))) return true;
+  const atIdx = lower.lastIndexOf('@');
+  if (atIdx !== -1 && PHASE_TEST_DOMAIN_PATTERN.test(lower.slice(atIdx))) return true;
   if (TEST_PATTERNS.some(p => lower.includes(p))) return true;
   return false;
 }

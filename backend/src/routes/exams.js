@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errors');
+const { submitExam } = require('../services/exams');
 
 // POST /exams — teacher creates exam with questions
 router.post('/', requireAuth, requireRole('teacher', 'admin', 'supervisor'), asyncHandler(async (req, res) => {
@@ -141,44 +142,13 @@ router.post('/:id/submit', requireAuth, requireRole('student'), asyncHandler(asy
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const assignRes = await client.query(
-      `SELECT * FROM exam_assignments WHERE exam_id = $1 AND student_id = $2`,
-      [req.params.id, req.userId]
-    );
-    if (assignRes.rowCount === 0) return res.status(404).json({ error: 'Assignment not found' });
-    const assignment = assignRes.rows[0];
-    if (assignment.status === 'completed') return res.status(400).json({ error: 'Already submitted' });
-
-    const questionsRes = await client.query(
-      `SELECT id, correct_answer, points FROM exam_questions WHERE exam_id = $1`,
-      [req.params.id]
-    );
-    const questionMap = {};
-    questionsRes.rows.forEach(q => { questionMap[q.id] = q; });
-
-    let totalScore = 0;
-    let maxScore = 0;
-    for (const q of questionsRes.rows) maxScore += q.points;
-
-    for (const ans of (answers || [])) {
-      const q = questionMap[ans.question_id];
-      if (!q) continue;
-      const isCorrect = String(ans.answer).toUpperCase() === String(q.correct_answer).toUpperCase();
-      if (isCorrect) totalScore += q.points;
-      await client.query(
-        `INSERT INTO exam_answers (assignment_id, question_id, answer, is_correct)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (assignment_id, question_id) DO UPDATE SET answer = EXCLUDED.answer, is_correct = EXCLUDED.is_correct`,
-        [assignment.id, ans.question_id, ans.answer, isCorrect]
-      );
+    const result = await submitExam(client, { examId: req.params.id, studentId: req.userId, answers });
+    if (result.error) {
+      await client.query('ROLLBACK');
+      return res.status(result.status).json({ error: result.error });
     }
-
-    await client.query(
-      `UPDATE exam_assignments SET status = 'completed', score = $1, completed_at = NOW() WHERE id = $2`,
-      [totalScore, assignment.id]
-    );
     await client.query('COMMIT');
-    res.json({ score: totalScore, max_score: maxScore });
+    res.json({ score: result.score, max_score: result.max_score });
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

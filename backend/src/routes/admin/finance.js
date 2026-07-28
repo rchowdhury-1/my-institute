@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../../db');
 const { asyncHandler } = require('../../middleware/errors');
+const { buildUpdateClause } = require('../../lib/queries');
 
 const router = express.Router();
 
@@ -106,18 +107,17 @@ router.patch('/teachers/:id/pay-rate', asyncHandler(async (req, res) => {
   if (teacherCheck.rows.length === 0)
     return res.status(404).json({ error: 'Teacher not found' });
 
-  const setClauses = ['pay_rate_per_hour = $1'];
-  const params = [parseFloat(pay_rate_per_hour)];
-  let paramIdx = 2;
-
-  if (pay_currency) {
-    setClauses.push(`pay_currency = $${paramIdx++}`);
-    params.push(pay_currency);
-  }
+  const { setClauses, params, nextParamIdx } = buildUpdateClause(
+    {
+      pay_rate_per_hour: parseFloat(pay_rate_per_hour),
+      pay_currency: pay_currency || undefined,
+    },
+    1
+  );
 
   params.push(id);
   const result = await pool.query(
-    `UPDATE users SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING id, display_name, pay_rate_per_hour, pay_currency`,
+    `UPDATE users SET ${setClauses.join(', ')} WHERE id = $${nextParamIdx} RETURNING id, display_name, pay_rate_per_hour, pay_currency`,
     params
   );
 

@@ -5,7 +5,8 @@ const { notify } = require('../../lib/notify');
 const { formatSessionTime } = require('../../lib/datetime');
 const { asyncHandler } = require('../../middleware/errors');
 const { validateDuration } = require('../../lib/validators');
-const { assertTeacherExists, hasTeacherConflict } = require('../../lib/queries');
+const { assertTeacherExists, hasTeacherConflict, buildUpdateClause } = require('../../lib/queries');
+const { VALID_SUBJECTS } = require('../../lib/schedule-generator');
 
 const router = express.Router();
 
@@ -40,8 +41,7 @@ router.post('/lessons', asyncHandler(async (req, res) => {
   if (!student_id || !teacher_id || !subject || !scheduled_at)
     return res.status(400).json({ error: 'student_id, teacher_id, subject and scheduled_at are required' });
 
-  const validSubjects = ['quran', 'arabic', 'islamic_studies'];
-  if (!validSubjects.includes(subject))
+  if (!VALID_SUBJECTS.includes(subject))
     return res.status(400).json({ error: 'Invalid subject' });
 
   const dur = parseInt(duration_minutes) || 60;
@@ -115,36 +115,23 @@ async function validateSessionEdit(body, session, sessionId) {
 // Builds the dynamic UPDATE SET clause + params for a session edit.
 function buildSessionUpdate(body, userId) {
   const { scheduled_at, duration_minutes, subject, teacher_id, zoom_link, notes } = body;
-  const setClauses = ['last_modified_by = $1', 'updated_at = now()'];
-  const params = [userId];
-  let paramIdx = 2;
+  const dynamic = buildUpdateClause(
+    {
+      scheduled_at: scheduled_at !== undefined ? new Date(scheduled_at).toISOString() : undefined,
+      duration_minutes: duration_minutes !== undefined ? parseInt(duration_minutes) : undefined,
+      subject,
+      teacher_id,
+      zoom_link: zoom_link !== undefined ? (zoom_link || null) : undefined,
+      notes: notes !== undefined ? (notes || null) : undefined,
+    },
+    2
+  );
 
-  if (scheduled_at !== undefined) {
-    setClauses.push(`scheduled_at = $${paramIdx++}`);
-    params.push(new Date(scheduled_at).toISOString());
-  }
-  if (duration_minutes !== undefined) {
-    setClauses.push(`duration_minutes = $${paramIdx++}`);
-    params.push(parseInt(duration_minutes));
-  }
-  if (subject !== undefined) {
-    setClauses.push(`subject = $${paramIdx++}`);
-    params.push(subject);
-  }
-  if (teacher_id !== undefined) {
-    setClauses.push(`teacher_id = $${paramIdx++}`);
-    params.push(teacher_id);
-  }
-  if (zoom_link !== undefined) {
-    setClauses.push(`zoom_link = $${paramIdx++}`);
-    params.push(zoom_link || null);
-  }
-  if (notes !== undefined) {
-    setClauses.push(`notes = $${paramIdx++}`);
-    params.push(notes || null);
-  }
-
-  return { setClauses, params, nextParamIdx: paramIdx };
+  return {
+    setClauses: ['last_modified_by = $1', 'updated_at = now()', ...dynamic.setClauses],
+    params: [userId, ...dynamic.params],
+    nextParamIdx: dynamic.nextParamIdx,
+  };
 }
 
 // Diffs the request body against the existing session for the response's

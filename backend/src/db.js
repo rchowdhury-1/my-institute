@@ -27,19 +27,18 @@ const LEGACY_MIGRATIONS = [
   '008_revert_applications.sql',
 ];
 
-async function initDb() {
-  // 1. Create tracking table if it doesn't exist
+async function ensureMigrationsTable(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS migrations_applied (
       filename TEXT PRIMARY KEY,
       applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+}
 
-  // 2. Seed legacy migrations so they are never re-run
-  const { rows: existing } = await pool.query('SELECT filename FROM migrations_applied');
-  const applied = new Set(existing.map(r => r.filename));
-
+// Seeds legacy migration rows (pre-dating the tracking table) so they are
+// never re-run. Returns the up-to-date `applied` set.
+async function seedLegacyMigrations(pool, applied) {
   if (applied.size === 0 && LEGACY_MIGRATIONS.length > 0) {
     const values = LEGACY_MIGRATIONS.map((f, i) => `($${i + 1}, now())`).join(', ');
     await pool.query(
@@ -49,14 +48,17 @@ async function initDb() {
     for (const f of LEGACY_MIGRATIONS) applied.add(f);
     console.log(`Seeded ${LEGACY_MIGRATIONS.length} legacy migrations into tracking table`);
   }
+  return applied;
+}
 
-  // 3. Discover all .sql files, sorted by name
+// Discovers all .sql files on disk (sorted by name) and applies any not yet
+// in `applied`. Returns the count of newly applied migrations.
+async function applyPendingMigrations(pool, applied) {
   const migrationsDir = path.join(__dirname, '../migrations');
   const files = fs.readdirSync(migrationsDir)
     .filter(f => f.endsWith('.sql'))
     .sort();
 
-  // 4. Run any that haven't been applied yet
   let newCount = 0;
   for (const file of files) {
     if (applied.has(file)) continue;
@@ -70,6 +72,16 @@ async function initDb() {
     console.log(`Applied migration: ${file}`);
     newCount++;
   }
+  return newCount;
+}
+
+async function initDb() {
+  await ensureMigrationsTable(pool);
+
+  const { rows: existing } = await pool.query('SELECT filename FROM migrations_applied');
+  const applied = await seedLegacyMigrations(pool, new Set(existing.map(r => r.filename)));
+
+  const newCount = await applyPendingMigrations(pool, applied);
 
   if (newCount === 0) {
     console.log('Database initialised — all migrations already applied');

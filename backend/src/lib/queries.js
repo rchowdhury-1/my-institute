@@ -53,4 +53,29 @@ async function safeGenerate(fn, tag = 'generation') {
   }
 }
 
-module.exports = { getDisplayName, assertTeacherExists, hasTeacherConflict, safeGenerate };
+/**
+ * Builds a dynamic SQL SET-clause + params list from a { column: value }
+ * map, skipping any entry whose value is `undefined` (present-but-null
+ * values ARE included, matching every call site's own COALESCE/null
+ * semantics). Placeholder numbering starts at startIndex so callers can
+ * prepend fixed params (e.g. userId) before the dynamic ones.
+ *
+ * @param {Object} fields - column name -> value (undefined entries skipped)
+ * @param {number} startIndex - first $N placeholder number to use
+ * @returns {{ setClauses: string[], params: any[], nextParamIdx: number }}
+ */
+function buildUpdateClause(fields, startIndex) {
+  const setClauses = [];
+  const params = [];
+  let paramIdx = startIndex;
+
+  for (const [column, value] of Object.entries(fields)) {
+    if (value === undefined) continue;
+    setClauses.push(`${column} = $${paramIdx++}`);
+    params.push(value);
+  }
+
+  return { setClauses, params, nextParamIdx: paramIdx };
+}
+
+module.exports = { getDisplayName, assertTeacherExists, hasTeacherConflict, safeGenerate, buildUpdateClause };

@@ -59,35 +59,25 @@ function slotToUTC(date, timeStr) {
 }
 
 /**
- * Generate sessions for a single schedule. Idempotent — safe to call multiple times.
- *
- * @param {Object} schedule - Full schedule row (with student rate info)
- * @param {string} schedule.id
- * @param {string} schedule.student_id
- * @param {string} schedule.teacher_id
- * @param {string} schedule.subject
- * @param {number} schedule.default_duration
- * @param {Array} schedule.slots - [{day, time, duration?}]
- * @param {number|null} schedule.hourly_rate - student's rate (from join)
- * @param {string|null} schedule.currency - student's currency (from join)
- * @returns {{ created: number, skipped: number, conflicts: string[] }}
+ * Idempotency-check key format shared by every site that needs to compare a
+ * DB-row-derived date/time against a candidate-derived one — both MUST
+ * produce this exact "yyyy-MM-dd HH:mm" string or dedup silently breaks.
  */
-async function generateSessionsForSchedule(schedule) {
-  if (!schedule.is_active) return { created: 0, skipped: 0, conflicts: [] };
+function sessionKey(date, time) {
+  return `${format(date, 'yyyy-MM-dd')} ${time}`;
+}
 
-  const now = new Date();
-  const today = startOfDay(now);
-  const horizon = addDays(today, HORIZON_DAYS);
-
+/**
+ * Compute every candidate instant for a schedule's slots, in the same
+ * slot-then-date order as the original nested loop (so tie-breaking between
+ * two candidates that conflict with each other is unchanged). Past instants
+ * are counted as skipped rather than included.
+ */
+function computeCandidates(schedule, today, horizon, now) {
   let skipped = 0;
-  const conflicts = [];
-
+  const candidates = [];
   const slots = Array.isArray(schedule.slots) ? schedule.slots : [];
 
-  // 1. Compute every candidate instant up front (same slot-then-date order as
-  // the original nested loop, so tie-breaking between two candidates that
-  // conflict with each other is unchanged).
-  const candidates = [];
   for (const slot of slots) {
     const duration = slot.duration || schedule.default_duration;
     const dates = getMatchingDates(slot.day, today, horizon);
@@ -105,54 +95,66 @@ async function generateSessionsForSchedule(schedule) {
     }
   }
 
-  if (candidates.length === 0) {
-    return { created: 0, skipped, conflicts };
-  }
+  return { candidates, skipped };
+}
 
-  // 2. One query for idempotency: every existing session for this schedule
-  // (any status — decision 3.9/8.1, no exclusion), bounded to a window that
-  // can't miss a match (any session outside [today, horizon] can never share
-  // a candidate's operational-zone date, so this bound is exact, not
-  // approximate). Match key mirrors the original per-candidate SQL:
-  // DATE(scheduled_at AT TIME ZONE OPERATIONAL_TZ) + TO_CHAR(..., 'HH24:MI').
+/**
+ * Every existing session for this schedule (any status — decision 3.9/8.1,
+ * no exclusion), bounded to a window that can't miss a match (any session
+ * outside [today, horizon] can never share a candidate's operational-zone
+ * date, so this bound is exact, not approximate). Match key mirrors the
+ * original per-candidate SQL: DATE(scheduled_at AT TIME ZONE
+ * OPERATIONAL_TZ) + TO_CHAR(..., 'HH24:MI').
+ */
+async function loadExistingSessionKeys(pool, schedule, today, horizon) {
   const existingRes = await pool.query(
     `SELECT scheduled_at FROM sessions
      WHERE schedule_id = $1 AND scheduled_at >= $2 AND scheduled_at <= $3`,
     [schedule.id, subDays(today, 1).toISOString(), addDays(horizon, 1).toISOString()]
   );
-  const existingKeys = new Set(
+  return new Set(
     existingRes.rows.map((r) => {
       const zoned = toZonedTime(r.scheduled_at, OPERATIONAL_TZ);
-      return `${format(zoned, 'yyyy-MM-dd')} ${format(zoned, 'HH:mm')}`;
+      return sessionKey(zoned, format(zoned, 'HH:mm'));
     })
   );
+}
 
-  // 3. One query for teacher conflicts: every 'scheduled' session for this
-  // teacher, unbounded by date (matches the original — it never restricted
-  // by date either, only by teacher_id + status).
+/**
+ * Every 'scheduled' session for this teacher, unbounded by date (matches
+ * the original — it never restricted by date either, only by teacher_id +
+ * status), as [start, end) millisecond intervals.
+ */
+async function loadTeacherBookedIntervals(pool, teacherId) {
   const conflictRes = await pool.query(
     `SELECT scheduled_at, duration_minutes FROM sessions
      WHERE teacher_id = $1 AND status = 'scheduled'`,
-    [schedule.teacher_id]
+    [teacherId]
   );
-  const existingIntervals = conflictRes.rows.map((r) => {
+  return conflictRes.rows.map((r) => {
     const start = new Date(r.scheduled_at).getTime();
     return { start, end: start + r.duration_minutes * 60_000 };
   });
+}
 
-  // 4. Decide create/skip per candidate in order, checking each against both
-  // pre-existing DB conflicts and conflicts newly created earlier in this
-  // same pass — the original caught the latter because it inserted before
-  // moving to the next candidate, so a later candidate's conflict query saw
-  // the earlier candidate's row already committed.
-  const newIntervals = [];
-  const toInsert = [];
-  let created = 0;
-
+/**
+ * Decide create/skip per candidate in order, checking each against both
+ * pre-existing DB conflicts and conflicts newly created earlier in this
+ * same pass — the original caught the latter because it inserted before
+ * moving to the next candidate, so a later candidate's conflict query saw
+ * the earlier candidate's row already committed.
+ */
+function resolveInsertableSessions(schedule, candidates, existingKeys, existingIntervals) {
   const overlaps = (a, b) => a.start < b.end && b.start < a.end;
 
+  const newIntervals = [];
+  const toInsert = [];
+  const conflicts = [];
+  let skipped = 0;
+  let created = 0;
+
   for (const { slot, duration, targetDate, sessionTimeUTC } of candidates) {
-    const key = `${format(targetDate, 'yyyy-MM-dd')} ${slot.time}`;
+    const key = sessionKey(targetDate, slot.time);
     if (existingKeys.has(key)) {
       skipped++;
       continue;
@@ -186,36 +188,78 @@ async function generateSessionsForSchedule(schedule) {
     created++;
   }
 
-  // 5. Bulk-insert the survivors in one query.
-  if (toInsert.length > 0) {
-    const valueRows = [];
-    const params = [];
-    let i = 1;
-    for (const s of toInsert) {
-      valueRows.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
-      params.push(
-        s.id,
-        schedule.student_id,
-        schedule.teacher_id,
-        s.scheduledAt,
-        s.duration,
-        s.subject,
-        schedule.id,
-        schedule.hourly_rate || null,
-        schedule.currency || null,
-        schedule.zoom_link || null
-      );
-    }
-    await pool.query(
-      `INSERT INTO sessions
-         (id, student_id, teacher_id, scheduled_at, duration_minutes,
-          subject, schedule_id, rate_at_creation, currency_at_creation, zoom_link)
-       VALUES ${valueRows.join(', ')}`,
-      params
+  return { toInsert, created, skipped, conflicts };
+}
+
+/**
+ * Bulk-insert the survivors in one query.
+ */
+async function bulkInsertSessions(pool, toInsert, schedule) {
+  if (toInsert.length === 0) return;
+
+  const valueRows = [];
+  const params = [];
+  let i = 1;
+  for (const s of toInsert) {
+    valueRows.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+    params.push(
+      s.id,
+      schedule.student_id,
+      schedule.teacher_id,
+      s.scheduledAt,
+      s.duration,
+      s.subject,
+      schedule.id,
+      schedule.hourly_rate || null,
+      schedule.currency || null,
+      schedule.zoom_link || null
     );
   }
+  await pool.query(
+    `INSERT INTO sessions
+       (id, student_id, teacher_id, scheduled_at, duration_minutes,
+        subject, schedule_id, rate_at_creation, currency_at_creation, zoom_link)
+     VALUES ${valueRows.join(', ')}`,
+    params
+  );
+}
 
-  return { created, skipped, conflicts };
+/**
+ * Generate sessions for a single schedule. Idempotent — safe to call multiple times.
+ *
+ * @param {Object} schedule - Full schedule row (with student rate info)
+ * @param {string} schedule.id
+ * @param {string} schedule.student_id
+ * @param {string} schedule.teacher_id
+ * @param {string} schedule.subject
+ * @param {number} schedule.default_duration
+ * @param {Array} schedule.slots - [{day, time, duration?}]
+ * @param {number|null} schedule.hourly_rate - student's rate (from join)
+ * @param {string|null} schedule.currency - student's currency (from join)
+ * @returns {{ created: number, skipped: number, conflicts: string[] }}
+ */
+async function generateSessionsForSchedule(schedule) {
+  if (!schedule.is_active) return { created: 0, skipped: 0, conflicts: [] };
+
+  const now = new Date();
+  const today = startOfDay(now);
+  const horizon = addDays(today, HORIZON_DAYS);
+
+  const { candidates, skipped: pastSkipped } = computeCandidates(schedule, today, horizon, now);
+
+  if (candidates.length === 0) {
+    return { created: 0, skipped: pastSkipped, conflicts: [] };
+  }
+
+  const existingKeys = await loadExistingSessionKeys(pool, schedule, today, horizon);
+  const existingIntervals = await loadTeacherBookedIntervals(pool, schedule.teacher_id);
+
+  const { toInsert, created, skipped: resolveSkipped, conflicts } =
+    resolveInsertableSessions(schedule, candidates, existingKeys, existingIntervals);
+
+  await bulkInsertSessions(pool, toInsert, schedule);
+
+  return { created, skipped: pastSkipped + resolveSkipped, conflicts };
 }
 
 /**
@@ -304,7 +348,14 @@ module.exports = {
   wipeAndRegenerate,
   wipeFutureSessions,
   OPERATIONAL_TZ,
+  VALID_SUBJECTS,
   // Exported for testing
   getMatchingDates,
   slotToUTC,
+  sessionKey,
+  computeCandidates,
+  loadExistingSessionKeys,
+  loadTeacherBookedIntervals,
+  resolveInsertableSessions,
+  bulkInsertSessions,
 };

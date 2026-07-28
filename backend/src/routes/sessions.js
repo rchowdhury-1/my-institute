@@ -5,7 +5,7 @@ const { notify, notifyAdmins } = require('../lib/notify');
 const { canStudentCancel } = require('../lib/cancellation');
 const { formatSessionTime } = require('../lib/datetime');
 const { v4: uuidv4 } = require('uuid');
-const { generateAllSchedules } = require('../lib/schedule-generator');
+const { generateAllSchedules, VALID_SUBJECTS } = require('../lib/schedule-generator');
 const { asyncHandler } = require('../middleware/errors');
 const { validateDuration } = require('../lib/validators');
 const { safeGenerate } = require('../lib/queries');
@@ -65,8 +65,7 @@ router.post('/', requireRole('admin', 'supervisor'), asyncHandler(async (req, re
   if (!student_id || !teacher_id || !scheduled_at)
     return res.status(400).json({ error: 'student_id, teacher_id and scheduled_at are required' });
 
-  const validSubjects = ['quran', 'arabic', 'islamic_studies'];
-  const sessionSubject = validSubjects.includes(subject) ? subject : 'quran';
+  const sessionSubject = VALID_SUBJECTS.includes(subject) ? subject : 'quran';
 
   const durationMinutes = parseInt(duration_minutes) || 60;
   const durationError = validateDuration(durationMinutes);

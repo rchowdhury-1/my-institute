@@ -4,7 +4,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { notify } = require('../lib/notify');
 const { asyncHandler } = require('../middleware/errors');
 const { validateDuration } = require('../lib/validators');
-const { getDisplayName, assertTeacherExists, safeGenerate } = require('../lib/queries');
+const { getDisplayName, assertTeacherExists, safeGenerate, buildUpdateClause } = require('../lib/queries');
 const {
   generateForScheduleId,
   generateAllSchedules,
@@ -215,30 +215,30 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       return res.status(400).json({ error: 'Teacher not found or inactive' });
   }
 
-  // Build SET clause
-  const sets = ['updated_at = NOW()'];
-  const params = [];
-  let idx = 1;
-
-  if (subject !== undefined) { sets.push(`subject = $${idx++}`); params.push(subject); }
-  if (default_duration !== undefined) { sets.push(`default_duration = $${idx++}`); params.push(parseInt(default_duration)); }
-  if (slots !== undefined) { sets.push(`slots = $${idx++}`); params.push(JSON.stringify(slots)); }
   if (lessons_remaining !== undefined) {
     // A schedule can no longer be moved back to unlimited (null)
     const hoursError = validateHours(lessons_remaining);
     if (hoursError) return res.status(400).json({ error: hoursError });
-    sets.push(`lessons_remaining = $${idx++}`);
-    params.push(parseFloat(lessons_remaining));
   }
-  if (teacher_id !== undefined) { sets.push(`teacher_id = $${idx++}`); params.push(teacher_id); }
-  if (zoom_link !== undefined) {
-    sets.push(`zoom_link = $${idx++}`);
-    params.push(zoom_link && zoom_link.trim() ? zoom_link.trim() : null);
-  }
+
+  // Build SET clause
+  const dynamic = buildUpdateClause(
+    {
+      subject,
+      default_duration: default_duration !== undefined ? parseInt(default_duration) : undefined,
+      slots: slots !== undefined ? JSON.stringify(slots) : undefined,
+      lessons_remaining: lessons_remaining !== undefined ? parseFloat(lessons_remaining) : undefined,
+      teacher_id,
+      zoom_link: zoom_link !== undefined ? (zoom_link && zoom_link.trim() ? zoom_link.trim() : null) : undefined,
+    },
+    1
+  );
+  const sets = ['updated_at = NOW()', ...dynamic.setClauses];
+  const params = [...dynamic.params];
 
   params.push(id);
   const result = await pool.query(
-    `UPDATE weekly_schedules SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+    `UPDATE weekly_schedules SET ${sets.join(', ')} WHERE id = $${dynamic.nextParamIdx} RETURNING *`,
     params
   );
 
