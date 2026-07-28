@@ -121,12 +121,12 @@ test.describe.serial("Teacher Hours page", () => {
       await request.patch(`${API}/sessions/${sid}/cancel`, {
         headers: { Authorization: `Bearer ${token}` },
         data: { cancellation_reason: "test cleanup" },
-      }).catch(() => {});
+      }).catch((e) => console.warn(`cleanup failed for session ${sid}: ${e}`));
     }
     await request.patch(`${API}/admin/teachers/${teacherId}`, {
       headers: { Authorization: `Bearer ${token}` },
       data: { is_active: false },
-    }).catch(() => {});
+    }).catch((e) => console.warn(`cleanup failed deactivating teacher ${teacherId}: ${e}`));
   });
 
   test("page loads for admin and shows title", async ({ page }) => {
@@ -183,23 +183,11 @@ test.describe.serial("Teacher Hours page", () => {
     await page.waitForSelector('[data-testid="teacher-list"]', { timeout: 10000 });
 
     // Find the teacher row
-    const rows = page.getByTestId("teacher-row");
-    const count = await rows.count();
-    let found = false;
-
-    for (let i = 0; i < count; i++) {
-      const row = rows.nth(i);
-      const name = await row.getByTestId("teacher-name").textContent();
-      if (name === "E2E Hours Teacher") {
-        found = true;
-        // 2x60 + 1x30 = 150min = 2.5h
-        await expect(row.getByTestId("teacher-hours")).toHaveText("2.5h");
-        // 1 cancelled
-        await expect(row.getByTestId("cancelled-count")).toContainText("1 cancelled");
-        break;
-      }
-    }
-    expect(found).toBe(true);
+    const row = page.getByTestId("teacher-row").filter({ hasText: "E2E Hours Teacher" });
+    // 2x60 + 1x30 = 150min = 2.5h
+    await expect(row.getByTestId("teacher-hours")).toHaveText("2.5h");
+    // 1 cancelled
+    await expect(row.getByTestId("cancelled-count")).toContainText("1 cancelled");
   });
 
   test("summary total equals sum of all teacher hours", async ({ page }) => {

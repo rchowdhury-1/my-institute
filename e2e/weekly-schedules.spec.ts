@@ -16,9 +16,9 @@ import {
   API,
   STUDENT_ID,
   getAdminToken,
-  getStudentToken,
+  resetAndGetStudentToken,
   getTestTeacherId,
-  getTeacherToken,
+  resetAndGetTeacherToken,
   deleteSession,
 } from "./helpers";
 
@@ -383,7 +383,7 @@ test("teacher cannot mark attendance too early (ATTENDANCE_TOO_EARLY)", async ({
   const session = (await createRes.json()).session;
 
   const adminToken = token;
-  const teacherToken = await getTeacherToken(request);
+  const teacherToken = await resetAndGetTeacherToken(request);
 
   const attRes = await request.patch(
     `${API}/sessions/${session.id}/attendance`,
@@ -765,7 +765,7 @@ test("schedules_summary: student with active schedule shows source=schedules", a
   request,
 }) => {
   // Get baseline
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const baseRes = await request.get(`${API}/students/me`, {
     headers: { Authorization: `Bearer ${studentToken}` },
   });
@@ -780,7 +780,7 @@ test("schedules_summary: student with active schedule shows source=schedules", a
   expect(res.status()).toBe(201);
   const scheduleId = body.schedule.id;
 
-  const studentToken2 = await getStudentToken(request);
+  const studentToken2 = await resetAndGetStudentToken(request);
   const meRes = await request.get(`${API}/students/me`, {
     headers: { Authorization: `Bearer ${studentToken2}` },
   });
@@ -798,7 +798,7 @@ test("schedules_summary: no active schedules shows package or none", async ({
   request,
 }) => {
   // With no test schedules active, source should be "package" or "none"
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const meRes = await request.get(`${API}/students/me`, {
     headers: { Authorization: `Bearer ${studentToken}` },
   });
@@ -813,7 +813,7 @@ test("schedules_summary: multiple active schedules sums lessons_remaining", asyn
   request,
 }) => {
   // Get baseline
-  const studentToken0 = await getStudentToken(request);
+  const studentToken0 = await resetAndGetStudentToken(request);
   const base = (await (await request.get(`${API}/students/me`, {
     headers: { Authorization: `Bearer ${studentToken0}` },
   })).json()).schedules_summary;
@@ -831,7 +831,7 @@ test("schedules_summary: multiple active schedules sums lessons_remaining", asyn
   });
   expect(r2.status()).toBe(201);
 
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const meRes = await request.get(`${API}/students/me`, {
     headers: { Authorization: `Bearer ${studentToken}` },
   });
@@ -857,7 +857,7 @@ test("schedules_summary: attendance decrement reflects immediately", async ({
   const token = await getAdminToken(request);
 
   // Get baseline
-  const studentToken0 = await getStudentToken(request);
+  const studentToken0 = await resetAndGetStudentToken(request);
   const baseSummary = (await (await request.get(`${API}/students/me`, {
     headers: { Authorization: `Bearer ${studentToken0}` },
   })).json()).schedules_summary;
@@ -878,7 +878,7 @@ test("schedules_summary: attendance decrement reflects immediately", async ({
   });
 
   // Verify summary decremented by 1
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const meRes = await request.get(`${API}/students/me`, {
     headers: { Authorization: `Bearer ${studentToken}` },
   });

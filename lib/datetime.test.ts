@@ -65,11 +65,23 @@ test("formatSessionDate — different year includes year", () => {
 });
 
 // ── null / undefined / invalid ──
-test("null returns empty string", () => {
+test("formatSessionTime(null) returns empty string", () => {
   assert.equal(formatSessionTime(null), "");
+});
+
+test("formatSessionDate(null) returns empty string", () => {
   assert.equal(formatSessionDate(null), "");
+});
+
+test("formatTimeOnly(null) returns empty string", () => {
   assert.equal(formatTimeOnly(null), "");
+});
+
+test("formatRelative(null) returns empty string", () => {
   assert.equal(formatRelative(null), "");
+});
+
+test("formatSimpleDate(null) returns empty string", () => {
   assert.equal(formatSimpleDate(null), "");
 });
 
@@ -124,12 +136,19 @@ test("isSessionJoinable — skew corrects a slow device clock", () => {
   assert.equal(isSessionJoinable(start, 3, { skewMs: 65 * 60_000 }), true);
 });
 
-test("isSessionBeforeStart — false once early window opens", () => {
+test("isSessionBeforeStart — false once within the 15-min early window", () => {
   const start = new Date(Date.now() + 10 * 60_000).toISOString();
-  assert.equal(isSessionBeforeStart(start), false); // within 15-min early window
+  assert.equal(isSessionBeforeStart(start), false);
+});
+
+test("isSessionBeforeStart — true while still outside the early window", () => {
   const farStart = new Date(Date.now() + 60 * 60_000).toISOString();
   assert.equal(isSessionBeforeStart(farStart), true);
-  assert.equal(isSessionBeforeStart(farStart, 50 * 60_000), false); // skewed past the window opening
+});
+
+test("isSessionBeforeStart — skew can push the window open early", () => {
+  const farStart = new Date(Date.now() + 60 * 60_000).toISOString();
+  assert.equal(isSessionBeforeStart(farStart, 50 * 60_000), false);
 });
 
 // ── computeClockSkew ──

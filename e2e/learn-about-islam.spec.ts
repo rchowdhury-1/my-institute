@@ -7,7 +7,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { BASE, loginAndNavigate as loginAsAdmin } from "./helpers";
+import { BASE, loginAndNavigate as loginAsAdmin, WHATSAPP_NUMBER, interceptWindowOpen } from "./helpers";
 
 test.describe("Learn About Islam page", () => {
   test.describe.configure({ mode: "serial" });
@@ -24,14 +24,7 @@ test.describe("Learn About Islam page", () => {
     await page.goto(`${BASE}/learn-about-islam`);
 
     // Intercept window.open
-    const whatsappCalls = await page.evaluateHandle(() => {
-      const calls: string[] = [];
-      window.open = (url: string | URL | undefined) => {
-        calls.push(String(url ?? ""));
-        return null;
-      };
-      return calls;
-    });
+    const whatsappCalls = await interceptWindowOpen(page);
 
     await page.fill('input[name="name"]', "[TEST] Revert Applicant");
     await page.fill('input[name="email"]', "revert@test.com");
@@ -46,7 +39,7 @@ test.describe("Learn About Islam page", () => {
     // WhatsApp opened
     const calls = await whatsappCalls.jsonValue() as string[];
     expect(calls.length).toBeGreaterThan(0);
-    expect(calls[0]).toContain("wa.me/201067827621");
+    expect(calls[0]).toContain(`wa.me/${WHATSAPP_NUMBER}`);
     expect(calls[0]).toContain("Revert%20Applicant");
   });
 

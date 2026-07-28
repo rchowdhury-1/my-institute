@@ -7,7 +7,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { BASE } from "./helpers";
+import { BASE, WHATSAPP_NUMBER, interceptWindowOpen } from "./helpers";
 
 test.describe("Scholarship page", () => {
   test("page loads with form and all fields visible", async ({ page }) => {
@@ -51,14 +51,7 @@ test.describe("Scholarship page", () => {
     await page.fill('input[name="source"]', "Facebook");
 
     // Intercept window.open to capture WhatsApp URL
-    const whatsappUrl = await page.evaluateHandle(() => {
-      const calls: string[] = [];
-      window.open = (url: string | URL | undefined) => {
-        calls.push(String(url ?? ""));
-        return null;
-      };
-      return calls;
-    });
+    const whatsappUrl = await interceptWindowOpen(page);
 
     await page.getByRole("button", { name: /submit application/i }).click();
 
@@ -69,7 +62,7 @@ test.describe("Scholarship page", () => {
     // Verify WhatsApp URL was opened with the user's name
     const calls = await whatsappUrl.jsonValue() as string[];
     expect(calls.length).toBeGreaterThan(0);
-    expect(calls[0]).toContain("wa.me/201067827621");
+    expect(calls[0]).toContain(`wa.me/${WHATSAPP_NUMBER}`);
     expect(calls[0]).toContain("Test%20Student");
   });
 
@@ -80,14 +73,7 @@ test.describe("Scholarship page", () => {
     await page.fill('input[name="email"]', "required@test.com");
     await page.fill('input[name="phone"]', "+201234567890");
 
-    const whatsappUrl = await page.evaluateHandle(() => {
-      const calls: string[] = [];
-      window.open = (url: string | URL | undefined) => {
-        calls.push(String(url ?? ""));
-        return null;
-      };
-      return calls;
-    });
+    const whatsappUrl = await interceptWindowOpen(page);
 
     await page.getByRole("button", { name: /submit application/i }).click();
 
@@ -106,14 +92,7 @@ test.describe("Scholarship page", () => {
       route.fulfill({ status: 500, body: JSON.stringify({ error: "Server error" }) })
     );
 
-    const whatsappUrl = await page.evaluateHandle(() => {
-      const calls: string[] = [];
-      window.open = (url: string | URL | undefined) => {
-        calls.push(String(url ?? ""));
-        return null;
-      };
-      return calls;
-    });
+    const whatsappUrl = await interceptWindowOpen(page);
 
     await page.fill('input[name="fullName"]', "Error Test");
     await page.fill('input[name="email"]', "error@test.com");

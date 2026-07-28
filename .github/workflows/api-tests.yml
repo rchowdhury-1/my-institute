@@ -60,4 +60,4 @@ jobs:
           API_URL: https://my-institute-sxjs.onrender.com
           TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
           TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
-        run: npx playwright test e2e/reschedule-and-buffer.spec.ts --reporter=github
+        run: npx playwright test e2e/reschedule-and-buffer.spec.ts e2e/auth.spec.ts --reporter=github

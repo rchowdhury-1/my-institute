@@ -44,7 +44,7 @@ export async function getAdminToken(request: APIRequestContext): Promise<string>
   return getToken(request, ADMIN_EMAIL, ADMIN_PASSWORD);
 }
 
-export async function getStudentToken(request: APIRequestContext): Promise<string> {
+export async function resetAndGetStudentToken(request: APIRequestContext): Promise<string> {
   // Reset student password — send_email: false prevents welcome email
   const adminToken = await getAdminToken(request);
   const resetRes = await request.post(`${API}/admin/students/${STUDENT_ID}/reset-password`, {
@@ -88,7 +88,7 @@ export async function getTestTeacherId(
   return teacher.id;
 }
 
-export async function getTeacherToken(
+export async function resetAndGetTeacherToken(
   request: APIRequestContext,
   email: string = TEST_TEACHER_EMAIL,
   displayName: string = "Playwright Test Teacher"
@@ -183,4 +183,21 @@ export async function safeClick(page: Page, selector: string): Promise<void> {
 
 export function uniqueEmail(prefix: string = "playwright"): string {
   return `${prefix}+${Date.now()}@test-mi.dev`;
+}
+
+export const WHATSAPP_NUMBER = "201067827621";
+
+/**
+ * Overrides window.open to capture called URLs instead of actually opening
+ * them, returning a JSHandle to the array of URL strings captured so far.
+ */
+export async function interceptWindowOpen(page: Page) {
+  return page.evaluateHandle(() => {
+    const calls: string[] = [];
+    window.open = (url: string | URL | undefined) => {
+      calls.push(String(url ?? ""));
+      return null;
+    };
+    return calls;
+  });
 }

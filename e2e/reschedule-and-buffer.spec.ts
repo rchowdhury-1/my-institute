@@ -14,14 +14,12 @@
 import { test, expect } from "@playwright/test";
 import {
   API,
-  ADMIN_EMAIL,
-  ADMIN_PASSWORD,
   STUDENT_ID,
   TEST_TEACHER2_EMAIL,
   getAdminToken,
-  getStudentToken,
+  resetAndGetStudentToken,
   getTestTeacherId,
-  getTeacherToken,
+  resetAndGetTeacherToken,
   uniqueProposedTime,
   createTestSession,
   createSessionAt,
@@ -32,7 +30,7 @@ import {
 
 test("student cannot cancel a session within 12h (CANCELLATION_BUFFER)", async ({ request }) => {
   const session = await createTestSession(request, 6); // 6h from now
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const res = await request.patch(`${API}/sessions/${session.id}/cancel`, {
     headers: { Authorization: `Bearer ${studentToken}` },
     data: {},
@@ -54,7 +52,7 @@ test("student gets SESSION_PAST for an already-passed session", async ({ request
   });
   const session = (await res.json()).session;
 
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const cancelRes = await request.patch(`${API}/sessions/${session.id}/cancel`, {
     headers: { Authorization: `Bearer ${studentToken}` },
     data: {},
@@ -67,7 +65,7 @@ test("student gets SESSION_PAST for an already-passed session", async ({ request
 
 test("student cancellation outside the buffer works normally", async ({ request }) => {
   const session = await createTestSession(request, 24); // 24h from now
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const res = await request.patch(`${API}/sessions/${session.id}/cancel`, {
     headers: { Authorization: `Bearer ${studentToken}` },
     data: { cancellation_reason: "test" },
@@ -95,7 +93,7 @@ test("admin cancellation within 12h works (bypass)", async ({ request }) => {
 
 test("student cannot hit legacy PATCH /sessions/:id/reschedule", async ({ request }) => {
   const session = await createTestSession(request, 48);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const res = await request.patch(`${API}/sessions/${session.id}/reschedule`, {
     headers: { Authorization: `Bearer ${studentToken}` },
     data: { scheduled_at: new Date(Date.now() + 72 * 3600000).toISOString() },
@@ -151,7 +149,7 @@ test("admin edits scheduled_at — notifies student of the new time", async ({ r
   });
   expect(res.status()).toBe(200);
 
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const notifRes = await request.get(`${API}/notifications`, {
     headers: { Authorization: `Bearer ${studentToken}` },
   });
@@ -168,7 +166,7 @@ test("admin edits with notes-only change — no notifications fired", async ({ r
   const adminToken = await getAdminToken(request);
 
   // Clear student notifications first
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   await request.patch(`${API}/notifications/read-all`, {
     headers: { Authorization: `Bearer ${studentToken}` },
   });
@@ -218,7 +216,7 @@ test("admin edit with teacher conflict → 409, no state change", async ({ reque
 
 test("student creates a reschedule request → 201, notifications fire", async ({ request }) => {
   const session = await createTestSession(request, 48);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const proposedTime = uniqueProposedTime();
 
   const res = await request.post(`${API}/reschedule-requests`, {
@@ -235,7 +233,7 @@ test("student creates a reschedule request → 201, notifications fire", async (
 
 test("duplicate request while pending → 409", async ({ request }) => {
   const session = await createTestSession(request, 48);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const proposedTime = uniqueProposedTime();
 
   await request.post(`${API}/reschedule-requests`, {
@@ -254,7 +252,7 @@ test("duplicate request while pending → 409", async ({ request }) => {
 
 test("student cannot reschedule within 12h buffer → 403", async ({ request }) => {
   const session = await createTestSession(request, 6);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const res = await request.post(`${API}/reschedule-requests`, {
     headers: { Authorization: `Bearer ${studentToken}` },
     data: { session_id: session.id, proposed_at: uniqueProposedTime() },
@@ -267,7 +265,7 @@ test("student cannot reschedule within 12h buffer → 403", async ({ request }) 
 
 test("admin approves request → original rescheduled, new session created", async ({ request }) => {
   const session = await createTestSession(request, 48);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const proposedTime = uniqueProposedTime();
 
   const createRes = await request.post(`${API}/reschedule-requests`, {
@@ -292,7 +290,7 @@ test("admin approves request → original rescheduled, new session created", asy
 
 test("admin rejects with reason → reason saved, student notified", async ({ request }) => {
   const session = await createTestSession(request, 48);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const proposedTime = uniqueProposedTime();
 
   const createRes = await request.post(`${API}/reschedule-requests`, {
@@ -316,7 +314,7 @@ test("admin rejects with reason → reason saved, student notified", async ({ re
 
 test("student cancels own pending request → cancelled_by_student", async ({ request }) => {
   const session = await createTestSession(request, 48);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const proposedTime = uniqueProposedTime();
 
   const createRes = await request.post(`${API}/reschedule-requests`, {
@@ -346,7 +344,7 @@ test("student cannot create request for someone else's session", async ({ reques
             scheduled_at: new Date(Date.now() + 72 * 3600000).toISOString(), duration_minutes: 60, subject: "quran" },
   });
   const session = (await sessRes.json()).session;
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const res = await request.post(`${API}/reschedule-requests`, {
     headers: { Authorization: `Bearer ${studentToken}` },
     data: { session_id: session.id, proposed_at: uniqueProposedTime() },
@@ -357,7 +355,7 @@ test("student cannot create request for someone else's session", async ({ reques
 
 test("teacher cannot approve another teacher's session request", async ({ request }) => {
   const session = await createTestSession(request, 48);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const createRes = await request.post(`${API}/reschedule-requests`, {
     headers: { Authorization: `Bearer ${studentToken}` },
     data: { session_id: session.id, proposed_at: uniqueProposedTime() },
@@ -366,7 +364,7 @@ test("teacher cannot approve another teacher's session request", async ({ reques
   // Login as a second, distinct dedicated test teacher (different from the
   // one linked to the session) — proves cross-teacher authorization denial
   // without touching any real teacher's account.
-  const otherToken = await getTeacherToken(request, TEST_TEACHER2_EMAIL, "Playwright Test Teacher 2");
+  const otherToken = await resetAndGetTeacherToken(request, TEST_TEACHER2_EMAIL, "Playwright Test Teacher 2");
   const approveRes = await request.patch(`${API}/reschedule-requests/${reqId}/approve`, {
     headers: { Authorization: `Bearer ${otherToken}` },
     data: {},
@@ -376,7 +374,7 @@ test("teacher cannot approve another teacher's session request", async ({ reques
 });
 
 test("teacher homework on unrelated student → NOT_YOUR_STUDENT", async ({ request }) => {
-  const teacherToken = await getTeacherToken(request);
+  const teacherToken = await resetAndGetTeacherToken(request);
   const res = await request.post(`${API}/homework`, {
     headers: { Authorization: `Bearer ${teacherToken}` },
     data: { student_id: "61337f84-75f4-4365-85bb-ab89c7046f3f", title: "_TEST_ unrelated" },
@@ -389,7 +387,7 @@ test("teacher CAN create homework for their own student", async ({ request }) =>
   // The ownership check requires a session linking this teacher and student —
   // create one rather than depending on whatever production data holds
   const session = await createTestSession(request, 48);
-  const teacherToken = await getTeacherToken(request);
+  const teacherToken = await resetAndGetTeacherToken(request);
   const res = await request.post(`${API}/homework`, {
     headers: { Authorization: `Bearer ${teacherToken}` },
     data: { student_id: STUDENT_ID, title: "_TEST_ related hw" },
@@ -415,7 +413,7 @@ test("admin can grade any homework (previously 404)", async ({ request }) => {
 
 test("reschedule approval notification uses dual-timezone format", async ({ request }) => {
   const session = await createTestSession(request, 48);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const createRes = await request.post(`${API}/reschedule-requests`, {
     headers: { Authorization: `Bearer ${studentToken}` },
     data: { session_id: session.id, proposed_at: uniqueProposedTime() },
@@ -440,7 +438,7 @@ test("reschedule approval notification uses dual-timezone format", async ({ requ
 
 test("session at NOW still appears in student upcoming (3h buffer)", async ({ request }) => {
   const session = await createSessionAt(request, new Date().toISOString());
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const res = await request.get(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${studentToken}` },
   });
@@ -455,7 +453,7 @@ test("session ended 2h ago still appears as upcoming", async ({ request }) => {
   // Session started 3h ago with 60-min duration → ended 2h ago
   const scheduledAt = new Date(Date.now() - 3 * 3600000).toISOString();
   const session = await createSessionAt(request, scheduledAt, 60);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const res = await request.get(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${studentToken}` },
   });
@@ -470,7 +468,7 @@ test("session ended 4h ago does NOT appear as upcoming", async ({ request }) => 
   // Session started 5h ago with 60-min duration → ended 4h ago
   const scheduledAt = new Date(Date.now() - 5 * 3600000).toISOString();
   const session = await createSessionAt(request, scheduledAt, 60);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
 
   // Check student dashboard upcoming (GET /students/me returns upcoming_lessons)
   const res = await request.get(`${API}/students/me`, {
@@ -486,7 +484,7 @@ test("session ended 4h ago does NOT appear as upcoming", async ({ request }) => 
 test("session in progress (started 30min ago, 60-min duration) appears as upcoming", async ({ request }) => {
   const scheduledAt = new Date(Date.now() - 30 * 60000).toISOString();
   const session = await createSessionAt(request, scheduledAt, 60);
-  const studentToken = await getStudentToken(request);
+  const studentToken = await resetAndGetStudentToken(request);
   const res = await request.get(`${API}/sessions`, {
     headers: { Authorization: `Bearer ${studentToken}` },
   });
@@ -527,19 +525,4 @@ test("delete session with reschedule child succeeds (FK handled)", async ({ requ
   expect(child.rescheduled_from).toBeNull();
 
   await deleteSession(request, newSession.id);
-});
-
-test("duplicate login requests don't crash (refresh token idempotency)", async ({ request }) => {
-  const [r1, r2] = await Promise.all([
-    request.post(`${API}/auth/login`, {
-      data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    }),
-    request.post(`${API}/auth/login`, {
-      data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-    }),
-  ]);
-  expect(r1.status()).toBe(200);
-  expect(r2.status()).toBe(200);
-  expect((await r1.json()).accessToken).toBeTruthy();
-  expect((await r2.json()).accessToken).toBeTruthy();
 });
