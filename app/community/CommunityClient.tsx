@@ -9,8 +9,8 @@ import AnimatedSection from "@/components/shared/AnimatedSection";
 interface Post {
   id: string;
   type: "quote" | "honour_list" | "general";
-  title: string;
-  body: string;
+  title: string | null;
+  body: string | null;
   image_url: string | null;
   published_at: string;
 }
@@ -83,11 +83,13 @@ export default function CommunityClient() {
           ) : (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {posts.map((post, i) => (
+                {posts.map((post, i) => {
+                  const isImageOnly = post.image_url && !post.title && !post.body;
+                  return (
                   <AnimatedSection key={post.id} delay={i * 0.05}>
                     <div className="bg-white rounded-2xl border border-black/5 overflow-hidden shadow-sm h-full flex flex-col">
                       {post.image_url && (
-                        <div className="h-48 bg-black overflow-hidden">
+                        <div className={`bg-black overflow-hidden ${isImageOnly ? "flex-1" : "h-48"}`}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={post.image_url}
@@ -96,27 +98,34 @@ export default function CommunityClient() {
                           />
                         </div>
                       )}
-                      <div className="p-5 flex-1 flex flex-col">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_BADGE[post.type]}`}
-                          >
-                            {TYPE_LABEL[post.type]}
-                          </span>
-                          <span className="text-xs text-charcoal/30">
-                            {formatDate(post.published_at)}
-                          </span>
+                      {!isImageOnly && (
+                        <div className="p-5 flex-1 flex flex-col">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_BADGE[post.type]}`}
+                            >
+                              {TYPE_LABEL[post.type]}
+                            </span>
+                            <span className="text-xs text-charcoal/30">
+                              {formatDate(post.published_at)}
+                            </span>
+                          </div>
+                          {post.title && (
+                            <h2 className="font-display text-lg font-bold text-charcoal mb-2">
+                              {post.title}
+                            </h2>
+                          )}
+                          {post.body && (
+                            <p className="text-charcoal/60 text-sm leading-relaxed flex-1">
+                              {post.body}
+                            </p>
+                          )}
                         </div>
-                        <h2 className="font-display text-lg font-bold text-charcoal mb-2">
-                          {post.title}
-                        </h2>
-                        <p className="text-charcoal/60 text-sm leading-relaxed flex-1">
-                          {post.body}
-                        </p>
-                      </div>
+                      )}
                     </div>
                   </AnimatedSection>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Pagination */}

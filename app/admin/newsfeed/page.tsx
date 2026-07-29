@@ -11,8 +11,8 @@ import ImageUploadField from "@/components/admin/ImageUploadField";
 interface Post {
   id: string;
   type: "quote" | "honour_list" | "general";
-  title: string;
-  body: string;
+  title: string | null;
+  body: string | null;
   image_url: string | null;
   show_on_homepage: boolean;
   published_at: string;
@@ -134,8 +134,8 @@ export default function AdminNewsfeedPage() {
     setEditingId(post.id);
     setEditForm({
       type: post.type,
-      title: post.title,
-      body: post.body,
+      title: post.title ?? "",
+      body: post.body ?? "",
       image_url: post.image_url ?? "",
       show_on_homepage: post.show_on_homepage,
     });
@@ -233,14 +233,13 @@ export default function AdminNewsfeedPage() {
 
               <div>
                 <label className="block text-xs font-medium text-charcoal/60 mb-1.5">
-                  Title <span className="text-red-500">*</span>
+                  Title <span className="text-charcoal/35 font-normal">(optional if you add an image)</span>
                 </label>
                 <input
                   type="text"
                   value={createForm.title}
                   onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
                   placeholder="Post title"
-                  required
                   className={inputClass}
                   data-testid="input-title"
                 />
@@ -248,14 +247,13 @@ export default function AdminNewsfeedPage() {
 
               <div>
                 <label className="block text-xs font-medium text-charcoal/60 mb-1.5">
-                  Body <span className="text-red-500">*</span>
+                  Body <span className="text-charcoal/35 font-normal">(optional if you add an image)</span>
                 </label>
                 <textarea
                   value={createForm.body}
                   onChange={(e) => setCreateForm((f) => ({ ...f, body: e.target.value }))}
                   placeholder="Post content…"
                   rows={5}
-                  required
                   className={inputClass + " resize-none"}
                   data-testid="input-body"
                 />
@@ -407,10 +405,15 @@ export default function AdminNewsfeedPage() {
                               </span>
                             )}
                           </div>
-                          <h3 className="font-semibold text-charcoal text-sm">{post.title}</h3>
-                          <p className="text-charcoal/50 text-xs mt-0.5 line-clamp-2">
-                            {post.body.length > 150 ? post.body.slice(0, 150) + "…" : post.body}
-                          </p>
+                          {post.title && <h3 className="font-semibold text-charcoal text-sm">{post.title}</h3>}
+                          {post.body && (
+                            <p className="text-charcoal/50 text-xs mt-0.5 line-clamp-2">
+                              {post.body.length > 150 ? post.body.slice(0, 150) + "…" : post.body}
+                            </p>
+                          )}
+                          {!post.title && !post.body && (
+                            <p className="text-charcoal/30 text-xs italic">Image-only post</p>
+                          )}
                           <p className="text-charcoal/30 text-xs mt-1.5">
                             {formatDate(post.published_at)}
                           </p>

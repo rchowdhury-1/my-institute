@@ -33,8 +33,10 @@ router.get('/newsfeed', asyncHandler(async (req, res) => {
 router.post('/newsfeed', asyncHandler(async (req, res) => {
   const { type, title, body, image_url, show_on_homepage = false } = req.body;
 
-  if (!type || !title || !body)
-    return res.status(400).json({ error: 'type, title, and body are required' });
+  if (!type)
+    return res.status(400).json({ error: 'type is required' });
+  if (!title?.trim() && !body?.trim() && !image_url)
+    return res.status(400).json({ error: 'Post needs a title, body, or image' });
 
   const typeError = validateEnum(type, ['quote', 'honour_list', 'general'], 'type must be quote, honour_list, or general');
   if (typeError) return res.status(400).json({ error: typeError });
@@ -43,7 +45,7 @@ router.post('/newsfeed', asyncHandler(async (req, res) => {
     `INSERT INTO newsfeed_posts (type, title, body, image_url, show_on_homepage, created_by)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [type, title.trim(), body.trim(), image_url || null, show_on_homepage, req.userId]
+    [type, title?.trim() || null, body?.trim() || null, image_url || null, show_on_homepage, req.userId]
   );
   res.status(201).json({ post: result.rows[0] });
 }));

@@ -8,8 +8,8 @@ import AnimatedSection from "@/components/shared/AnimatedSection";
 interface Post {
   id: string;
   type: "quote" | "honour_list" | "general";
-  title: string;
-  body: string;
+  title: string | null;
+  body: string | null;
   image_url: string | null;
   published_at: string;
 }
@@ -53,11 +53,13 @@ export default function CommunityPreview() {
         </AnimatedSection>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {posts.map((post, i) => (
+          {posts.map((post, i) => {
+            const isImageOnly = post.image_url && !post.title && !post.body;
+            return (
             <AnimatedSection key={post.id} delay={i * 0.1}>
               <div className="bg-cream rounded-2xl border border-black/5 overflow-hidden h-full flex flex-col">
                 {post.image_url && (
-                  <div className="h-40 bg-black overflow-hidden">
+                  <div className={`bg-black overflow-hidden ${isImageOnly ? "flex-1" : "h-40"}`}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={post.image_url}
@@ -66,24 +68,31 @@ export default function CommunityPreview() {
                     />
                   </div>
                 )}
-                <div className="p-5 flex-1 flex flex-col">
-                  <span
-                    className={`self-start px-2 py-0.5 rounded-full text-xs font-medium mb-2 ${TYPE_BADGE[post.type]}`}
-                  >
-                    {TYPE_LABEL[post.type]}
-                  </span>
-                  <h3 className="font-display text-base font-bold text-charcoal mb-1.5">
-                    {post.title}
-                  </h3>
-                  <p className="text-charcoal/55 text-sm leading-relaxed flex-1">
-                    {post.body.length > 100
-                      ? post.body.slice(0, 100) + "…"
-                      : post.body}
-                  </p>
-                </div>
+                {!isImageOnly && (
+                  <div className="p-5 flex-1 flex flex-col">
+                    <span
+                      className={`self-start px-2 py-0.5 rounded-full text-xs font-medium mb-2 ${TYPE_BADGE[post.type]}`}
+                    >
+                      {TYPE_LABEL[post.type]}
+                    </span>
+                    {post.title && (
+                      <h3 className="font-display text-base font-bold text-charcoal mb-1.5">
+                        {post.title}
+                      </h3>
+                    )}
+                    {post.body && (
+                      <p className="text-charcoal/55 text-sm leading-relaxed flex-1">
+                        {post.body.length > 100
+                          ? post.body.slice(0, 100) + "…"
+                          : post.body}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </AnimatedSection>
-          ))}
+            );
+          })}
         </div>
 
         <AnimatedSection delay={0.3}>
