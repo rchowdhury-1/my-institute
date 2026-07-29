@@ -37,7 +37,7 @@ export default async function CmsSections() {
               {ads.map(ad => (
                 <div key={ad.id} className="shrink-0 w-72 bg-white rounded-2xl border border-black/5 overflow-hidden shadow-sm">
                   {ad.image_url && (
-                    <div className="h-36 bg-emerald-primary/5 overflow-hidden">
+                    <div className="h-36 bg-black overflow-hidden">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={ad.image_url} alt={ad.title ?? ""} className="w-full h-full object-contain" />
                     </div>
@@ -62,7 +62,7 @@ export default async function CmsSections() {
               {islamInfo.map(item => (
                 <div key={item.id} className="bg-cream rounded-2xl border border-black/5 overflow-hidden">
                   {item.image_url && (
-                    <div className="h-44 overflow-hidden">
+                    <div className="h-44 bg-black overflow-hidden">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={item.image_url} alt={item.title ?? ""} className="w-full h-full object-contain" />
                     </div>

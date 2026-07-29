@@ -57,12 +57,12 @@ export default function CommunityPreview() {
             <AnimatedSection key={post.id} delay={i * 0.1}>
               <div className="bg-cream rounded-2xl border border-black/5 overflow-hidden h-full flex flex-col">
                 {post.image_url && (
-                  <div className="h-40 bg-cream-dark overflow-hidden">
+                  <div className="h-40 bg-black overflow-hidden">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={post.image_url}
                       alt=""
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                     />
                   </div>
                 )}

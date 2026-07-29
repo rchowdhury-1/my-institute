@@ -87,7 +87,7 @@ export default function CommunityClient() {
                   <AnimatedSection key={post.id} delay={i * 0.05}>
                     <div className="bg-white rounded-2xl border border-black/5 overflow-hidden shadow-sm h-full flex flex-col">
                       {post.image_url && (
-                        <div className="h-48 bg-cream overflow-hidden">
+                        <div className="h-48 bg-black overflow-hidden">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={post.image_url}
