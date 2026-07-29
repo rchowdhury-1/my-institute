@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Plus, Trash2, Edit2, Check, X, ChevronUp, ChevronDown } from "lucide-react";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import ImageUploadField from "@/components/admin/ImageUploadField";
 
 interface CmsItem {
   id: string;
@@ -214,14 +215,14 @@ export default function AdminCmsPage() {
             <textarea value={form.content} onChange={e => setForm(p => ({ ...p, content: e.target.value }))}
               placeholder="Content / text" rows={3}
               className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 resize-none" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <input type="url" value={form.image_url} onChange={e => setForm(p => ({ ...p, image_url: e.target.value }))}
-                placeholder="Image URL (optional)"
-                className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30" />
-              <input type="number" value={form.position} onChange={e => setForm(p => ({ ...p, position: e.target.value }))}
-                placeholder="Position (0 = first)"
-                className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30" />
-            </div>
+            <ImageUploadField
+              label="Image (optional)"
+              value={form.image_url}
+              onChange={(url) => setForm(p => ({ ...p, image_url: url }))}
+            />
+            <input type="number" value={form.position} onChange={e => setForm(p => ({ ...p, position: e.target.value }))}
+              placeholder="Position (0 = first)"
+              className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30" />
             <button onClick={handleAdd} disabled={adding || (!form.title && !form.content)}
               className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">
               <Plus size={14} /> {adding ? "Adding…" : "Add Item"}
@@ -260,14 +261,14 @@ export default function AdminCmsPage() {
                     <textarea value={editForm.content} onChange={e => setEditForm(p => ({ ...p, content: e.target.value }))}
                       placeholder="Content" rows={3}
                       className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 resize-none" />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input type="url" value={editForm.image_url} onChange={e => setEditForm(p => ({ ...p, image_url: e.target.value }))}
-                        placeholder="Image URL"
-                        className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30" />
-                      <input type="number" value={editForm.position} onChange={e => setEditForm(p => ({ ...p, position: e.target.value }))}
-                        placeholder="Position"
-                        className="px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30" />
-                    </div>
+                    <ImageUploadField
+                      label="Image"
+                      value={editForm.image_url}
+                      onChange={(url) => setEditForm(p => ({ ...p, image_url: url }))}
+                    />
+                    <input type="number" value={editForm.position} onChange={e => setEditForm(p => ({ ...p, position: e.target.value }))}
+                      placeholder="Position"
+                      className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-emerald-primary/30" />
                     <div className="flex gap-2">
                       <button onClick={() => handleSave(item)} disabled={saving === item.id}
                         className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-emerald-primary text-white text-xs font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors">

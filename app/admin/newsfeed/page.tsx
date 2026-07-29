@@ -6,6 +6,7 @@ import { useAuthGuard } from "@/lib/useAuthGuard";
 import { getAxiosError } from "@/lib/errors";
 import { INPUT_CLASS as inputClass } from "@/lib/styles";
 import { Plus, X, Pencil, Trash2, Eye, Image as ImageIcon } from "lucide-react";
+import ImageUploadField from "@/components/admin/ImageUploadField";
 
 interface Post {
   id: string;
@@ -260,34 +261,11 @@ export default function AdminNewsfeedPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-charcoal/60 mb-1.5">
-                  Image URL
-                </label>
-                <input
-                  type="url"
-                  value={createForm.image_url}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, image_url: e.target.value }))}
-                  placeholder="https://i.imgur.com/example.jpg"
-                  className={inputClass}
-                  data-testid="input-image-url"
-                />
-                <p className="text-xs text-charcoal/40 mt-1">
-                  Paste a public image URL. For best results, use a square image at least 800x800px.
-                  Need help hosting? Upload to imgur.com — it&apos;s free.
-                </p>
-                {createForm.image_url && (
-                  <div className="mt-2 w-20 h-20 rounded-lg border border-black/10 overflow-hidden bg-cream">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={createForm.image_url}
-                      alt="Preview"
-                      className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                    />
-                  </div>
-                )}
-              </div>
+              <ImageUploadField
+                label="Image"
+                value={createForm.image_url}
+                onChange={(url) => setCreateForm((f) => ({ ...f, image_url: url }))}
+              />
 
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
@@ -370,24 +348,11 @@ export default function AdminNewsfeedPage() {
                       className={inputClass + " resize-none"}
                       data-testid="edit-body"
                     />
-                    <input
-                      type="url"
+                    <ImageUploadField
+                      label="Image"
                       value={editForm.image_url}
-                      onChange={(e) => setEditForm((f) => ({ ...f, image_url: e.target.value }))}
-                      placeholder="Image URL (optional)"
-                      className={inputClass}
+                      onChange={(url) => setEditForm((f) => ({ ...f, image_url: url }))}
                     />
-                    {editForm.image_url && (
-                      <div className="w-20 h-20 rounded-lg border border-black/10 overflow-hidden bg-cream">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={editForm.image_url}
-                          alt="Preview"
-                          className="w-full h-full object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                        />
-                      </div>
-                    )}
                     <label className="flex items-center gap-2 cursor-pointer select-none">
                       <input
                         type="checkbox"

@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import { Plus, Trash2, PlayCircle, ChevronDown, ChevronUp } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import ImageUploadField from "@/components/admin/ImageUploadField";
 
 interface Lesson {
   id: string;
@@ -151,9 +152,11 @@ export default function AdminCoursesPage() {
               <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                 placeholder="Description" rows={3}
                 className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30 resize-none" />
-              <input type="url" value={form.thumbnail_url} onChange={e => setForm(p => ({ ...p, thumbnail_url: e.target.value }))}
-                placeholder="Thumbnail URL (optional)"
-                className="w-full px-3 py-2 rounded-xl border border-black/10 bg-cream text-sm text-charcoal placeholder:text-charcoal/30 focus:outline-none focus:ring-2 focus:ring-emerald-primary/30" />
+              <ImageUploadField
+                label="Thumbnail (optional)"
+                value={form.thumbnail_url}
+                onChange={(url) => setForm(p => ({ ...p, thumbnail_url: url }))}
+              />
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={form.is_free} onChange={e => setForm(p => ({ ...p, is_free: e.target.checked }))} className="rounded" />

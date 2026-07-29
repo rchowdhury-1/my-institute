@@ -12,5 +12,6 @@ router.use(require('./sessions'));
 router.use(require('./finance'));
 router.use(require('./newsfeed'));
 router.use(require('./applications'));
+router.use(require('./uploads'));
 
 module.exports = router;
