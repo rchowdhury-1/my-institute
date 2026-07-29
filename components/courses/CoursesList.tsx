@@ -69,9 +69,9 @@ export default function CoursesList() {
       {courses.map(course => (
         <div key={course.id} className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden flex flex-col">
           {course.thumbnail_url ? (
-            <div className="h-44 overflow-hidden">
+            <div className="h-44 bg-emerald-primary/5 overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
+              <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-contain" />
             </div>
           ) : (
             <div className="h-44 bg-emerald-primary/5 flex items-center justify-center">

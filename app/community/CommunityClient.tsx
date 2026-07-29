@@ -92,7 +92,7 @@ export default function CommunityClient() {
                           <img
                             src={post.image_url}
                             alt=""
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-contain"
                           />
                         </div>
                       )}

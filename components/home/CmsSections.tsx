@@ -39,7 +39,7 @@ export default async function CmsSections() {
                   {ad.image_url && (
                     <div className="h-36 bg-emerald-primary/5 overflow-hidden">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={ad.image_url} alt={ad.title ?? ""} className="w-full h-full object-cover" />
+                      <img src={ad.image_url} alt={ad.title ?? ""} className="w-full h-full object-contain" />
                     </div>
                   )}
                   <div className="p-4">
@@ -64,7 +64,7 @@ export default async function CmsSections() {
                   {item.image_url && (
                     <div className="h-44 overflow-hidden">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={item.image_url} alt={item.title ?? ""} className="w-full h-full object-cover" />
+                      <img src={item.image_url} alt={item.title ?? ""} className="w-full h-full object-contain" />
                     </div>
                   )}
                   <div className="p-5">
