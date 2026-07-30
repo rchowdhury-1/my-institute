@@ -82,9 +82,7 @@ export default function CommunityPreview() {
                     )}
                     {post.body && (
                       <p className="text-charcoal/55 text-sm leading-relaxed flex-1">
-                        {post.body.length > 100
-                          ? post.body.slice(0, 100) + "…"
-                          : post.body}
+                        {post.body}
                       </p>
                     )}
                   </div>
