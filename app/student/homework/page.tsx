@@ -59,8 +59,6 @@ export default function StudentHomeworkPage() {
   }
 
   async function handleSubmit(hw: Homework) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setSubmitting(hw.id);
     try {
       const form = submitForms[hw.id] ?? {};

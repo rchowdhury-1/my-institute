@@ -53,8 +53,8 @@ export default function AdminCmsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked]);
 
-  async function fetchSection(type: SectionKey) {
-    if (!loading[type] && items[type].length > 0) return; // already loaded
+  async function fetchSection(type: SectionKey, force = false) {
+    if (!force && !loading[type] && items[type].length > 0) return; // already loaded
     setLoading(prev => ({ ...prev, [type]: true }));
     setLoadError(prev => ({ ...prev, [type]: false }));
     try {
@@ -179,7 +179,11 @@ export default function AdminCmsPage() {
           .sort((a, b) => a.position - b.position),
       }));
     } catch {
-      alert("Failed to reorder.");
+      // One PATCH may have succeeded before the other failed, leaving the
+      // client's optimistic-looking state out of sync with the server —
+      // re-fetch from the server instead of guessing which one landed.
+      alert("Failed to reorder. Refreshing the list to match the server.");
+      await fetchSection(activeTab, true);
     }
   }
 

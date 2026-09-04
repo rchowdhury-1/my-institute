@@ -9,7 +9,7 @@ const { generateAllSchedules, VALID_SUBJECTS } = require('../lib/schedule-genera
 const { asyncHandler } = require('../middleware/errors');
 const { validateDuration } = require('../lib/validators');
 const { safeGenerate } = require('../lib/queries');
-const { markAttendance } = require('../services/attendance');
+const { markAttendance, notifyIfLowBalance, notifyAttendanceMarked } = require('../services/attendance');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -230,27 +230,34 @@ router.patch('/:id/attendance', requireRole('student', 'teacher', 'admin', 'supe
   if (teacher_attended && typeof student_attended !== 'boolean')
     return res.status(400).json({ error: 'student_attended (boolean) is required when teacher attended' });
 
-  const existing = await pool.query('SELECT * FROM sessions WHERE id=$1', [id]);
-  if (existing.rows.length === 0)
-    return res.status(404).json({ error: 'Session not found' });
-
-  const session = existing.rows[0];
-
-  // Teacher can only mark their own sessions
-  if (req.userRole === 'teacher' && session.teacher_id !== req.userId)
-    return res.status(403).json({ error: 'Forbidden' });
-
-  const result = await markAttendance(pool, {
-    session,
-    userId: req.userId,
-    userRole: req.userRole,
-    teacherAttended: teacher_attended,
-    studentAttended: student_attended,
-  });
-  if (result.error) {
-    const { status, error, code } = result;
-    return res.status(status).json(code ? { error, code } : { error });
+  const client = await pool.connect();
+  let result;
+  try {
+    await client.query('BEGIN');
+    result = await markAttendance(client, {
+      sessionId: id,
+      userId: req.userId,
+      userRole: req.userRole,
+      teacherAttended: teacher_attended,
+      studentAttended: student_attended,
+    });
+    if (result.error) {
+      await client.query('ROLLBACK');
+      const { status, error, code } = result;
+      return res.status(status).json(code ? { error, code } : { error });
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
+
+  // Post-commit: best-effort notifications, must not affect the already-
+  // committed attendance mark (matches the reschedule-approval pattern).
+  await notifyIfLowBalance(pool, result.session, result.balanceResult);
+  await notifyAttendanceMarked(result.session, result.newStatus);
 
   res.json({ session: result.session });
 }));

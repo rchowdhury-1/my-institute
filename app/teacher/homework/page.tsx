@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Plus, ChevronDown, ChevronUp, BookOpen } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import PageError from "@/components/shared/PageError";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Student {
@@ -49,6 +50,7 @@ export default function TeacherHomeworkPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [homework, setHomework] = useState<Homework[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   // create form
@@ -74,14 +76,15 @@ export default function TeacherHomeworkPage() {
         setHomework(hwRes.data.homework);
         setStudents(studentsRes.data.students);
       })
-      .catch((err) => console.error("[teacher/homework] failed to load:", err))
+      .catch((err) => {
+        console.error("[teacher/homework] failed to load:", err);
+        setError("Failed to load homework.");
+      })
       .finally(() => setLoading(false));
   }, [authChecked]);
 
   async function handleCreate() {
     if (!form.student_id || !form.title) return;
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setCreating(true);
     try {
       const res = await api.post("/homework",
@@ -109,8 +112,6 @@ export default function TeacherHomeworkPage() {
       setExpanded(expanded === hwId ? null : hwId);
       return;
     }
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     try {
       const res = await api.get(`/homework/${hwId}/submissions`);
       setSubmissions((prev) => ({ ...prev, [hwId]: res.data.submissions }));
@@ -121,8 +122,6 @@ export default function TeacherHomeworkPage() {
   }
 
   async function handleGrade(hwId: string) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setGrading(hwId);
     const gf = gradeForm[hwId] ?? { grade: "", teacher_notes: "" };
     try {
@@ -141,6 +140,9 @@ export default function TeacherHomeworkPage() {
 
   if (loading) {
     return <PageLoading />;
+  }
+  if (error) {
+    return <PageError message={error} />;
   }
 
   return (

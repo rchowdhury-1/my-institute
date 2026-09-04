@@ -45,6 +45,12 @@ if (process.env.SENTRY_DSN) {
 
 const app = express();
 
+// Render sits in front of this app behind a reverse proxy — without this,
+// req.ip resolves to Render's proxy IP for every request, which would make
+// the auth rate limiters (src/middleware/rateLimit.js) apply globally
+// across all clients instead of per-client.
+app.set('trust proxy', 1);
+
 const allowedOrigins = [
   process.env.CLIENT_URL,
   process.env.FRONTEND_URL,

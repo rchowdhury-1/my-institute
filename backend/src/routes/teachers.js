@@ -2,7 +2,6 @@ const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errors');
-const { validateEnum } = require('../lib/validators');
 
 const router = express.Router();
 
@@ -47,15 +46,15 @@ router.get('/lessons', requireAuth, requireRole('teacher', 'admin'), asyncHandle
   res.json({ lessons: result.rows, server_time: new Date().toISOString() });
 }));
 
-// PATCH /teachers/lessons/:id — update status, notes, or zoom link
+// PATCH /teachers/lessons/:id — update notes or zoom link.
+// Status changes are NOT allowed here — they must go through
+// PATCH /sessions/:id/attendance (services/attendance.js), which is the
+// only path that window-checks, decrements the student's balance, and
+// sends attendance notifications. This route used to also accept `status`
+// directly, letting a teacher flip a session to completed/cancelled without
+// any of that side-effect handling — removed as a correctness fix.
 router.patch('/lessons/:id', requireAuth, requireRole('teacher', 'admin'), asyncHandler(async (req, res) => {
-  const { status, notes, zoom_link } = req.body;
-  const validStatuses = ['scheduled', 'completed', 'cancelled'];
-
-  if (status) {
-    const statusError = validateEnum(status, validStatuses, 'Invalid status');
-    if (statusError) return res.status(400).json({ error: statusError });
-  }
+  const { notes, zoom_link } = req.body;
 
   const existing = await pool.query(
     'SELECT id FROM sessions WHERE id = $1 AND teacher_id = $2',
@@ -65,13 +64,12 @@ router.patch('/lessons/:id', requireAuth, requireRole('teacher', 'admin'), async
 
   const result = await pool.query(
     `UPDATE sessions
-     SET status    = COALESCE($1, status),
-         notes     = COALESCE($2, notes),
-         zoom_link = COALESCE($3, zoom_link),
+     SET notes     = COALESCE($1, notes),
+         zoom_link = COALESCE($2, zoom_link),
          updated_at = NOW()
-     WHERE id = $4
+     WHERE id = $3
      RETURNING *`,
-    [status || null, notes ?? null, zoom_link ?? null, req.params.id]
+    [notes ?? null, zoom_link ?? null, req.params.id]
   );
   res.json({ lesson: result.rows[0] });
 }));

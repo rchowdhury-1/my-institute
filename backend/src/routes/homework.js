@@ -100,16 +100,29 @@ router.post('/:id/submit', requireRole('student'), asyncHandler(async (req, res)
   if (hw.rows.length === 0) return res.status(404).json({ error: 'Homework not found' });
 
   const subId = uuidv4();
-  const result = await pool.query(
-    `INSERT INTO homework_submissions (id, homework_id, student_id, notes, file_url)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [subId, id, req.userId, notes || null, file_url || null]
-  );
-  await pool.query(`UPDATE homework SET status='submitted' WHERE id=$1`, [id]);
+  const client = await pool.connect();
+  let submission;
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `INSERT INTO homework_submissions (id, homework_id, student_id, notes, file_url)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [subId, id, req.userId, notes || null, file_url || null]
+    );
+    submission = result.rows[0];
+    await client.query(`UPDATE homework SET status='submitted' WHERE id=$1`, [id]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
   await notify(hw.rows[0].teacher_id, 'homework_submitted', 'Homework Submitted',
     `A student submitted: ${hw.rows[0].title}`, '/teacher/homework');
 
-  res.status(201).json({ submission: result.rows[0] });
+  res.status(201).json({ submission });
 }));
 
 // PATCH /homework/:id/grade  (teacher / admin / supervisor)

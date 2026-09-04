@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import api from "@/lib/api";
 import { ClipboardList, CheckCircle, XCircle, Clock } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import PageError from "@/components/shared/PageError";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface AssignedExam {
@@ -57,6 +58,7 @@ export default function StudentExamsPage() {
   const { authChecked } = useAuthGuard();
   const [exams, setExams] = useState<AssignedExam[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [view, setView] = useState<"list" | "taking" | "results">("list");
   const [activeExam, setActiveExam] = useState<AssignedExam | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -73,7 +75,10 @@ export default function StudentExamsPage() {
     if (!authChecked) return;
     api.get("/exams")
       .then(res => setExams(res.data.exams))
-      .catch((err) => console.error("[student/exams] failed to load exams:", err))
+      .catch((err) => {
+        console.error("[student/exams] failed to load exams:", err);
+        setLoadError("Failed to load exams.");
+      })
       .finally(() => setLoading(false));
   }, [authChecked]);
 
@@ -144,6 +149,9 @@ export default function StudentExamsPage() {
 
   if (loading) {
     return <PageLoading />;
+  }
+  if (loadError) {
+    return <PageError message={loadError} />;
   }
 
   // ── Taking exam view ──

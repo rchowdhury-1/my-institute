@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { Plus, Trash2, ClipboardList, Users } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import PageError from "@/components/shared/PageError";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Question {
@@ -50,6 +51,7 @@ export default function TeacherExamsPage() {
   const [exams, setExams] = useState<Exam[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
   const [results, setResults] = useState<ExamResult[]>([]);
   const [loadingResults, setLoadingResults] = useState(false);
@@ -72,7 +74,10 @@ export default function TeacherExamsPage() {
     ]).then(([examRes, studRes]) => {
       setExams(examRes.data.exams);
       setStudents(studRes.data.students);
-    }).catch((err) => console.error("[teacher/exams] failed to load:", err)).finally(() => setLoading(false));
+    }).catch((err) => {
+      console.error("[teacher/exams] failed to load:", err);
+      setError("Failed to load exams.");
+    }).finally(() => setLoading(false));
   }, [authChecked]);
 
   async function handleCreate() {
@@ -143,6 +148,9 @@ export default function TeacherExamsPage() {
 
   if (loading) {
     return <PageLoading />;
+  }
+  if (error) {
+    return <PageError message={error} />;
   }
 
   if (view === "create") {

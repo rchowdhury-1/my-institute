@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { DollarSign } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
+import PageError from "@/components/shared/PageError";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 
 interface Payment {
@@ -26,12 +27,16 @@ export default function TeacherPaymentsPage() {
   const { authChecked } = useAuthGuard();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!authChecked) return;
     api.get("/payments")
       .then(res => setPayments(res.data.payments))
-      .catch((err) => console.error("[teacher/payments] failed to load:", err))
+      .catch((err) => {
+        console.error("[teacher/payments] failed to load:", err);
+        setError("Failed to load payments.");
+      })
       .finally(() => setLoading(false));
   }, [authChecked]);
 
@@ -40,6 +45,9 @@ export default function TeacherPaymentsPage() {
 
   if (loading) {
     return <PageLoading />;
+  }
+  if (error) {
+    return <PageError message={error} />;
   }
 
   return (

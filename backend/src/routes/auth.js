@@ -7,6 +7,7 @@ const { sendVerificationEmail } = require('../email');
 const { requireAuth } = require('../middleware/auth');
 const { hashPassword } = require('../utils/password');
 const { asyncHandler } = require('../middleware/errors');
+const { loginRateLimiter, registerRateLimiter } = require('../middleware/rateLimit');
 const {
   ACCESS_TOKEN_TTL,
   REFRESH_TOKEN_TTL_JWT,
@@ -32,7 +33,7 @@ function signRefresh(userId) {
 }
 
 // POST /auth/register
-router.post('/register', asyncHandler(async (req, res) => {
+router.post('/register', registerRateLimiter, asyncHandler(async (req, res) => {
   const { display_name, email, password, role: requestedRole, phone } = req.body;
   if (!display_name || !email || !password)
     return res.status(400).json({ error: 'display_name, email and password are required' });
@@ -75,7 +76,7 @@ router.post('/register', asyncHandler(async (req, res) => {
 }));
 
 // POST /auth/login
-router.post('/login', asyncHandler(async (req, res) => {
+router.post('/login', loginRateLimiter, asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 

@@ -101,8 +101,6 @@ export default function StudentSessionsPage() {
 
   async function handleCancel() {
     if (!cancelId) return;
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setCancelSaving(true);
     try {
       await api.patch(`/sessions/${cancelId}/cancel`,
@@ -122,8 +120,6 @@ export default function StudentSessionsPage() {
 
   async function handleRequestReschedule() {
     if (!rescheduleId || !proposedDate || !proposedTime) return;
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
 
     const proposed_at = new Date(`${proposedDate}T${proposedTime}`).toISOString();
     setRescheduleSaving(true);
@@ -155,8 +151,6 @@ export default function StudentSessionsPage() {
   }
 
   async function handleCancelRequest(requestId: string) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setCancellingRequest(requestId);
     try {
       await api.delete(`/reschedule-requests/${requestId}`

@@ -124,15 +124,6 @@ async function notifyIfLowBalance(pool, session, balanceResult) {
   }
 }
 
-// Decrements the appropriate balance and sends any resulting zero/low-
-// balance notifications. Combines decrementBalance + notifyIfLowBalance for
-// callers (e.g. markAttendance) that want the original single-call
-// behavior.
-async function decrementBalanceAndNotify(pool, session, status) {
-  const balanceResult = await decrementBalance(pool, session, status);
-  await notifyIfLowBalance(pool, session, balanceResult);
-}
-
 async function notifyAttendanceMarked(session, status) {
   const dateTime = formatSessionTime(session.scheduled_at);
   if (status === 'completed') {
@@ -147,16 +138,34 @@ async function notifyAttendanceMarked(session, status) {
   }
 }
 
-// Orchestrates a session's attendance mark: window-check, status derivation,
-// the UPDATE, balance decrement, and notifications. Returns { status, error,
-// code? } for an expected failure, or { session } on success.
-async function markAttendance(pool, { session, userId, userRole, teacherAttended, studentAttended }) {
+// Orchestrates a session's attendance mark: row lock, already-marked guard,
+// window-check, status derivation, the UPDATE, and balance decrement — all
+// against the caller's transaction (the route owns BEGIN/COMMIT/ROLLBACK/
+// client.release, matching the pattern used by reschedule.js/exams.js).
+// SELECT ... FOR UPDATE holds the row lock for the duration of the
+// transaction, so two concurrent attendance-mark requests for the same
+// session can't both pass the "already marked" check and both decrement
+// the student's balance.
+// Returns { status, error, code? } for an expected failure, or
+// { session, newStatus, balanceResult } on success — notifications are
+// the caller's job, sent post-commit (see routes/sessions.js).
+async function markAttendance(client, { sessionId, userId, userRole, teacherAttended, studentAttended }) {
+  const existing = await client.query('SELECT * FROM sessions WHERE id=$1 FOR UPDATE', [sessionId]);
+  if (existing.rows.length === 0) return { status: 404, error: 'Session not found' };
+  const session = existing.rows[0];
+
+  if (userRole === 'teacher' && session.teacher_id !== userId)
+    return { status: 403, error: 'Forbidden' };
+
+  if (session.status !== 'scheduled')
+    return { status: 409, error: 'Attendance has already been marked for this session', code: 'ALREADY_MARKED' };
+
   const windowError = checkAttendanceWindow(session, userRole);
   if (windowError) return windowError;
 
   const newStatus = deriveAttendanceStatus(teacherAttended, studentAttended);
 
-  const result = await pool.query(
+  const result = await client.query(
     `UPDATE sessions
      SET status = $1,
          teacher_attended = $2,
@@ -170,10 +179,9 @@ async function markAttendance(pool, { session, userId, userRole, teacherAttended
   );
   const updated = result.rows[0];
 
-  await decrementBalanceAndNotify(pool, session, newStatus);
-  await notifyAttendanceMarked(session, newStatus);
+  const balanceResult = await decrementBalance(client, session, newStatus);
 
-  return { session: updated };
+  return { session: updated, newStatus, balanceResult };
 }
 
 module.exports = {
@@ -181,7 +189,7 @@ module.exports = {
   checkAttendanceWindow,
   deriveAttendanceStatus,
   decrementBalance,
-  decrementBalanceAndNotify,
   notifyIfLowBalance,
+  notifyAttendanceMarked,
   pluralize,
 };

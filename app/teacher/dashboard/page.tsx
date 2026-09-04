@@ -64,8 +64,6 @@ export default function TeacherDashboard() {
   }, [authChecked]);
 
   const markAttendance = async (lessonId: string, teacherAttended: boolean, studentAttended: boolean) => {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setSaving(lessonId);
     try {
       const res = await api.patch(
@@ -88,8 +86,6 @@ export default function TeacherDashboard() {
   };
 
   const cancelLesson = async (lessonId: string) => {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setSaving(lessonId);
     try {
       const res = await api.patch(

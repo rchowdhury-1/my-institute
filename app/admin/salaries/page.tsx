@@ -45,15 +45,27 @@ export default function SalariesPage() {
 
   useEffect(() => {
     if (!authChecked) return;
+    let ignore = false;
     setLoading(true);
     api
       .get(`/admin/teacher-hours?month=${month}`)
       .then((res) => {
+        if (ignore) return;
         setTeachers(res.data.teachers);
         setError("");
       })
-      .catch(() => setError("Failed to load salary data"))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!ignore) setError("Failed to load salary data");
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    // Discard this request's result if `month` changes again before it
+    // resolves — otherwise a slow response for a stale month can overwrite
+    // the view for the month the admin has since navigated to.
+    return () => {
+      ignore = true;
+    };
   }, [authChecked, month]);
 
   const shiftMonth = (delta: number) => {

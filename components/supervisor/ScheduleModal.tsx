@@ -118,6 +118,7 @@ export default function ScheduleModal({
     setScheduleSaving(true);
     setScheduleError("");
     try {
+      let generation;
       if (editingSchedule) {
         const res = await api.patch(`/admin/weekly-schedules/${editingSchedule.id}`, {
           subject: scheduleForm.subject,
@@ -129,7 +130,8 @@ export default function ScheduleModal({
         });
 
         updateSchedule(editingSchedule.id, res.data.schedule);
-        if (res.data.generation) setScheduleGenResult(res.data.generation);
+        generation = res.data.generation;
+        if (generation) setScheduleGenResult(generation);
         // Refresh sessions list
         const sessRes = await api.get("/admin/sessions");
         replaceSessions(sessRes.data.sessions);
@@ -147,12 +149,16 @@ export default function ScheduleModal({
         const student = students.find((s) => s.id === scheduleForm.student_id);
         const teacher = teachers.find((t) => t.id === scheduleForm.teacher_id);
         prependSchedule({ ...res.data.schedule, student_name: student?.display_name ?? "", teacher_name: teacher?.display_name ?? "" });
-        setScheduleGenResult(res.data.generation);
+        generation = res.data.generation;
+        setScheduleGenResult(generation);
         // Refresh sessions list
         const sessRes = await api.get("/admin/sessions");
         replaceSessions(sessRes.data.sessions);
       }
-      if (!scheduleGenResult) onClose();
+      // Use the just-fetched result, not the scheduleGenResult state variable —
+      // the setScheduleGenResult call above hasn't re-rendered yet, so reading
+      // that state here would see its stale pre-save value.
+      if (!generation) onClose();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       setScheduleError(e.response?.data?.error || "Failed to save schedule.");

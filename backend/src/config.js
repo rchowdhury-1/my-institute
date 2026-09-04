@@ -33,6 +33,16 @@ const DEFAULT_RATE_PER_SESSION = 5.00;
 const EMAIL_WINDOW_MS = 60_000;
 const EMAIL_MAX_SENDS = 20;
 
+// ─── Auth rate limiting ──────────────────────────────────────────────────────
+// LOGIN_RATE_LIMIT_MAX has headroom above the ~16 logins the CI Playwright
+// suite (auth.spec.ts + reschedule-and-buffer.spec.ts) makes against the real
+// admin account on PRODUCTION per run, daily + on every push — set this too
+// low and CI locks out the real admin, not just itself. Sized for ~3
+// back-to-back CI runs (e.g. a few quick pushes) inside one window.
+const AUTH_RATE_LIMIT_WINDOW_MS = 15 * MS_PER_MINUTE;
+const LOGIN_RATE_LIMIT_MAX = 50;
+const REGISTER_RATE_LIMIT_MAX = 10;
+
 module.exports = {
   MS_PER_MINUTE,
   MS_PER_HOUR,
@@ -50,4 +60,7 @@ module.exports = {
   DEFAULT_RATE_PER_SESSION,
   EMAIL_WINDOW_MS,
   EMAIL_MAX_SENDS,
+  AUTH_RATE_LIMIT_WINDOW_MS,
+  LOGIN_RATE_LIMIT_MAX,
+  REGISTER_RATE_LIMIT_MAX,
 };

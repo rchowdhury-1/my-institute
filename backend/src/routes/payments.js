@@ -27,6 +27,14 @@ router.get('/', requireAuth, requireRole('admin', 'supervisor', 'teacher'), asyn
 router.post('/generate', requireAuth, requireRole('admin', 'supervisor'), asyncHandler(async (req, res) => {
   const { teacher_id, month, year, rate_per_session } = req.body;
   if (!teacher_id || !month || !year) return res.status(400).json({ error: 'teacher_id, month, year required' });
+
+  const existing = await pool.query(
+    `SELECT id FROM teacher_payments WHERE teacher_id = $1 AND month = $2 AND year = $3`,
+    [teacher_id, month, parseInt(year)]
+  );
+  if (existing.rows.length > 0)
+    return res.status(409).json({ error: `A payment for ${month} ${year} already exists for this teacher.` });
+
   const sessionsRes = await pool.query(
     `SELECT COUNT(*) as count FROM sessions
      WHERE teacher_id = $1
