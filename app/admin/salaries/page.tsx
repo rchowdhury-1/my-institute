@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { ChevronLeft, ChevronRight, Banknote } from "lucide-react";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { currencySymbol } from "@/lib/labels";
+import { getAxiosError } from "@/lib/errors";
 
 interface TeacherSalary {
   teacher_id: string;
@@ -27,10 +29,6 @@ function getMonthStr(date: Date) {
 function formatMonth(str: string) {
   const [y, m] = str.split("-").map(Number);
   return new Date(y, m - 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-}
-
-function currencySymbol(c: string) {
-  return c === "GBP" ? "£" : c === "USD" ? "$" : c === "EUR" ? "€" : c === "EGP" ? "EGP " : c + " ";
 }
 
 export default function SalariesPage() {
@@ -94,8 +92,8 @@ export default function SalariesPage() {
       const res = await api.get(`/admin/teacher-hours?month=${month}`);
       setTeachers(res.data.teachers);
       setEditingRate(null);
-    } catch {
-      alert("Failed to update pay rate.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setRateSaving(false);
     }

@@ -1,4 +1,5 @@
 import type { PersonCardStudent, PersonCardTeacher, PersonCardTeacherOption } from "@/components/admin/PersonCard";
+import { CURRENCY_OPTIONS } from "@/lib/labels";
 
 type PersonEditFormProps =
   | {
@@ -93,8 +94,9 @@ export default function PersonEditForm(props: PersonEditFormProps) {
                 value={(editForm.currency as string) ?? "GBP"}
                 onChange={(e) => onEditFormChange({ currency: e.target.value })}
                 className={inputClass}>
-                <option value="GBP">GBP (£)</option>
-                <option value="EGP">EGP</option>
+                {CURRENCY_OPTIONS.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
               </select>
             </div>
             <div className="flex items-center gap-2 pt-5">

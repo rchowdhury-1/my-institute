@@ -44,11 +44,13 @@ export default function NotificationBell() {
   }
 
   async function markAllRead() {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
-    await api.patch("/notifications/read-all", {}).catch((err) => console.error("[NotificationBell] failed to mark all read:", err));
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    setUnreadCount(0);
+    try {
+      await api.patch("/notifications/read-all", {});
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error("[NotificationBell] failed to mark all read:", err);
+    }
   }
 
   // Close on outside click

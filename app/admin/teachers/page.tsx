@@ -9,9 +9,8 @@ import { generatePassword } from "@/lib/adminUtils";
 import { usePersonAdmin } from "@/lib/usePersonAdmin";
 import CredentialBanner from "@/components/admin/CredentialBanner";
 import PersonCard from "@/components/admin/PersonCard";
+import AdminListHeader from "@/components/admin/AdminListHeader";
 import {
-  Plus,
-  X,
   Eye,
   EyeOff,
   Search,
@@ -204,39 +203,23 @@ export default function AdminTeachersPage() {
     <main className="min-h-screen bg-cream">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-12">
 
-        {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          {loadError && (
-            <div className="mb-4 px-4 py-2 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm">{loadError}</div>
-          )}
-          <div>
-            <h1 className="font-display text-3xl font-bold text-charcoal">
-              Teachers
-            </h1>
-            <p className="text-charcoal/60 text-sm mt-1">
-              Manage teacher accounts.
-            </p>
-          </div>
+        {loadError && (
+          <div className="mb-4 px-4 py-2 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm">{loadError}</div>
+        )}
 
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="px-3 py-1 bg-white rounded-full text-xs font-medium text-charcoal border border-black/5">
-              {totalCount} total
-            </span>
-            <span className="px-3 py-1 bg-emerald-primary/10 rounded-full text-xs font-medium text-emerald-primary">
-              {activeCount} active
-            </span>
-            <button
-              onClick={() => {
-                setShowCreate((v) => !v);
-                setCreateError("");
-              }}
-              className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors"
-            >
-              {showCreate ? <X size={16} /> : <Plus size={16} />}
-              {showCreate ? "Cancel" : "Add Teacher"}
-            </button>
-          </div>
-        </div>
+        <AdminListHeader
+          title="Teachers"
+          description="Manage teacher accounts."
+          totalCount={totalCount}
+          activeCount={activeCount}
+          showCreate={showCreate}
+          onToggleCreate={() => {
+            setShowCreate((v) => !v);
+            setCreateError("");
+          }}
+          addLabel="Add Teacher"
+          addTestId="btn-add-teacher"
+        />
 
         {/* ── Create success banner ───────────────────────────────────── */}
         {successBanner && (

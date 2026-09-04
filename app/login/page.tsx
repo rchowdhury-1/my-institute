@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import Button from "@/components/shared/Button";
 import { AUTH_INPUT_CLASS } from "@/lib/styles";
 import { dashboardPathForRole } from "@/lib/labels";
+import { getAxiosError } from "@/lib/errors";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,10 +41,7 @@ export default function LoginPage() {
       router.push(dashboardPathForRole(user.role));
     } catch (err: unknown) {
       setStatus("error");
-      const message =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-        "Invalid email or password.";
-      setErrorMessage(message);
+      setErrorMessage(getAxiosError(err).message);
     }
   };
 

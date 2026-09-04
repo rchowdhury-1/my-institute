@@ -7,6 +7,7 @@ import { Menu, ExternalLink } from "lucide-react";
 import MobileMenu from "./MobileMenu";
 import NotificationBell from "./NotificationBell";
 import { EXAM_PORTAL_URL } from "@/lib/content";
+import { dashboardPathForRole } from "@/lib/labels";
 
 const NAV_LINKS: { href: string; label: string; external?: boolean }[] = [
   { href: "/about", label: "About" },
@@ -27,8 +28,7 @@ export default function Header() {
     window.addEventListener("scroll", onScroll);
     setLoggedIn(!!localStorage.getItem("accessToken"));
     const role = document.cookie.match(/(?:^|; )userRole=([^;]*)/)?.[1];
-    if (role === "admin" || role === "supervisor") setDashboardHref("/supervisor");
-    else if (role === "teacher") setDashboardHref("/teacher/dashboard");
+    setDashboardHref(dashboardPathForRole(role));
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 

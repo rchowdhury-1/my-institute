@@ -5,6 +5,9 @@ import api from "@/lib/api";
 import { DollarSign, Check, Plus } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { currencySymbol } from "@/lib/labels";
+import { formatSimpleDate as formatDate } from "@/lib/datetime";
+import { getAxiosError } from "@/lib/errors";
 
 interface Teacher {
   id: string;
@@ -50,9 +53,6 @@ const statusStyle: Record<string, string> = {
   paid: "bg-emerald-primary/10 text-emerald-primary",
 };
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-}
 
 export default function AdminPaymentsPage() {
   const { authChecked } = useAuthGuard(["admin", "supervisor"]);
@@ -108,8 +108,8 @@ export default function AdminPaymentsPage() {
       });
       const teacher = teachers.find(t => t.id === genForm.teacher_id);
       setTeacherPayments(prev => [{ ...res.data.payment, teacher_name: teacher?.display_name ?? "" }, ...prev]);
-    } catch {
-      alert("Failed to generate payment.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setGenerating(false);
     }
@@ -120,8 +120,8 @@ export default function AdminPaymentsPage() {
     try {
       await api.patch(`/payments/${id}/mark-paid`, {});
       setTeacherPayments(prev => prev.map(p => p.id === id ? { ...p, status: "paid" } : p));
-    } catch {
-      alert("Failed to mark as paid.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setMarking(null);
     }
@@ -142,8 +142,8 @@ export default function AdminPaymentsPage() {
       setStudentPayments(prev => [{ ...res.data.payment, student_name: student?.display_name ?? "" }, ...prev]);
       setStudentForm({ student_id: "", amount: "", currency: "GBP", payment_method: "", notes: "" });
       setShowStudentForm(false);
-    } catch {
-      alert("Failed to log payment.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setLoggingPayment(false);
     }
@@ -331,7 +331,7 @@ export default function AdminPaymentsPage() {
                       )}
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="font-bold text-charcoal">{p.currency}{parseFloat(p.amount).toFixed(2)}</p>
+                      <p className="font-bold text-charcoal">{currencySymbol(p.currency)}{parseFloat(p.amount).toFixed(2)}</p>
                       <p className="text-xs text-charcoal/40 mt-0.5">{formatDate(p.created_at)}</p>
                     </div>
                   </div>

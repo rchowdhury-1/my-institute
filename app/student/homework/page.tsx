@@ -6,6 +6,8 @@ import { BookOpen, Star } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
 import PageError from "@/components/shared/PageError";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { formatSimpleDate as formatDate } from "@/lib/datetime";
+import { getAxiosError } from "@/lib/errors";
 
 interface Homework {
   id: string;
@@ -21,12 +23,6 @@ interface Homework {
   submission_notes?: string;
   submission_file?: string;
   submitted_at?: string;
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric", month: "short", year: "numeric",
-  });
 }
 
 const statusStyle: Record<string, { bg: string; text: string; label: string }> = {
@@ -68,8 +64,8 @@ export default function StudentHomeworkPage() {
       setHomework((prev) =>
         prev.map((h) => h.id === hw.id ? { ...h, status: "submitted", submission_notes: form.notes } : h)
       );
-    } catch {
-      alert("Failed to submit homework.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setSubmitting(null);
     }

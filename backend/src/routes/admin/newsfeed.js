@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../../db');
 const { asyncHandler } = require('../../middleware/errors');
 const { validateEnum } = require('../../lib/validators');
+const { buildUpdateClause } = require('../../lib/queries');
 
 const router = express.Router();
 
@@ -59,24 +60,26 @@ router.patch('/newsfeed/:id', asyncHandler(async (req, res) => {
     if (typeError) return res.status(400).json({ error: typeError });
   }
 
+  // title/body/image_url are genuinely nullable (migration 021 — a post
+  // needs at least one of the three, enforced by a DB CHECK constraint) —
+  // so unlike COALESCE, explicitly sending an empty value here really does
+  // clear that field instead of silently keeping the old value.
+  const dynamic = buildUpdateClause(
+    {
+      type: type || undefined,
+      title: title !== undefined ? (title?.trim() || null) : undefined,
+      body: body !== undefined ? (body?.trim() || null) : undefined,
+      image_url: image_url !== undefined ? (image_url || null) : undefined,
+      show_on_homepage: show_on_homepage != null ? show_on_homepage : undefined,
+    },
+    1
+  );
   const result = await pool.query(
     `UPDATE newsfeed_posts
-     SET type             = COALESCE($1, type),
-         title            = COALESCE($2, title),
-         body             = COALESCE($3, body),
-         image_url        = COALESCE($4, image_url),
-         show_on_homepage = COALESCE($5, show_on_homepage),
-         updated_at       = NOW()
-     WHERE id = $6
+     SET ${['updated_at = NOW()', ...dynamic.setClauses].join(', ')}
+     WHERE id = $${dynamic.nextParamIdx}
      RETURNING *`,
-    [
-      type || null,
-      title?.trim() || null,
-      body?.trim() || null,
-      image_url !== undefined ? (image_url || null) : null,
-      show_on_homepage != null ? show_on_homepage : null,
-      req.params.id,
-    ]
+    [...dynamic.params, req.params.id]
   );
   if (result.rows.length === 0)
     return res.status(404).json({ error: 'Post not found' });

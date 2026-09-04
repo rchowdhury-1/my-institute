@@ -260,7 +260,14 @@ export default function StudentExamsPage() {
 
           {resultRows.length > 0 && (
             <div className="space-y-3">
-              {resultRows.filter((r, i, arr) => arr.findIndex(x => x.question_id === r.question_id) === i).map((r, i) => (
+              {/* De-dupe by question_id defensively. Per the backend query
+                  (routes/exams.js GET /exams/:id/results) and the UNIQUE
+                  constraints on exam_assignments(exam_id, student_id) and
+                  exam_answers(assignment_id, question_id), this join can't
+                  currently produce duplicate rows — this is a guard against
+                  stale/pre-constraint data, not a known live bug. Safe to
+                  remove once confirmed there's no such data in production. */}
+              {Array.from(new Map(resultRows.map(r => [r.question_id, r])).values()).map((r, i) => (
                 <div key={r.question_id} className={`bg-white rounded-2xl border p-5 ${r.is_correct ? "border-emerald-primary/20" : "border-red-100"}`}>
                   <div className="flex items-start gap-3">
                     {r.is_correct

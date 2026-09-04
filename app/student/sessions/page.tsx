@@ -5,7 +5,7 @@ import api from "@/lib/api";
 import { Calendar, Clock, User, AlertTriangle, MessageCircle, List } from "lucide-react";
 import { formatSessionDate, formatSessionTime, formatTimeOnly, formatSimpleDate, formatHours, isSessionStillUpcoming, computeClockSkew } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
-import { getAxiosError } from "@/lib/errors";
+import { getAxiosError, reportError } from "@/lib/errors";
 import { BRAND } from "@/lib/content";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 import { subjectLabel, SESSION_STATUS_STYLE, RENEWAL_REMINDER_HOURS, whatsAppUrl, getBalanceCopy } from "@/lib/labels";
@@ -112,7 +112,7 @@ export default function StudentSessionsPage() {
       setCancelId(null);
       setCancelReason("");
     } catch (err) {
-      alert(getAxiosError(err).message);
+      reportError(err);
     } finally {
       setCancelSaving(false);
     }
@@ -133,9 +133,7 @@ export default function StudentSessionsPage() {
       setProposedDate("");
       setProposedTime("");
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { code?: string; error?: string } } };
-      const code = e.response?.data?.code;
-      const msg = e.response?.data?.error;
+      const { code, message: msg } = getAxiosError(err);
       if (code === "CANCELLATION_BUFFER") {
         setRescheduleError("Too close to session start. Please message the admin on WhatsApp to request changes.");
       } else if (code === "TEACHER_CONFLICT") {
@@ -157,7 +155,7 @@ export default function StudentSessionsPage() {
       );
       setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
     } catch (err) {
-      alert(getAxiosError(err).message);
+      reportError(err);
     } finally {
       setCancellingRequest(null);
     }
@@ -340,6 +338,7 @@ export default function StudentSessionsPage() {
                   {/* Actions — check 12h buffer */}
                   <SessionActions
                     session={s}
+                    skewMs={skewMs}
                     pendingReq={pendingReq}
                     cancelId={cancelId}
                     cancelReason={cancelReason}

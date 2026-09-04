@@ -2,6 +2,7 @@ import { useState } from "react";
 import api from "@/lib/api";
 import { zonedInputToISO, isoToZonedInput, otherZoneHint, OPERATIONAL_TZ_LABEL } from "@/lib/datetime";
 import { DURATION_OPTIONS } from "@/lib/labels";
+import { getAxiosError } from "@/lib/errors";
 import type { Session } from "./SessionCard";
 import type { User } from "@/app/supervisor/page";
 
@@ -58,11 +59,11 @@ export default function EditSessionModal({ session, teachers, onClose, onSaved }
       const waMsg = body.scheduled_at ? { phone: updated.student_phone, time: body.scheduled_at as string } : null;
       onSaved(updated, waMsg);
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { code?: string; error?: string } } };
-      if (e.response?.data?.code === "TEACHER_CONFLICT") {
+      const { code, message } = getAxiosError(err);
+      if (code === "TEACHER_CONFLICT") {
         setEditError("The chosen teacher already has a session overlapping this time. Please pick a different time or teacher.");
       } else {
-        setEditError(e.response?.data?.error || "Couldn't save changes. Please try again.");
+        setEditError(message);
       }
     } finally {
       setEditSaving(false);

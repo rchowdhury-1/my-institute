@@ -4,6 +4,7 @@ import Section from "@/components/shared/Section";
 import AnimatedSection from "@/components/shared/AnimatedSection";
 import Badge from "@/components/shared/Badge";
 import Button from "@/components/shared/Button";
+import PricingCard from "@/components/shared/PricingCard";
 import { PACKAGES, RECORDED_COURSE, FAQS } from "@/lib/content";
 
 export const metadata: Metadata = {
@@ -35,86 +36,20 @@ export default function PackagesPage() {
       <Section variant="alt">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
           {PACKAGES.map((pkg, i) => (
-            <AnimatedSection key={pkg.name} delay={i * 0.1}>
-              <div
-                className={`relative rounded-2xl p-8 flex flex-col h-full transition-all ${
-                  pkg.featured
-                    ? "bg-emerald-primary text-white shadow-2xl shadow-emerald-primary/30 scale-105 border-2 border-emerald-primary"
-                    : "bg-white border border-black/5 shadow-sm hover:shadow-md"
-                }`}
-              >
-                {pkg.featured && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <Badge variant="gold" className="shadow-md">
-                      Most Popular
-                    </Badge>
-                  </div>
-                )}
-
-                <h3
-                  className={`font-display text-2xl font-bold mb-1 ${
-                    pkg.featured ? "text-white" : "text-charcoal"
-                  }`}
-                >
-                  {pkg.name}
-                </h3>
-                <div className="flex items-baseline gap-1 mt-3 mb-6">
-                  <span
-                    className={`text-4xl font-bold ${
-                      pkg.featured ? "text-white" : "text-charcoal"
-                    }`}
-                  >
-                    {pkg.currency}{pkg.price}
-                  </span>
-                  <span
-                    className={`text-sm ${
-                      pkg.featured ? "text-white/70" : "text-charcoal/50"
-                    }`}
-                  >
-                    / month
-                  </span>
-                </div>
-
-                <ul className="space-y-3 mb-8 flex-1">
-                  {[
-                    `${pkg.lessons} lessons per month`,
-                    pkg.duration,
-                    "One-to-one private lessons",
-                    "Flexible scheduling",
-                    "Progress tracking",
-                    "Expert teacher support",
-                  ].map((feature) => (
-                    <li key={feature} className="flex items-center gap-3">
-                      <div
-                        className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          pkg.featured ? "bg-white/20" : "bg-emerald-primary/10"
-                        }`}
-                      >
-                        <Check
-                          size={12}
-                          className={pkg.featured ? "text-white" : "text-emerald-primary"}
-                        />
-                      </div>
-                      <span
-                        className={`text-sm ${
-                          pkg.featured ? "text-white/85" : "text-charcoal/70"
-                        }`}
-                      >
-                        {feature}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-
-                <Button
-                  href="/free-trial"
-                  variant={pkg.featured ? "gold" : "secondary"}
-                  className="w-full"
-                >
-                  Get Started
-                </Button>
-              </div>
-            </AnimatedSection>
+            <PricingCard
+              key={pkg.name}
+              pkg={pkg}
+              delay={i * 0.1}
+              popularBadgeStyle="floating"
+              features={[
+                `${pkg.lessons} lessons per month`,
+                pkg.duration,
+                "One-to-one private lessons",
+                "Flexible scheduling",
+                "Progress tracking",
+                "Expert teacher support",
+              ]}
+            />
           ))}
         </div>
 

@@ -6,6 +6,7 @@ import { Plus, Trash2, PlayCircle, ChevronDown, ChevronUp } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import ImageUploadField from "@/components/admin/ImageUploadField";
+import { getAxiosError } from "@/lib/errors";
 
 interface Lesson {
   id: string;
@@ -62,8 +63,8 @@ export default function AdminCoursesPage() {
       setCourses(prev => [{ ...res.data.course, lesson_count: 0 }, ...prev]);
       setForm({ title: "", description: "", price: "", is_free: false, thumbnail_url: "" });
       setShowForm(false);
-    } catch {
-      alert("Failed to create course.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setCreating(false);
     }
@@ -74,8 +75,8 @@ export default function AdminCoursesPage() {
     try {
       await api.delete(`/courses/${id}`);
       setCourses(prev => prev.filter(c => c.id !== id));
-    } catch {
-      alert("Failed to delete course.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     }
   }
 
@@ -86,8 +87,8 @@ export default function AdminCoursesPage() {
       const res = await api.get(`/courses/${courseId}`);
       setLessons(prev => ({ ...prev, [courseId]: res.data.lessons }));
       setExpandedCourse(courseId);
-    } catch {
-      alert("Failed to load lessons.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     }
   }
 
@@ -106,8 +107,8 @@ export default function AdminCoursesPage() {
       setLessons(prev => ({ ...prev, [courseId]: [...(prev[courseId] ?? []), res.data.lesson] }));
       setCourses(prev => prev.map(c => c.id === courseId ? { ...c, lesson_count: c.lesson_count + 1 } : c));
       setLessonForm(prev => ({ ...prev, [courseId]: { title: "", video_url: "", duration_minutes: "" } }));
-    } catch {
-      alert("Failed to add lesson.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setAddingLesson(null);
     }
@@ -119,8 +120,8 @@ export default function AdminCoursesPage() {
       await api.delete(`/courses/${courseId}/lessons/${lessonId}`);
       setLessons(prev => ({ ...prev, [courseId]: prev[courseId].filter(l => l.id !== lessonId) }));
       setCourses(prev => prev.map(c => c.id === courseId ? { ...c, lesson_count: Math.max(0, c.lesson_count - 1) } : c));
-    } catch {
-      alert("Failed to delete lesson.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     }
   }
 

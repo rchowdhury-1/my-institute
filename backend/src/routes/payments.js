@@ -28,13 +28,6 @@ router.post('/generate', requireAuth, requireRole('admin', 'supervisor'), asyncH
   const { teacher_id, month, year, rate_per_session } = req.body;
   if (!teacher_id || !month || !year) return res.status(400).json({ error: 'teacher_id, month, year required' });
 
-  const existing = await pool.query(
-    `SELECT id FROM teacher_payments WHERE teacher_id = $1 AND month = $2 AND year = $3`,
-    [teacher_id, month, parseInt(year)]
-  );
-  if (existing.rows.length > 0)
-    return res.status(409).json({ error: `A payment for ${month} ${year} already exists for this teacher.` });
-
   const sessionsRes = await pool.query(
     `SELECT COUNT(*) as count FROM sessions
      WHERE teacher_id = $1
@@ -47,11 +40,19 @@ router.post('/generate', requireAuth, requireRole('admin', 'supervisor'), asyncH
   const rate = parseFloat(rate_per_session) || DEFAULT_RATE_PER_SESSION;
   const total_amount = sessions_completed * rate;
 
+  // ON CONFLICT DO NOTHING + the UNIQUE(teacher_id, month, year) constraint
+  // (migration 023) close the race an app-level SELECT-then-INSERT check
+  // can't — two concurrent generate calls can't both create a payment row.
   const result = await pool.query(
     `INSERT INTO teacher_payments (teacher_id, month, year, sessions_completed, rate_per_session, total_amount)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (teacher_id, month, year) DO NOTHING
+     RETURNING *`,
     [teacher_id, month, parseInt(year), sessions_completed, rate, total_amount]
   );
+  if (!result.rows[0])
+    return res.status(409).json({ error: `A payment for ${month} ${year} already exists for this teacher.` });
+
   res.status(201).json({ payment: result.rows[0] });
 }));
 

@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import { Users } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { formatSimpleDate as formatDate } from "@/lib/datetime";
 
 interface Application {
   id: string;
@@ -25,14 +26,6 @@ const STATUS_STYLE: Record<string, string> = {
   enrolled: "bg-emerald-primary/10 text-emerald-primary",
   archived: "bg-charcoal/10 text-charcoal/50",
 };
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 export default function AdminRevertApplicationsPage() {
   const { authChecked } = useAuthGuard(["admin", "supervisor"]);

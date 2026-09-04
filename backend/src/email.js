@@ -9,6 +9,15 @@ function getResend() {
 const FROM = 'MY Institute <noreply@my-institute.com>';
 const BRAND_COLOR = '#065f46';
 
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+// Publicly-submitted values (contact form, registration) go into email HTML
+// verbatim elsewhere in this file — escape before interpolating so a name or
+// message field can't inject markup into the recipient's inbox.
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+
 function renderEmailLayout({ title, bodyHtml }) {
   return `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #111;">
@@ -39,7 +48,7 @@ async function sendVerificationEmail({ to, name, verificationUrl }) {
   const html = renderEmailLayout({
     title: 'Verify your email',
     bodyHtml: `
-      <p>Hi ${name},</p>
+      <p>Hi ${escapeHtml(name)},</p>
       <p>Thanks for registering with My Institute. Click the button below to verify your email address.</p>
       ${renderCtaButton({ href: verificationUrl, label: 'Verify Email' })}
       <p style="color: #555; font-size: 14px;">Please verify soon. If you didn't create an account, you can ignore this email.</p>
@@ -74,12 +83,12 @@ async function sendContactNotification({ to, firstName, lastName, email, phone, 
     title: 'New Contact Message',
     bodyHtml: `
       <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-        <tr><td style="padding: 6px 0; color: #555; width: 140px;">Name</td><td style="padding: 6px 0; font-weight: bold;">${firstName} ${lastName}</td></tr>
-        <tr><td style="padding: 6px 0; color: #555;">Email</td><td style="padding: 6px 0;">${email}</td></tr>
-        <tr><td style="padding: 6px 0; color: #555;">Phone</td><td style="padding: 6px 0;">${phone || '—'}</td></tr>
-        <tr><td style="padding: 6px 0; color: #555;">Subject</td><td style="padding: 6px 0;">${subject || '—'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #555; width: 140px;">Name</td><td style="padding: 6px 0; font-weight: bold;">${escapeHtml(firstName)} ${escapeHtml(lastName)}</td></tr>
+        <tr><td style="padding: 6px 0; color: #555;">Email</td><td style="padding: 6px 0;">${escapeHtml(email)}</td></tr>
+        <tr><td style="padding: 6px 0; color: #555;">Phone</td><td style="padding: 6px 0;">${escapeHtml(phone) || '—'}</td></tr>
+        <tr><td style="padding: 6px 0; color: #555;">Subject</td><td style="padding: 6px 0;">${escapeHtml(subject) || '—'}</td></tr>
       </table>
-      <p style="background: #f5f5f5; padding: 12px; border-radius: 6px;">${message}</p>
+      <p style="background: #f5f5f5; padding: 12px; border-radius: 6px;">${escapeHtml(message)}</p>
     `,
   });
 

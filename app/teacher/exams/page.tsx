@@ -6,6 +6,8 @@ import { Plus, Trash2, ClipboardList, Users } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
 import PageError from "@/components/shared/PageError";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { formatSimpleDateTime } from "@/lib/datetime";
+import { reportError } from "@/lib/errors";
 
 interface Question {
   question: string;
@@ -97,8 +99,8 @@ export default function TeacherExamsPage() {
       setForm({ title: "", description: "", time_limit_minutes: "" });
       setQuestions([emptyQuestion()]);
       setView("list");
-    } catch {
-      alert("Failed to create exam.");
+    } catch (err) {
+      reportError(err);
     } finally {
       setCreating(false);
     }
@@ -125,8 +127,8 @@ export default function TeacherExamsPage() {
       setExams(prev => prev.map(e => e.id === examId ? { ...e, assigned_count: e.assigned_count + 1 } : e));
       setAssigningExam(null);
       setAssignStudentId("");
-    } catch {
-      alert("Failed to assign exam.");
+    } catch (err) {
+      reportError(err);
     } finally {
       setAssigning(false);
     }
@@ -272,7 +274,7 @@ export default function TeacherExamsPage() {
                 <div key={r.id} className="bg-white rounded-2xl border border-black/5 px-5 py-4 flex items-center justify-between">
                   <div>
                     <p className="font-semibold text-charcoal text-sm">{r.student_name}</p>
-                    <p className="text-xs text-charcoal/40 mt-0.5">{new Date(r.completed_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                    <p className="text-xs text-charcoal/40 mt-0.5">{formatSimpleDateTime(r.completed_at)}</p>
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-emerald-primary">{r.score} / {r.max_score}</p>

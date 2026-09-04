@@ -4,6 +4,8 @@ import ResetPasswordPanel from "@/components/admin/ResetPasswordPanel";
 import DeactivatePanel from "@/components/admin/DeactivatePanel";
 import ReactivatePanel from "@/components/admin/ReactivatePanel";
 import DeletePanel from "@/components/admin/DeletePanel";
+import { currencySymbol } from "@/lib/labels";
+import { formatSimpleDate } from "@/lib/datetime";
 
 export interface PersonCardTeacher {
   id: string;
@@ -50,7 +52,7 @@ function formatRate(rate: string | null, currency: string): string {
   if (!rate) return "—";
   const num = parseFloat(rate);
   if (isNaN(num)) return "—";
-  return currency === "GBP" ? `£${num.toFixed(2)}/hour` : `EGP ${num.toFixed(2)}/hour`;
+  return `${currencySymbol(currency)}${num.toFixed(2)}/hour`;
 }
 
 interface PersonCardBaseProps {
@@ -192,7 +194,7 @@ export default function PersonCard(props: PersonCardProps) {
                       {person.sessions_remaining ?? 0} lessons remaining
                       {person.expires_at && (
                         <span className="ml-1">
-                          · expires {new Date(person.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                          · expires {formatSimpleDate(person.expires_at)}
                         </span>
                       )}
                     </p>

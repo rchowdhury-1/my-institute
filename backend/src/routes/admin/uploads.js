@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const { put } = require('@vercel/blob');
+const { fromBuffer } = require('file-type');
 const { asyncHandler } = require('../../middleware/errors');
 
 const router = express.Router();
@@ -24,16 +25,20 @@ function handleUploadMiddlewareError(err, req, res, next) {
 router.post('/upload-image', upload.single('file'), handleUploadMiddlewareError, asyncHandler(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file provided' });
 
-  if (!ALLOWED_MIME_TYPES.includes(req.file.mimetype))
+  // The client-supplied mimetype is just a request header the caller
+  // controls — verify the actual file bytes before trusting it, so a
+  // renamed/mislabeled file (e.g. an HTML/SVG payload sent as
+  // "image/png") can't get published to public blob storage.
+  const sniffed = await fromBuffer(req.file.buffer);
+  if (!sniffed || !ALLOWED_MIME_TYPES.includes(sniffed.mime))
     return res.status(400).json({ error: 'Unsupported file type. Use JPEG, PNG, WEBP, or GIF.' });
 
-  const ext = req.file.originalname.split('.').pop();
-  const filename = `${uuidv4()}.${ext}`;
+  const filename = `${uuidv4()}.${sniffed.ext}`;
 
   const blob = await put(filename, req.file.buffer, {
     access: 'public',
     token: process.env.BLOB_READ_WRITE_TOKEN,
-    contentType: req.file.mimetype,
+    contentType: sniffed.mime,
   });
 
   res.status(201).json({ url: blob.url });

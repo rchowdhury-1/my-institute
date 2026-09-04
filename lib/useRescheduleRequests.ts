@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
+import { getAxiosError } from "@/lib/errors";
 
 export interface RescheduleRequest {
   id: string;
@@ -67,11 +68,11 @@ export function useRescheduleRequests(options: UseRescheduleRequestsOptions = {}
       setRrResult((p) => ({ ...p, [rr.id]: { action: "approved", phone: rr.student_phone, proposedAt: rr.proposed_at } }));
       options.onApproved?.(rr, res.data);
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { code?: string; error?: string } } };
-      if (e.response?.data?.code === "TEACHER_CONFLICT") {
+      const { code, message } = getAxiosError(err);
+      if (code === "TEACHER_CONFLICT") {
         setRrError((p) => ({ ...p, [rr.id]: "Conflict detected — another session has been scheduled at this time. Please reject this request and ask the student to propose a different time." }));
       } else {
-        setRrError((p) => ({ ...p, [rr.id]: e.response?.data?.error || "Failed to approve request." }));
+        setRrError((p) => ({ ...p, [rr.id]: message }));
       }
     } finally {
       setRrActioning(null);
@@ -88,8 +89,7 @@ export function useRescheduleRequests(options: UseRescheduleRequestsOptions = {}
       setRrRejectId(null);
       setRrRejectReason("");
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } };
-      setRrError((p) => ({ ...p, [rr.id]: e.response?.data?.error || "Failed to reject request." }));
+      setRrError((p) => ({ ...p, [rr.id]: getAxiosError(err).message }));
     } finally {
       setRrActioning(null);
     }

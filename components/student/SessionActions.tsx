@@ -17,6 +17,7 @@ interface RescheduleRequest {
 
 interface SessionActionsProps {
   session: Session;
+  skewMs?: number;
   pendingReq: RescheduleRequest | undefined;
   cancelId: string | null;
   cancelReason: string;
@@ -39,6 +40,7 @@ interface SessionActionsProps {
 
 export default function SessionActions({
   session: s,
+  skewMs = 0,
   pendingReq,
   cancelId,
   cancelReason,
@@ -58,7 +60,7 @@ export default function SessionActions({
   setRescheduleError,
   timeOptions,
 }: SessionActionsProps) {
-  const hoursUntil = (new Date(s.scheduled_at).getTime() - Date.now()) / 3600000;
+  const hoursUntil = (new Date(s.scheduled_at).getTime() - (Date.now() + skewMs)) / 3600000;
   const withinBuffer = hoursUntil >= 0 && hoursUntil < CANCELLATION_BUFFER_HOURS;
   const waText = `Hi, I need to change my session on ${formatSessionTime(s.scheduled_at)}.`;
   const waUrl = whatsAppUrl(BRAND.whatsapp, waText) ?? undefined;

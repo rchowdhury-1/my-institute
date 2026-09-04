@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
-import { getAxiosError } from "@/lib/errors";
+import { reportError } from "@/lib/errors";
 import type { Session } from "@/components/supervisor/SessionCard";
 import type { Schedule, ScheduleGeneration } from "@/components/supervisor/ScheduleModal";
 import type { RescheduleRequest } from "@/components/supervisor/SessionsTab";
@@ -10,10 +10,6 @@ import type { User } from "@/app/supervisor/page";
 
 function isFutureScheduledSessionOf(session: Session, scheduleId: string) {
   return session.schedule_id === scheduleId && session.status === "scheduled" && new Date(session.scheduled_at) > new Date();
-}
-
-function reportError(err: unknown) {
-  alert(getAxiosError(err).message);
 }
 
 export function useSupervisorData(authChecked: boolean) {

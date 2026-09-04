@@ -42,6 +42,22 @@ async function hasTeacherConflict(pool, { teacherId, scheduledAt, durationMinute
 }
 
 /**
+ * Snapshots a student's current hourly_rate/currency, for stamping onto a
+ * new session's rate_at_creation/currency_at_creation at creation time.
+ * Returns { hourly_rate: null, currency: null } if the student doesn't
+ * exist or has no rate set, rather than throwing — session creation
+ * proceeds either way, same as every existing call site.
+ */
+async function snapshotStudentRate(pool, studentId) {
+  const result = await pool.query(
+    "SELECT hourly_rate, currency FROM users WHERE id=$1 AND role='student'",
+    [studentId]
+  );
+  const { hourly_rate = null, currency = null } = result.rows[0] || {};
+  return { hourly_rate, currency };
+}
+
+/**
  * Runs an on-demand session-generation function without letting a failure
  * block the request it's embedded in — logs and swallows instead.
  */
@@ -78,4 +94,4 @@ function buildUpdateClause(fields, startIndex) {
   return { setClauses, params, nextParamIdx: paramIdx };
 }
 
-module.exports = { getDisplayName, assertTeacherExists, hasTeacherConflict, safeGenerate, buildUpdateClause };
+module.exports = { getDisplayName, assertTeacherExists, hasTeacherConflict, safeGenerate, buildUpdateClause, snapshotStudentRate };

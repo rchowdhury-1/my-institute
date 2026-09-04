@@ -1,9 +1,10 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { asyncHandler } = require('../middleware/errors');
+const { publicFormRateLimiter } = require('../middleware/rateLimit');
 
 // POST /revert-apply — public, always-on
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', publicFormRateLimiter, asyncHandler(async (req, res) => {
   const { name, email, phone, country, story } = req.body;
 
   if (!name || !email || !phone) {

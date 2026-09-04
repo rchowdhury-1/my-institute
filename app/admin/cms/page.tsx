@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import { Plus, Trash2, Edit2, Check, X, ChevronUp, ChevronDown } from "lucide-react";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import ImageUploadField from "@/components/admin/ImageUploadField";
+import { getAxiosError } from "@/lib/errors";
 
 interface CmsItem {
   id: string;
@@ -90,8 +91,8 @@ export default function AdminCmsPage() {
         [activeTab]: [...prev[activeTab], res.data.item].sort((a, b) => a.position - b.position),
       }));
       setForm(emptyForm);
-    } catch {
-      alert("Failed to add item.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setAdding(false);
     }
@@ -123,8 +124,8 @@ export default function AdminCmsPage() {
           .sort((a, b) => a.position - b.position),
       }));
       setEditingId(null);
-    } catch {
-      alert("Failed to save.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setSaving(null);
     }
@@ -137,8 +138,8 @@ export default function AdminCmsPage() {
         ...prev,
         [activeTab]: prev[activeTab].map(i => i.id === item.id ? res.data.item : i),
       }));
-    } catch {
-      alert("Failed to toggle.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     }
   }
 
@@ -148,8 +149,8 @@ export default function AdminCmsPage() {
     try {
       await api.delete(`/cms/${id}`);
       setItems(prev => ({ ...prev, [activeTab]: prev[activeTab].filter(i => i.id !== id) }));
-    } catch {
-      alert("Failed to delete.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setDeleting(null);
     }

@@ -2,11 +2,12 @@ const express = require('express');
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errors');
+const { buildUpdateClause } = require('../lib/queries');
 
 const router = express.Router();
 
 // GET /teachers/me — teacher profile
-router.get('/me', requireAuth, requireRole('teacher', 'admin'), asyncHandler(async (req, res) => {
+router.get('/me', requireAuth, requireRole('teacher'), asyncHandler(async (req, res) => {
   const result = await pool.query(
     'SELECT id, display_name, email, phone, created_at FROM users WHERE id = $1',
     [req.userId]
@@ -16,7 +17,7 @@ router.get('/me', requireAuth, requireRole('teacher', 'admin'), asyncHandler(asy
 }));
 
 // GET /teachers/students — students this teacher has sessions with
-router.get('/students', requireAuth, requireRole('teacher', 'admin'), asyncHandler(async (req, res) => {
+router.get('/students', requireAuth, requireRole('teacher'), asyncHandler(async (req, res) => {
   const result = await pool.query(
     `SELECT DISTINCT u.id, u.display_name, u.email
      FROM sessions s
@@ -32,7 +33,7 @@ router.get('/students', requireAuth, requireRole('teacher', 'admin'), asyncHandl
 // Vocabulary debt: same "lessons" vs "sessions" naming mismatch as
 // /admin/lessons — path and response key kept for frontend compatibility
 // (smell roadmap L1, deferred).
-router.get('/lessons', requireAuth, requireRole('teacher', 'admin'), asyncHandler(async (req, res) => {
+router.get('/lessons', requireAuth, requireRole('teacher'), asyncHandler(async (req, res) => {
   const result = await pool.query(
     `SELECT s.*, u.display_name AS student_name,
             ws.lessons_remaining AS schedule_lessons_remaining
@@ -62,14 +63,13 @@ router.patch('/lessons/:id', requireAuth, requireRole('teacher', 'admin'), async
   );
   if (existing.rows.length === 0) return res.status(404).json({ error: 'Session not found' });
 
+  const dynamic = buildUpdateClause({ notes, zoom_link }, 1);
   const result = await pool.query(
     `UPDATE sessions
-     SET notes     = COALESCE($1, notes),
-         zoom_link = COALESCE($2, zoom_link),
-         updated_at = NOW()
-     WHERE id = $3
+     SET ${['updated_at = NOW()', ...dynamic.setClauses].join(', ')}
+     WHERE id = $${dynamic.nextParamIdx}
      RETURNING *`,
-    [notes ?? null, zoom_link ?? null, req.params.id]
+    [...dynamic.params, req.params.id]
   );
   res.json({ lesson: result.rows[0] });
 }));

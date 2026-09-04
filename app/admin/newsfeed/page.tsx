@@ -3,10 +3,11 @@
 import { useEffect, useState, useCallback } from "react";
 import api from "@/lib/api";
 import { useAuthGuard } from "@/lib/useAuthGuard";
-import { getAxiosError } from "@/lib/errors";
+import { getAxiosError, reportError } from "@/lib/errors";
 import { INPUT_CLASS as inputClass } from "@/lib/styles";
 import { Plus, X, Pencil, Trash2, Eye, Image as ImageIcon } from "lucide-react";
 import ImageUploadField from "@/components/admin/ImageUploadField";
+import { formatSimpleDate as formatDate } from "@/lib/datetime";
 
 interface Post {
   id: string;
@@ -35,14 +36,6 @@ const TYPE_LABEL: Record<string, string> = {
   honour_list: "Honour List",
   general: "Update",
 };
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 export default function AdminNewsfeedPage() {
   const { authChecked } = useAuthGuard(["admin", "supervisor"]);
@@ -177,7 +170,7 @@ export default function AdminNewsfeedPage() {
       setDeleteConfirmId(null);
     } catch (err) {
       console.error('Delete post error:', err);
-      alert(getAxiosError(err).message);
+      reportError(err);
     } finally {
       setDeleteLoading(false);
     }

@@ -9,9 +9,9 @@ import { generatePassword } from "@/lib/adminUtils";
 import { usePersonAdmin } from "@/lib/usePersonAdmin";
 import CredentialBanner from "@/components/admin/CredentialBanner";
 import PersonCard from "@/components/admin/PersonCard";
+import AdminListHeader from "@/components/admin/AdminListHeader";
+import { CURRENCY_OPTIONS, type CurrencyCode } from "@/lib/labels";
 import {
-  Plus,
-  X,
   Eye,
   EyeOff,
   Search,
@@ -55,7 +55,7 @@ interface CreateForm {
   guardian_name: string;
   teacher_id: string;
   hourly_rate: string;
-  currency: "GBP" | "EGP";
+  currency: CurrencyCode;
   is_legacy_pricing: boolean;
   pricing_notes: string;
   // bundle (all-or-nothing)
@@ -291,29 +291,16 @@ export default function AdminStudentsPage() {
           </div>
         )}
 
-        {/* ── Header ────────────────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div>
-            <h1 className="font-display text-3xl font-bold text-charcoal">Students</h1>
-            <p className="text-charcoal/60 text-sm mt-1">Manage student accounts.</p>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="px-3 py-1 bg-white rounded-full text-xs font-medium text-charcoal border border-black/5">
-              {totalCount} total
-            </span>
-            <span className="px-3 py-1 bg-emerald-primary/10 rounded-full text-xs font-medium text-emerald-primary">
-              {activeCount} active
-            </span>
-            <button
-              data-testid="btn-add-student"
-              onClick={() => { setShowCreate((v) => !v); setCreateError(""); }}
-              className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light disabled:opacity-60 transition-colors"
-            >
-              {showCreate ? <X size={16} /> : <Plus size={16} />}
-              {showCreate ? "Cancel" : "Add Student"}
-            </button>
-          </div>
-        </div>
+        <AdminListHeader
+          title="Students"
+          description="Manage student accounts."
+          totalCount={totalCount}
+          activeCount={activeCount}
+          showCreate={showCreate}
+          onToggleCreate={() => { setShowCreate((v) => !v); setCreateError(""); }}
+          addLabel="Add Student"
+          addTestId="btn-add-student"
+        />
 
         {/* ── Create success banner ──────────────────────────────────────── */}
         {successBanner && (
@@ -411,10 +398,11 @@ export default function AdminStudentsPage() {
                 <div>
                   <label className="block text-xs font-medium text-charcoal/60 mb-1.5">Currency</label>
                   <select data-testid="input-currency" value={createForm.currency}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, currency: e.target.value as "GBP" | "EGP" }))}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, currency: e.target.value as CurrencyCode }))}
                     className={inputClass}>
-                    <option value="GBP">GBP (£)</option>
-                    <option value="EGP">EGP</option>
+                    {CURRENCY_OPTIONS.map((c) => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
                   </select>
                 </div>
               </div>

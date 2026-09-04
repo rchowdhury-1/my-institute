@@ -1,9 +1,10 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { asyncHandler } = require('../middleware/errors');
+const { publicFormRateLimiter } = require('../middleware/rateLimit');
 
 // POST /scholarship-apply — public, always-on (not feature-flagged)
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', publicFormRateLimiter, asyncHandler(async (req, res) => {
   const { fullName, email, phone, country, age, story, source } = req.body;
 
   if (!fullName || !email || !phone) {

@@ -30,8 +30,15 @@ export function useSessionGrouping(filteredSessions: Session[]) {
       groups.get(key)!.sessions.push(s);
     }
 
-    // Sort weeks chronologically
+    // Sort weeks chronologically, and each week's/past sessions by time —
+    // done once here rather than at render time, since these arrays are
+    // memoized and re-sorting a memoized array in place on every render is
+    // a render-time mutation of a value callers may treat as stable.
     const sorted = Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+    for (const [, group] of sorted) {
+      group.sessions.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+    }
+    pastSessions.sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
 
     return { weeks: sorted, pastSessions, currentWeekKey: format(currentWeekStart, "yyyy-MM-dd") };
   }, [filteredSessions]);

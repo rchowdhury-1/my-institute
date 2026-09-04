@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import { Users, ChevronDown, ChevronUp } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { formatSimpleDate } from "@/lib/datetime";
 
 interface Sponsor {
   id: string;
@@ -59,7 +60,7 @@ export default function AdminScholarshipsPage() {
                   <div className="min-w-0">
                     <p className="font-semibold text-charcoal text-sm">{a.name}</p>
                     <p className="text-xs text-charcoal/40 mt-0.5">
-                      {a.email} · Applied {new Date(a.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                      {a.email} · Applied {formatSimpleDate(a.created_at)}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">

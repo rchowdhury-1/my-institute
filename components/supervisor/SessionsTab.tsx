@@ -18,6 +18,19 @@ export type { RescheduleRequest };
 
 const ALL_STATUSES = Object.keys(SESSION_STATUS_LABEL);
 
+// Shared try/alert/finally shape for the three session actions below —
+// each only differs in its busy-state setter and its request body.
+async function runWithAlert(setBusy: (busy: boolean) => void, action: () => Promise<void>) {
+  setBusy(true);
+  try {
+    await action();
+  } catch (err) {
+    alert(getAxiosError(err).message);
+  } finally {
+    setBusy(false);
+  }
+}
+
 interface SessionsTabProps {
   sessions: Session[];
   prependSession: (session: Session) => void;
@@ -74,24 +87,18 @@ export default function SessionsTab({
   const [attendanceSaving, setAttendanceSaving] = useState(false);
 
   async function handleAdminAttendance(sessionId: string, teacherAttended: boolean, studentAttended: boolean) {
-    setAttendanceSaving(true);
-    try {
+    await runWithAlert(setAttendanceSaving, async () => {
       const res = await api.patch(`/sessions/${sessionId}/attendance`,
         { teacher_attended: teacherAttended, student_attended: studentAttended }
       );
       updateSession(sessionId, res.data.session);
       setAttendanceId(null);
       setAttendanceStep(null);
-    } catch (err) {
-      alert(getAxiosError(err).message);
-    } finally {
-      setAttendanceSaving(false);
-    }
+    });
   }
 
   async function handleCreateSession() {
-    setCreating(true);
-    try {
+    await runWithAlert(setCreating, async () => {
       const res = await api.post("/sessions",
         {
           student_id: sessionForm.student_id,
@@ -111,24 +118,15 @@ export default function SessionsTab({
       });
       setSessionForm({ student_id: "", teacher_id: "", scheduled_at: "", duration_minutes: "60", subject: "quran", zoom_link: "" });
       setShowSessionForm(false);
-    } catch (err) {
-      alert(getAxiosError(err).message);
-    } finally {
-      setCreating(false);
-    }
+    });
   }
 
   async function handleDeleteSession(id: string) {
     if (!confirm("Delete this session?")) return;
-    setDeleting(id);
-    try {
+    await runWithAlert((busy) => setDeleting(busy ? id : null), async () => {
       await api.delete(`/sessions/${id}`);
       removeSession(id);
-    } catch (err) {
-      alert(getAxiosError(err).message);
-    } finally {
-      setDeleting(null);
-    }
+    });
   }
 
   function handleRescheduleApproved(rr: RescheduleRequest, data: { new_session?: unknown }) {
@@ -324,7 +322,7 @@ export default function SessionsTab({
               </button>
               {showPast && (
                 <div className="space-y-2 mb-4">
-                  {sessionWeeks.pastSessions.sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime()).map((s) => {
+                  {sessionWeeks.pastSessions.map((s) => {
                     const isPast = true;
                     const needsAttendance = s.status === "scheduled" && isPast && s.teacher_attended == null;
                     return (
@@ -365,7 +363,7 @@ export default function SessionsTab({
                   <span className="text-charcoal/20 font-normal normal-case">({group.sessions.length})</span>
                 </h3>
                 <div className="space-y-2">
-                  {group.sessions.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()).map((s) => {
+                  {group.sessions.map((s) => {
                     const isPast = !isSessionStillUpcoming(s.scheduled_at, s.duration_minutes);
                     const needsAttendance = s.status === "scheduled" && isPast && s.teacher_attended == null;
                     return (

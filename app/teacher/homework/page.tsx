@@ -6,6 +6,8 @@ import { Plus, ChevronDown, ChevronUp, BookOpen } from "lucide-react";
 import PageLoading from "@/components/shared/PageLoading";
 import PageError from "@/components/shared/PageError";
 import { useAuthGuard } from "@/lib/useAuthGuard";
+import { formatSimpleDate as formatDate } from "@/lib/datetime";
+import { getAxiosError } from "@/lib/errors";
 
 interface Student {
   id: string;
@@ -33,10 +35,6 @@ interface Submission {
   notes?: string;
   file_url?: string;
   submitted_at: string;
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
 const statusStyle: Record<string, string> = {
@@ -100,8 +98,8 @@ export default function TeacherHomeworkPage() {
       setHomework((prev) => [{ ...res.data.homework, student_name: student?.display_name ?? "", submission_count: 0 }, ...prev]);
       setForm({ student_id: "", title: "", description: "", due_date: "", file_url: "" });
       setShowForm(false);
-    } catch {
-      alert("Failed to assign homework.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setCreating(false);
     }
@@ -116,8 +114,8 @@ export default function TeacherHomeworkPage() {
       const res = await api.get(`/homework/${hwId}/submissions`);
       setSubmissions((prev) => ({ ...prev, [hwId]: res.data.submissions }));
       setExpanded(hwId);
-    } catch {
-      alert("Failed to load submissions.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     }
   }
 
@@ -131,8 +129,8 @@ export default function TeacherHomeworkPage() {
       setHomework((prev) =>
         prev.map((h) => h.id === hwId ? { ...h, status: "graded", grade: gf.grade, teacher_notes: gf.teacher_notes } : h)
       );
-    } catch {
-      alert("Failed to grade homework.");
+    } catch (err) {
+      alert(getAxiosError(err).message);
     } finally {
       setGrading(null);
     }

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Send } from "lucide-react";
 import api from "@/lib/api";
-import { getAxiosError } from "@/lib/errors";
+import { reportError } from "@/lib/errors";
 import type { User } from "@/app/supervisor/page";
 
 const TOAST_MS = 3000;
@@ -27,7 +27,7 @@ export default function MessageTab({ students, teachers }: MessageTabProps) {
       setMsgSent(true);
       setTimeout(() => setMsgSent(false), TOAST_MS);
     } catch (err) {
-      alert(getAxiosError(err).message);
+      reportError(err);
     } finally {
       setSending(false);
     }

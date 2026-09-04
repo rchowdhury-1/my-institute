@@ -1,5 +1,10 @@
 const rateLimit = require('express-rate-limit');
-const { AUTH_RATE_LIMIT_WINDOW_MS, LOGIN_RATE_LIMIT_MAX, REGISTER_RATE_LIMIT_MAX } = require('../config');
+const {
+  AUTH_RATE_LIMIT_WINDOW_MS,
+  LOGIN_RATE_LIMIT_MAX,
+  REGISTER_RATE_LIMIT_MAX,
+  PUBLIC_FORM_RATE_LIMIT_MAX,
+} = require('../config');
 
 // Keyed by IP + the email in the request body, so one IP can't lock out
 // every account behind it, and one email can't be brute-forced from many IPs.
@@ -25,4 +30,15 @@ const registerRateLimiter = rateLimit({
   message: { error: 'Too many registration attempts. Please try again later.' },
 });
 
-module.exports = { loginRateLimiter, registerRateLimiter };
+// For unauthenticated public write endpoints (contact/application forms)
+// that have no other abuse protection.
+const publicFormRateLimiter = rateLimit({
+  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+  max: PUBLIC_FORM_RATE_LIMIT_MAX,
+  keyGenerator: (req) => req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many submissions. Please try again later.' },
+});
+
+module.exports = { loginRateLimiter, registerRateLimiter, publicFormRateLimiter };

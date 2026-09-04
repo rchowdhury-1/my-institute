@@ -99,6 +99,17 @@ export function formatSimpleDate(
 }
 
 /**
+ * Simple date + time for non-session contexts: "22 Jun, 14:30"
+ */
+export function formatSimpleDateTime(
+  date: Date | string | null | undefined
+): string {
+  const d = toDate(date);
+  if (!d) return "";
+  return format(toZonedTime(d, LONDON), "d MMM, HH:mm");
+}
+
+/**
  * Device-clock skew against the server, in ms. Positive = device clock is
  * behind the server. Returns 0 for missing/invalid input so pages work
  * unchanged while the backend field rolls out.

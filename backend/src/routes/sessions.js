@@ -8,7 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const { generateAllSchedules, VALID_SUBJECTS } = require('../lib/schedule-generator');
 const { asyncHandler } = require('../middleware/errors');
 const { validateDuration } = require('../lib/validators');
-const { safeGenerate } = require('../lib/queries');
+const { safeGenerate, snapshotStudentRate, hasTeacherConflict } = require('../lib/queries');
 const { markAttendance, notifyIfLowBalance, notifyAttendanceMarked } = require('../services/attendance');
 
 const router = express.Router();
@@ -71,12 +71,7 @@ router.post('/', requireRole('admin', 'supervisor'), asyncHandler(async (req, re
   const durationError = validateDuration(durationMinutes);
   if (durationError) return res.status(400).json({ error: durationError });
 
-  // Snapshot the student's current rate at session creation time
-  const studentResult = await pool.query(
-    "SELECT hourly_rate, currency FROM users WHERE id=$1 AND role='student'",
-    [student_id]
-  );
-  const { hourly_rate = null, currency = null } = studentResult.rows[0] || {};
+  const { hourly_rate, currency } = await snapshotStudentRate(pool, student_id);
 
   const id = uuidv4();
   const result = await pool.query(
@@ -187,24 +182,49 @@ router.patch('/:id/reschedule', requireRole('admin', 'supervisor'), asyncHandler
   const { scheduled_at } = req.body;
   const { id } = req.params;
   if (!scheduled_at) return res.status(400).json({ error: 'scheduled_at is required' });
+  if (isNaN(new Date(scheduled_at).getTime())) return res.status(400).json({ error: 'Invalid date' });
 
   const existing = await pool.query('SELECT * FROM sessions WHERE id=$1', [id]);
   if (existing.rows.length === 0) return res.status(404).json({ error: 'Session not found' });
   const session = existing.rows[0];
 
-  await pool.query(
-    `UPDATE sessions SET status='rescheduled', last_modified_by=$1, updated_at=NOW() WHERE id=$2`,
-    [req.userId, id]
-  );
+  const conflict = await hasTeacherConflict(pool, {
+    teacherId: session.teacher_id,
+    scheduledAt: scheduled_at,
+    durationMinutes: session.duration_minutes,
+    excludeSessionId: id,
+  });
+  if (conflict)
+    return res.status(409).json({
+      error: 'The teacher already has a session overlapping this time.',
+      code: 'TEACHER_CONFLICT',
+    });
 
+  const client = await pool.connect();
   const newId = uuidv4();
-  const result = await pool.query(
-    `INSERT INTO sessions (id, student_id, teacher_id, scheduled_at, duration_minutes, subject, rescheduled_from)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [newId, session.student_id, session.teacher_id, scheduled_at,
-     session.duration_minutes, session.subject || 'quran', id]
-  );
+  let newSession;
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE sessions SET status='rescheduled', last_modified_by=$1, updated_at=NOW() WHERE id=$2`,
+      [req.userId, id]
+    );
+    const result = await client.query(
+      `INSERT INTO sessions (id, student_id, teacher_id, scheduled_at, duration_minutes, subject, rescheduled_from)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [newId, session.student_id, session.teacher_id, scheduled_at,
+       session.duration_minutes, session.subject || 'quran', id]
+    );
+    newSession = result.rows[0];
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 
+  // Post-commit: best-effort notifications.
   const newDt = formatSessionTime(scheduled_at);
   await notify(session.student_id, 'session_rescheduled', 'Session Rescheduled',
     `Your session has been rescheduled to ${newDt}`, '/student/sessions');
@@ -213,7 +233,7 @@ router.patch('/:id/reschedule', requireRole('admin', 'supervisor'), asyncHandler
   await notifyAdmins('session_rescheduled', 'Session Rescheduled',
     `Session rescheduled to ${newDt}`, '/supervisor');
 
-  res.status(201).json({ session: result.rows[0] });
+  res.status(201).json({ session: newSession });
 }));
 
 // PATCH /sessions/:id/attendance  (teacher within time window, admin/supervisor any time)

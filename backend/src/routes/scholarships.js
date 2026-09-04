@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errors');
+const { publicFormRateLimiter } = require('../middleware/rateLimit');
 
 const { whatsapp: ADMIN_WHATSAPP } = require('../lib/brand');
 
@@ -29,7 +30,7 @@ router.get('/applicants', requireAuth, requireRole('admin', 'supervisor'), async
 }));
 
 // POST /scholarships/sponsor — save sponsor record and return WhatsApp URL
-router.post('/sponsor', asyncHandler(async (req, res) => {
+router.post('/sponsor', publicFormRateLimiter, asyncHandler(async (req, res) => {
   const { sponsor_name, sponsor_email, applicant_id, months_sponsored, amount } = req.body;
   if (!sponsor_name || !applicant_id) return res.status(400).json({ error: 'sponsor_name and applicant_id required' });
   const result = await pool.query(

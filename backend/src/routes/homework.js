@@ -4,6 +4,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { notify } = require('../lib/notify');
 const { v4: uuidv4 } = require('uuid');
 const { asyncHandler } = require('../middleware/errors');
+const { buildUpdateClause } = require('../lib/queries');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -136,9 +137,10 @@ router.patch('/:id/grade', requireRole('teacher', 'admin', 'supervisor'), asyncH
     : await pool.query('SELECT * FROM homework WHERE id=$1', [id]);
   if (hw.rows.length === 0) return res.status(404).json({ error: 'Homework not found' });
 
+  const dynamic = buildUpdateClause({ grade, teacher_notes }, 2);
   const result = await pool.query(
-    `UPDATE homework SET status='graded', grade=$1, teacher_notes=$2 WHERE id=$3 RETURNING *`,
-    [grade || null, teacher_notes || null, id]
+    `UPDATE homework SET ${["status='graded'", ...dynamic.setClauses].join(', ')} WHERE id=$1 RETURNING *`,
+    [id, ...dynamic.params]
   );
   await notify(hw.rows[0].student_id, 'homework_graded', 'Homework Graded',
     `Your homework "${hw.rows[0].title}" has been graded${grade ? `: ${grade}` : ''}`,

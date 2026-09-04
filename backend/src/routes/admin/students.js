@@ -2,7 +2,7 @@ const express = require('express');
 const { pool } = require('../../db');
 const { asyncHandler } = require('../../middleware/errors');
 const { isValidEmail } = require('../../lib/validators');
-const { assertTeacherExists } = require('../../lib/queries');
+const { assertTeacherExists, buildUpdateClause } = require('../../lib/queries');
 const { createUser, resetPassword, deletePerson } = require('../../lib/users');
 const { SUPPORTED_CURRENCIES } = require('../../config');
 
@@ -79,35 +79,38 @@ router.patch('/students/:id', asyncHandler(async (req, res) => {
   if (validationError)
     return res.status(validationError.status).json({ error: validationError.error });
 
+  const dynamic = buildUpdateClause(
+    {
+      display_name: display_name?.trim() || undefined,
+      email: email ? email.trim().toLowerCase() : undefined,
+      phone: phone || undefined,
+      guardian_name: guardian_name || undefined,
+      teacher_id: teacher_id || undefined,
+      is_active: is_active != null ? is_active : undefined,
+      hourly_rate: hourly_rate != null ? parseFloat(hourly_rate) : undefined,
+      is_legacy_pricing: is_legacy_pricing != null ? is_legacy_pricing : undefined,
+      pricing_notes: pricing_notes || undefined,
+      currency: currency || undefined,
+    },
+    1
+  );
+  if (dynamic.setClauses.length === 0) {
+    const u = existing.rows[0];
+    return res.json({ student: {
+      id: u.id, display_name: u.display_name, email: u.email, phone: u.phone,
+      guardian_name: u.guardian_name, teacher_id: u.teacher_id, is_active: u.is_active,
+      must_change_password: u.must_change_password, hourly_rate: u.hourly_rate,
+      currency: u.currency, is_legacy_pricing: u.is_legacy_pricing, pricing_notes: u.pricing_notes,
+    }});
+  }
   const result = await pool.query(
     `UPDATE users
-     SET display_name       = COALESCE($1, display_name),
-         email              = COALESCE($2, email),
-         phone              = COALESCE($3, phone),
-         guardian_name      = COALESCE($4, guardian_name),
-         teacher_id         = COALESCE($5, teacher_id),
-         is_active          = COALESCE($6, is_active),
-         hourly_rate        = COALESCE($7, hourly_rate),
-         is_legacy_pricing  = COALESCE($8, is_legacy_pricing),
-         pricing_notes      = COALESCE($9, pricing_notes),
-         currency           = COALESCE($10, currency)
-     WHERE id = $11
+     SET ${dynamic.setClauses.join(', ')}
+     WHERE id = $${dynamic.nextParamIdx}
      RETURNING id, display_name, email, phone, guardian_name, teacher_id,
                is_active, must_change_password, hourly_rate, currency,
                is_legacy_pricing, pricing_notes`,
-    [
-      display_name?.trim() || null,
-      email ? email.trim().toLowerCase() : null,
-      phone !== undefined ? (phone || null) : null,
-      guardian_name !== undefined ? (guardian_name || null) : null,
-      teacher_id !== undefined ? (teacher_id || null) : null,
-      is_active != null ? is_active : null,
-      hourly_rate != null ? parseFloat(hourly_rate) : null,
-      is_legacy_pricing != null ? is_legacy_pricing : null,
-      pricing_notes !== undefined ? (pricing_notes || null) : null,
-      currency || null,
-      req.params.id,
-    ]
+    [...dynamic.params, req.params.id]
   );
   res.json({ student: result.rows[0] });
 }));

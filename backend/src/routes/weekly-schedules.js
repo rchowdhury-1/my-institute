@@ -10,6 +10,7 @@ const {
   generateAllSchedules,
   wipeAndRegenerate,
   wipeFutureSessions,
+  VALID_SUBJECTS,
 } = require('../lib/schedule-generator');
 
 const router = express.Router();
@@ -123,6 +124,9 @@ router.post('/', asyncHandler(async (req, res) => {
   if (!student_id || !teacher_id)
     return res.status(400).json({ error: 'student_id and teacher_id are required' });
 
+  if (subject != null && !VALID_SUBJECTS.includes(subject))
+    return res.status(400).json({ error: 'Invalid subject' });
+
   const slotError = validateSlots(slots);
   if (slotError) return res.status(400).json({ error: slotError });
 
@@ -198,6 +202,9 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'Schedule not found' });
 
   const schedule = existing.rows[0];
+
+  if (subject != null && !VALID_SUBJECTS.includes(subject))
+    return res.status(400).json({ error: 'Invalid subject' });
 
   if (slots) {
     const slotError = validateSlots(slots);

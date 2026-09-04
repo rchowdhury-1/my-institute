@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import Button from "@/components/shared/Button";
 import { AUTH_INPUT_CLASS } from "@/lib/styles";
 import { dashboardPathForRole } from "@/lib/labels";
+import { getAxiosError } from "@/lib/errors";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -51,10 +52,7 @@ export default function ChangePasswordPage() {
       router.push(dashboardPathForRole(role));
     } catch (err: unknown) {
       setStatus("error");
-      const message =
-        (err as { response?: { data?: { error?: string } } })?.response?.data
-          ?.error || "Something went wrong. Please try again.";
-      setErrorMessage(message);
+      setErrorMessage(getAxiosError(err).message);
     }
   };
 

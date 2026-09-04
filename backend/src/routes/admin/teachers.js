@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../../db');
 const { asyncHandler } = require('../../middleware/errors');
 const { isValidEmail } = require('../../lib/validators');
+const { buildUpdateClause } = require('../../lib/queries');
 const { createUser, resetPassword, deletePerson } = require('../../lib/users');
 
 const router = express.Router();
@@ -56,25 +57,31 @@ router.patch('/teachers/:id', asyncHandler(async (req, res) => {
       return res.status(409).json({ error: 'This teacher has upcoming lessons. Reassign or cancel those first.' });
   }
 
+  const dynamic = buildUpdateClause(
+    {
+      display_name: display_name?.trim() || undefined,
+      email: email ? email.trim().toLowerCase() : undefined,
+      phone: phone || undefined,
+      bio: bio || undefined,
+      specialisation: specialisation || undefined,
+      is_active: is_active != null ? is_active : undefined,
+    },
+    1
+  );
+  if (dynamic.setClauses.length === 0) {
+    const u = existing.rows[0];
+    return res.json({ teacher: {
+      id: u.id, display_name: u.display_name, email: u.email, phone: u.phone,
+      bio: u.bio, specialisation: u.specialisation, is_active: u.is_active,
+      must_change_password: u.must_change_password,
+    }});
+  }
   const result = await pool.query(
     `UPDATE users
-     SET display_name  = COALESCE($1, display_name),
-         email         = COALESCE($2, email),
-         phone         = COALESCE($3, phone),
-         bio           = COALESCE($4, bio),
-         specialisation = COALESCE($5, specialisation),
-         is_active     = COALESCE($6, is_active)
-     WHERE id = $7
+     SET ${dynamic.setClauses.join(', ')}
+     WHERE id = $${dynamic.nextParamIdx}
      RETURNING id, display_name, email, phone, bio, specialisation, is_active, must_change_password`,
-    [
-      display_name?.trim() || null,
-      email ? email.trim().toLowerCase() : null,
-      phone !== undefined ? (phone || null) : null,
-      bio !== undefined ? (bio || null) : null,
-      specialisation !== undefined ? (specialisation || null) : null,
-      is_active != null ? is_active : null,
-      req.params.id,
-    ]
+    [...dynamic.params, req.params.id]
   );
   res.json({ teacher: result.rows[0] });
 }));

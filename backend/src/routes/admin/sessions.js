@@ -5,7 +5,7 @@ const { notify } = require('../../lib/notify');
 const { formatSessionTime } = require('../../lib/datetime');
 const { asyncHandler } = require('../../middleware/errors');
 const { validateDuration } = require('../../lib/validators');
-const { assertTeacherExists, hasTeacherConflict, buildUpdateClause } = require('../../lib/queries');
+const { assertTeacherExists, hasTeacherConflict, buildUpdateClause, snapshotStudentRate } = require('../../lib/queries');
 const { VALID_SUBJECTS } = require('../../lib/schedule-generator');
 
 const router = express.Router();
@@ -48,12 +48,7 @@ router.post('/lessons', asyncHandler(async (req, res) => {
   const durationError = validateDuration(dur);
   if (durationError) return res.status(400).json({ error: durationError });
 
-  // Snapshot the student's current rate at session creation time
-  const studentResult = await pool.query(
-    "SELECT hourly_rate, currency FROM users WHERE id=$1 AND role='student'",
-    [student_id]
-  );
-  const { hourly_rate = null, currency = null } = studentResult.rows[0] || {};
+  const { hourly_rate, currency } = await snapshotStudentRate(pool, student_id);
 
   const id = uuidv4();
   const result = await pool.query(
@@ -72,12 +67,15 @@ router.post('/lessons', asyncHandler(async (req, res) => {
 // edit. Returns { status, error, code? } on failure, null when the edit may
 // proceed.
 async function validateSessionEdit(body, session, sessionId) {
-  const { scheduled_at, duration_minutes, teacher_id } = body;
+  const { scheduled_at, duration_minutes, teacher_id, subject } = body;
 
   if (duration_minutes != null) {
     const durationError = validateDuration(parseInt(duration_minutes));
     if (durationError) return { status: 400, error: durationError };
   }
+
+  if (subject != null && !VALID_SUBJECTS.includes(subject))
+    return { status: 400, error: 'Invalid subject' };
 
   if (teacher_id) {
     const teacher = await assertTeacherExists(pool, teacher_id, { requireActive: true });

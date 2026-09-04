@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errors');
+const { buildUpdateClause } = require('../lib/queries');
 
 const { whatsapp: ADMIN_WHATSAPP } = require('../lib/brand');
 
@@ -42,15 +43,26 @@ router.post('/', requireAuth, requireRole('admin', 'supervisor'), asyncHandler(a
 // PATCH /courses/:id — admin edits course
 router.patch('/:id', requireAuth, requireRole('admin', 'supervisor'), asyncHandler(async (req, res) => {
   const { title, description, price, is_free, thumbnail_url } = req.body;
+  const dynamic = buildUpdateClause(
+    {
+      title: title || undefined,
+      description: description || undefined,
+      price: price != null ? parseFloat(price) : undefined,
+      is_free: is_free != null ? is_free : undefined,
+      thumbnail_url: thumbnail_url || undefined,
+    },
+    1
+  );
+  if (dynamic.setClauses.length === 0) {
+    const existing = await pool.query(`SELECT * FROM recorded_courses WHERE id = $1`, [req.params.id]);
+    if (existing.rowCount === 0) return res.status(404).json({ error: 'Course not found' });
+    return res.json({ course: existing.rows[0] });
+  }
   const result = await pool.query(
     `UPDATE recorded_courses
-     SET title = COALESCE($1, title),
-         description = COALESCE($2, description),
-         price = COALESCE($3, price),
-         is_free = COALESCE($4, is_free),
-         thumbnail_url = COALESCE($5, thumbnail_url)
-     WHERE id = $6 RETURNING *`,
-    [title, description, price != null ? parseFloat(price) : null, is_free, thumbnail_url, req.params.id]
+     SET ${dynamic.setClauses.join(', ')}
+     WHERE id = $${dynamic.nextParamIdx} RETURNING *`,
+    [...dynamic.params, req.params.id]
   );
   if (result.rowCount === 0) return res.status(404).json({ error: 'Course not found' });
   res.json({ course: result.rows[0] });

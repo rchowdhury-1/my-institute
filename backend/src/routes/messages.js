@@ -3,6 +3,7 @@ const { pool } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 const { asyncHandler } = require('../middleware/errors');
+const { notify } = require('../lib/notify');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -68,18 +69,17 @@ router.post('/', asyncHandler(async (req, res) => {
     [id, req.userId, receiver_id, content.trim()]
   );
 
-  const sender = await pool.query('SELECT display_name FROM users WHERE id=$1', [req.userId]);
-  const receiver = await pool.query('SELECT role FROM users WHERE id=$1', [receiver_id]);
-  const receiverRole = receiver.rows[0]?.role;
+  const parties = await pool.query(
+    `SELECT id, display_name, role FROM users WHERE id = ANY($1::uuid[])`,
+    [[req.userId, receiver_id]]
+  );
+  const senderName = parties.rows.find(u => u.id === req.userId)?.display_name;
+  const receiverRole = parties.rows.find(u => u.id === receiver_id)?.role;
   const link = receiverRole === 'student' ? '/student/messages'
              : receiverRole === 'teacher' ? '/teacher/messages'
              : '/supervisor';
 
-  await pool.query(
-    'INSERT INTO notifications (id, user_id, type, title, message, link) VALUES ($1,$2,$3,$4,$5,$6)',
-    [uuidv4(), receiver_id, 'message', 'New Message',
-     `New message from ${sender.rows[0]?.display_name}`, link]
-  );
+  await notify(receiver_id, 'message', 'New Message', `New message from ${senderName}`, link);
 
   res.status(201).json({ message: result.rows[0] });
 }));

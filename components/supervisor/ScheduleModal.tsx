@@ -3,6 +3,7 @@ import api from "@/lib/api";
 import UserSearchInput from "@/components/shared/UserSearchInput";
 import { formatHours, otherZoneHint, OPERATIONAL_TZ_LABEL } from "@/lib/datetime";
 import { DURATION_OPTIONS, DAY_LABELS, ALL_DAYS } from "@/lib/labels";
+import { getAxiosError } from "@/lib/errors";
 import type { Session } from "./SessionCard";
 import type { User } from "@/app/supervisor/page";
 
@@ -104,6 +105,16 @@ export default function ScheduleModal({
     handleSaveSchedule();
   }
 
+  // Shared tail for both the create and edit branches of handleSaveSchedule:
+  // record the generation result (if any) and refresh the sessions list so
+  // any newly-generated sessions show up immediately.
+  async function applyGenerationAndRefreshSessions(generation: ScheduleGeneration | undefined) {
+    if (generation) setScheduleGenResult(generation);
+    const sessRes = await api.get("/admin/sessions");
+    replaceSessions(sessRes.data.sessions);
+    return generation;
+  }
+
   async function handleSaveSchedule() {
     setScheduleConfirm(false);
 
@@ -130,11 +141,7 @@ export default function ScheduleModal({
         });
 
         updateSchedule(editingSchedule.id, res.data.schedule);
-        generation = res.data.generation;
-        if (generation) setScheduleGenResult(generation);
-        // Refresh sessions list
-        const sessRes = await api.get("/admin/sessions");
-        replaceSessions(sessRes.data.sessions);
+        generation = await applyGenerationAndRefreshSessions(res.data.generation);
       } else {
         const res = await api.post("/admin/weekly-schedules", {
           student_id: scheduleForm.student_id,
@@ -149,19 +156,14 @@ export default function ScheduleModal({
         const student = students.find((s) => s.id === scheduleForm.student_id);
         const teacher = teachers.find((t) => t.id === scheduleForm.teacher_id);
         prependSchedule({ ...res.data.schedule, student_name: student?.display_name ?? "", teacher_name: teacher?.display_name ?? "" });
-        generation = res.data.generation;
-        setScheduleGenResult(generation);
-        // Refresh sessions list
-        const sessRes = await api.get("/admin/sessions");
-        replaceSessions(sessRes.data.sessions);
+        generation = await applyGenerationAndRefreshSessions(res.data.generation);
       }
       // Use the just-fetched result, not the scheduleGenResult state variable —
       // the setScheduleGenResult call above hasn't re-rendered yet, so reading
       // that state here would see its stale pre-save value.
       if (!generation) onClose();
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } };
-      setScheduleError(e.response?.data?.error || "Failed to save schedule.");
+      setScheduleError(getAxiosError(err).message);
     } finally {
       setScheduleSaving(false);
     }

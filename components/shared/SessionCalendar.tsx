@@ -42,6 +42,164 @@ function londonDate(d: Date): Date {
 
 const DAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+interface SessionPillProps {
+  session: Session;
+  nameField: "student_name" | "teacher_name";
+  mode: "week" | "month";
+  onSessionClick?: (session: Session) => void;
+}
+
+// Hoisted to module scope (not defined inside SessionCalendar) — a component
+// defined inside a parent's render body gets a new function identity every
+// render, which makes React treat it as a different component type and
+// remount its entire subtree (losing DOM state, e.g. any hover/focus) on
+// every parent re-render instead of reconciling in place.
+function SessionPill({ session, nameField, mode, onSessionClick }: SessionPillProps) {
+  const style = SESSION_STATUS_STYLE[session.status] || SESSION_STATUS_STYLE.scheduled;
+  const label = SESSION_STATUS_LABEL[session.status] || SESSION_STATUS_LABEL.scheduled;
+  const d = new Date(session.scheduled_at);
+  const name = session[nameField] || "";
+  const subject = session.subject ? SUBJECT_LABELS[session.subject] || session.subject : "";
+  const ariaLabel = `${format(londonDate(d), "EEE d MMM")}, ${timeIn(d, LONDON)}, ${label}${subject ? ` ${subject}` : ""} lesson${name ? ` with ${name}` : ""}`;
+
+  return (
+    <button
+      onClick={() => onSessionClick?.(session)}
+      className={`w-full text-left px-2 py-1 rounded-md border-l-2 ${style.bg} ${style.border} ${
+        onSessionClick ? "cursor-pointer hover:opacity-80" : "cursor-default"
+      } transition-opacity`}
+      aria-label={ariaLabel}
+      tabIndex={0}
+    >
+      <p className={`text-xs font-medium ${style.text} truncate`}>
+        {timeIn(d, LONDON)}
+        <span className="text-[10px] opacity-60 ml-1">{timeIn(d, CAIRO)} Cairo</span>
+      </p>
+      {name && (
+        <p className="text-[11px] text-charcoal/60 truncate">{name}</p>
+      )}
+      {mode === "week" && subject && (
+        <p className="text-[10px] text-charcoal/40 truncate">
+          {subject} · {session.duration_minutes}min
+        </p>
+      )}
+    </button>
+  );
+}
+
+interface CalendarViewProps {
+  days: Date[];
+  sessionsByDate: Map<string, Session[]>;
+  nameField: "student_name" | "teacher_name";
+  onSessionClick?: (session: Session) => void;
+}
+
+interface MonthViewProps extends CalendarViewProps {
+  anchor: Date;
+}
+
+// Week view
+function WeekView({ days, sessionsByDate, nameField, onSessionClick }: CalendarViewProps) {
+  return (
+    <div className="grid grid-cols-7 gap-px bg-black/5 rounded-xl overflow-hidden border border-black/5">
+      {/* Day headers */}
+      {DAY_HEADERS.map((d, i) => (
+        <div
+          key={d}
+          className={`text-center text-xs font-medium py-2 ${
+            isToday(days[i]) ? "bg-emerald-primary/10 text-emerald-primary" : "bg-white text-charcoal/50"
+          }`}
+        >
+          {d}
+        </div>
+      ))}
+      {/* Day cells */}
+      {days.map((day) => {
+        const key = format(day, "yyyy-MM-dd");
+        const daySessions = sessionsByDate.get(key) || [];
+        const today = isToday(day);
+        return (
+          <div
+            key={key}
+            className={`min-h-[120px] p-1.5 flex flex-col gap-1 ${
+              today ? "bg-emerald-primary/5" : "bg-white"
+            }`}
+          >
+            <span
+              className={`text-xs font-medium mb-0.5 ${
+                today
+                  ? "text-emerald-primary font-bold"
+                  : "text-charcoal/40"
+              }`}
+            >
+              {format(day, "d")}
+            </span>
+            {daySessions.map((s) => (
+              <SessionPill key={s.id} session={s} nameField={nameField} mode="week" onSessionClick={onSessionClick} />
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Month view
+function MonthView({ days, sessionsByDate, nameField, onSessionClick, anchor }: MonthViewProps) {
+  const monthStart = startOfMonth(anchor);
+  const monthEnd = endOfMonth(anchor);
+
+  return (
+    <div className="grid grid-cols-7 gap-px bg-black/5 rounded-xl overflow-hidden border border-black/5">
+      {/* Day headers */}
+      {DAY_HEADERS.map((d) => (
+        <div
+          key={d}
+          className="text-center text-xs font-medium py-2 bg-white text-charcoal/50"
+        >
+          {d}
+        </div>
+      ))}
+      {/* Day cells */}
+      {days.map((day) => {
+        const key = format(day, "yyyy-MM-dd");
+        const daySessions = sessionsByDate.get(key) || [];
+        const today = isToday(day);
+        const inMonth = day >= monthStart && day <= monthEnd;
+
+        return (
+          <div
+            key={key}
+            className={`min-h-[80px] p-1.5 flex flex-col gap-0.5 ${
+              today ? "bg-emerald-primary/5" : inMonth ? "bg-white" : "bg-gray-50/50"
+            }`}
+          >
+            <span
+              className={`text-xs mb-0.5 ${
+                today
+                  ? "text-emerald-primary font-bold"
+                  : inMonth
+                    ? "text-charcoal/60 font-medium"
+                    : "text-charcoal/25"
+              }`}
+            >
+              {format(day, "d")}
+            </span>
+            {daySessions.slice(0, 3).map((s) => (
+              <SessionPill key={s.id} session={s} nameField={nameField} mode="month" onSessionClick={onSessionClick} />
+            ))}
+            {daySessions.length > 3 && (
+              <p className="text-[10px] text-charcoal/40 text-center">
+                +{daySessions.length - 3} more
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function SessionCalendar({
   sessions,
   mode,
@@ -97,141 +255,6 @@ export default function SessionCalendar({
     mode === "week"
       ? `${format(days[0], "d MMM")} – ${format(days[6], "d MMM yyyy")}`
       : format(anchor, "MMMM yyyy");
-
-  function SessionPill({ session }: { session: Session }) {
-    const style = SESSION_STATUS_STYLE[session.status] || SESSION_STATUS_STYLE.scheduled;
-    const label = SESSION_STATUS_LABEL[session.status] || SESSION_STATUS_LABEL.scheduled;
-    const d = new Date(session.scheduled_at);
-    const name = session[nameField] || "";
-    const subject = session.subject ? SUBJECT_LABELS[session.subject] || session.subject : "";
-    const ariaLabel = `${format(londonDate(d), "EEE d MMM")}, ${timeIn(d, LONDON)}, ${label}${subject ? ` ${subject}` : ""} lesson${name ? ` with ${name}` : ""}`;
-
-    return (
-      <button
-        onClick={() => onSessionClick?.(session)}
-        className={`w-full text-left px-2 py-1 rounded-md border-l-2 ${style.bg} ${style.border} ${
-          onSessionClick ? "cursor-pointer hover:opacity-80" : "cursor-default"
-        } transition-opacity`}
-        aria-label={ariaLabel}
-        tabIndex={0}
-      >
-        <p className={`text-xs font-medium ${style.text} truncate`}>
-          {timeIn(d, LONDON)}
-          <span className="text-[10px] opacity-60 ml-1">{timeIn(d, CAIRO)} Cairo</span>
-        </p>
-        {name && (
-          <p className="text-[11px] text-charcoal/60 truncate">{name}</p>
-        )}
-        {mode === "week" && subject && (
-          <p className="text-[10px] text-charcoal/40 truncate">
-            {subject} · {session.duration_minutes}min
-          </p>
-        )}
-      </button>
-    );
-  }
-
-  // Week view
-  function WeekView() {
-    return (
-      <div className="grid grid-cols-7 gap-px bg-black/5 rounded-xl overflow-hidden border border-black/5">
-        {/* Day headers */}
-        {DAY_HEADERS.map((d, i) => (
-          <div
-            key={d}
-            className={`text-center text-xs font-medium py-2 ${
-              isToday(days[i]) ? "bg-emerald-primary/10 text-emerald-primary" : "bg-white text-charcoal/50"
-            }`}
-          >
-            {d}
-          </div>
-        ))}
-        {/* Day cells */}
-        {days.map((day) => {
-          const key = format(day, "yyyy-MM-dd");
-          const daySessions = sessionsByDate.get(key) || [];
-          const today = isToday(day);
-          return (
-            <div
-              key={key}
-              className={`min-h-[120px] p-1.5 flex flex-col gap-1 ${
-                today ? "bg-emerald-primary/5" : "bg-white"
-              }`}
-            >
-              <span
-                className={`text-xs font-medium mb-0.5 ${
-                  today
-                    ? "text-emerald-primary font-bold"
-                    : "text-charcoal/40"
-                }`}
-              >
-                {format(day, "d")}
-              </span>
-              {daySessions.map((s) => (
-                <SessionPill key={s.id} session={s} />
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  // Month view
-  function MonthView() {
-    const monthStart = startOfMonth(anchor);
-    const monthEnd = endOfMonth(anchor);
-
-    return (
-      <div className="grid grid-cols-7 gap-px bg-black/5 rounded-xl overflow-hidden border border-black/5">
-        {/* Day headers */}
-        {DAY_HEADERS.map((d) => (
-          <div
-            key={d}
-            className="text-center text-xs font-medium py-2 bg-white text-charcoal/50"
-          >
-            {d}
-          </div>
-        ))}
-        {/* Day cells */}
-        {days.map((day) => {
-          const key = format(day, "yyyy-MM-dd");
-          const daySessions = sessionsByDate.get(key) || [];
-          const today = isToday(day);
-          const inMonth = day >= monthStart && day <= monthEnd;
-
-          return (
-            <div
-              key={key}
-              className={`min-h-[80px] p-1.5 flex flex-col gap-0.5 ${
-                today ? "bg-emerald-primary/5" : inMonth ? "bg-white" : "bg-gray-50/50"
-              }`}
-            >
-              <span
-                className={`text-xs mb-0.5 ${
-                  today
-                    ? "text-emerald-primary font-bold"
-                    : inMonth
-                      ? "text-charcoal/60 font-medium"
-                      : "text-charcoal/25"
-                }`}
-              >
-                {format(day, "d")}
-              </span>
-              {daySessions.slice(0, 3).map((s) => (
-                <SessionPill key={s.id} session={s} />
-              ))}
-              {daySessions.length > 3 && (
-                <p className="text-[10px] text-charcoal/40 text-center">
-                  +{daySessions.length - 3} more
-                </p>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-3">
@@ -297,7 +320,11 @@ export default function SessionCalendar({
 
       {/* Calendar grid */}
       <div className="overflow-x-auto">
-        {mode === "week" ? <WeekView /> : <MonthView />}
+        {mode === "week" ? (
+          <WeekView days={days} sessionsByDate={sessionsByDate} nameField={nameField} onSessionClick={onSessionClick} />
+        ) : (
+          <MonthView days={days} sessionsByDate={sessionsByDate} nameField={nameField} onSessionClick={onSessionClick} anchor={anchor} />
+        )}
       </div>
 
       {/* Empty state */}

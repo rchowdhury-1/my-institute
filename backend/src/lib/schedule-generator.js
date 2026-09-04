@@ -227,6 +227,13 @@ async function bulkInsertSessions(pool, toInsert, schedule) {
 /**
  * Generate sessions for a single schedule. Idempotent — safe to call multiple times.
  *
+ * Runs the existing-session/conflict check and the insert in one transaction,
+ * serialized per teacher via a Postgres advisory lock (released automatically
+ * at COMMIT/ROLLBACK). Without this, two concurrent calls for the same
+ * teacher — e.g. the on-demand generation fired by every GET /sessions
+ * racing the nightly cron, or a schedule create/edit — could both read "slot
+ * is free" before either inserts, double-booking the teacher.
+ *
  * @param {Object} schedule - Full schedule row (with student rate info)
  * @param {string} schedule.id
  * @param {string} schedule.student_id
@@ -236,37 +243,51 @@ async function bulkInsertSessions(pool, toInsert, schedule) {
  * @param {Array} schedule.slots - [{day, time, duration?}]
  * @param {number|null} schedule.hourly_rate - student's rate (from join)
  * @param {string|null} schedule.currency - student's currency (from join)
+ * @param {import('pg').PoolClient} [externalClient] - reuse an existing
+ *   transaction (e.g. wipeAndRegenerate) instead of opening a new one.
  * @returns {{ created: number, skipped: number, conflicts: string[] }}
  */
-async function generateSessionsForSchedule(schedule) {
+async function generateSessionsForSchedule(schedule, externalClient) {
   if (!schedule.is_active) return { created: 0, skipped: 0, conflicts: [] };
 
-  const now = new Date();
-  const today = startOfDay(now);
-  const horizon = addDays(today, HORIZON_DAYS);
+  const client = externalClient || await pool.connect();
+  try {
+    if (!externalClient) await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [schedule.teacher_id]);
 
-  const { candidates, skipped: pastSkipped } = computeCandidates(schedule, today, horizon, now);
+    const now = new Date();
+    const today = startOfDay(now);
+    const horizon = addDays(today, HORIZON_DAYS);
 
-  if (candidates.length === 0) {
-    return { created: 0, skipped: pastSkipped, conflicts: [] };
+    const { candidates, skipped: pastSkipped } = computeCandidates(schedule, today, horizon, now);
+
+    let created = 0, resolveSkipped = 0, conflicts = [];
+    if (candidates.length > 0) {
+      const existingKeys = await loadExistingSessionKeys(client, schedule, today, horizon);
+      const existingIntervals = await loadTeacherBookedIntervals(client, schedule.teacher_id);
+      const resolved = resolveInsertableSessions(schedule, candidates, existingKeys, existingIntervals);
+      created = resolved.created;
+      resolveSkipped = resolved.skipped;
+      conflicts = resolved.conflicts;
+      await bulkInsertSessions(client, resolved.toInsert, schedule);
+    }
+
+    if (!externalClient) await client.query('COMMIT');
+    return { created, skipped: pastSkipped + resolveSkipped, conflicts };
+  } catch (err) {
+    if (!externalClient) await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    if (!externalClient) client.release();
   }
-
-  const existingKeys = await loadExistingSessionKeys(pool, schedule, today, horizon);
-  const existingIntervals = await loadTeacherBookedIntervals(pool, schedule.teacher_id);
-
-  const { toInsert, created, skipped: resolveSkipped, conflicts } =
-    resolveInsertableSessions(schedule, candidates, existingKeys, existingIntervals);
-
-  await bulkInsertSessions(pool, toInsert, schedule);
-
-  return { created, skipped: pastSkipped + resolveSkipped, conflicts };
 }
 
 /**
  * Load a schedule with student rate info and generate sessions.
  */
-async function generateForScheduleId(scheduleId) {
-  const result = await pool.query(
+async function generateForScheduleId(scheduleId, externalClient) {
+  const db = externalClient || pool;
+  const result = await db.query(
     `SELECT ws.*,
             u.hourly_rate, u.currency
      FROM weekly_schedules ws
@@ -277,7 +298,7 @@ async function generateForScheduleId(scheduleId) {
   if (result.rows.length === 0) {
     return { error: 'Schedule not found', created: 0, skipped: 0, conflicts: [] };
   }
-  return generateSessionsForSchedule(result.rows[0]);
+  return generateSessionsForSchedule(result.rows[0], externalClient);
 }
 
 /**
@@ -319,19 +340,32 @@ async function generateAllSchedules() {
 }
 
 /**
- * Delete future 'scheduled' sessions for a schedule, then regenerate.
+ * Delete future 'scheduled' sessions for a schedule, then regenerate — in one
+ * transaction, so a crash between the delete and the regenerate can't leave
+ * a schedule wiped with nothing to replace it.
  */
 async function wipeAndRegenerate(scheduleId) {
-  const deleted = await wipeFutureSessions(scheduleId);
-  const generation = await generateForScheduleId(scheduleId);
-  return { sessions_removed: deleted, ...generation };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const deleted = await wipeFutureSessions(scheduleId, client);
+    const generation = await generateForScheduleId(scheduleId, client);
+    await client.query('COMMIT');
+    return { sessions_removed: deleted, ...generation };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**
  * Delete future 'scheduled' sessions for a schedule. No regeneration.
  */
-async function wipeFutureSessions(scheduleId) {
-  const result = await pool.query(
+async function wipeFutureSessions(scheduleId, externalClient) {
+  const db = externalClient || pool;
+  const result = await db.query(
     `DELETE FROM sessions
      WHERE schedule_id = $1
        AND status = 'scheduled'

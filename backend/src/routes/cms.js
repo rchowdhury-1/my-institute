@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errors');
+const { buildUpdateClause } = require('../lib/queries');
 
 const VALID_TYPES = ['advertisements', 'islam_info', 'honor_list', 'quotes'];
 
@@ -45,16 +46,26 @@ router.post('/', requireAuth, requireRole('admin', 'supervisor'), asyncHandler(a
 // PATCH /cms/:id — admin edits item
 router.patch('/:id', requireAuth, requireRole('admin', 'supervisor'), asyncHandler(async (req, res) => {
   const { title, content, image_url, position, is_active } = req.body;
+  const dynamic = buildUpdateClause(
+    {
+      title: title !== undefined ? (title || null) : undefined,
+      content: content !== undefined ? (content || null) : undefined,
+      image_url: image_url !== undefined ? (image_url || null) : undefined,
+      position: position != null ? parseInt(position) : undefined,
+      is_active: is_active != null ? is_active : undefined,
+    },
+    1
+  );
+  if (dynamic.setClauses.length === 0) {
+    const existing = await pool.query(`SELECT * FROM cms_sections WHERE id = $1`, [req.params.id]);
+    if (existing.rowCount === 0) return res.status(404).json({ error: 'Item not found' });
+    return res.json({ item: existing.rows[0] });
+  }
   const result = await pool.query(
     `UPDATE cms_sections
-     SET title      = CASE WHEN $1::text IS NOT NULL THEN $1 ELSE title END,
-         content    = CASE WHEN $2::text IS NOT NULL THEN $2 ELSE content END,
-         image_url  = CASE WHEN $3::text IS NOT NULL THEN $3 ELSE image_url END,
-         position   = CASE WHEN $4::int IS NOT NULL THEN $4 ELSE position END,
-         is_active  = CASE WHEN $5::boolean IS NOT NULL THEN $5 ELSE is_active END,
-         updated_at = NOW()
-     WHERE id = $6 RETURNING *`,
-    [title ?? null, content ?? null, image_url ?? null, position != null ? parseInt(position) : null, is_active ?? null, req.params.id]
+     SET ${['updated_at = NOW()', ...dynamic.setClauses].join(', ')}
+     WHERE id = $${dynamic.nextParamIdx} RETURNING *`,
+    [...dynamic.params, req.params.id]
   );
   if (result.rowCount === 0) return res.status(404).json({ error: 'Item not found' });
   res.json({ item: result.rows[0] });

@@ -54,14 +54,17 @@ export default function MessagingPage({ authChecked, logTag, roleLabel }: Messag
   }, [authChecked, logTag]);
 
   async function openConversation(conv: Conversation) {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setActiveConv(conv);
-    const res = await api.get(`/messages/${conv.other_id}`);
-    setMessages(res.data.messages);
-    setConversations((prev) =>
-      prev.map((c) => c.other_id === conv.other_id ? { ...c, unread_count: 0 } : c)
-    );
+    try {
+      const res = await api.get(`/messages/${conv.other_id}`);
+      setMessages(res.data.messages);
+      setConversations((prev) =>
+        prev.map((c) => c.other_id === conv.other_id ? { ...c, unread_count: 0 } : c)
+      );
+    } catch (err) {
+      console.error(`[${logTag}] failed to load conversation:`, err);
+      alert("Failed to load conversation.");
+    }
   }
 
   useEffect(() => {
@@ -70,8 +73,6 @@ export default function MessagingPage({ authChecked, logTag, roleLabel }: Messag
 
   async function sendMessage() {
     if (!newMessage.trim() || !activeConv) return;
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
     setSending(true);
     try {
       const res = await api.post("/messages",

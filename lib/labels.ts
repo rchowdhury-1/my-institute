@@ -13,6 +13,26 @@ export function subjectLabel(s?: string | null): string {
   return SUBJECT_LABELS[s] ?? s;
 }
 
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  GBP: "£",
+  USD: "$",
+  EUR: "€",
+  EGP: "EGP ",
+};
+
+/** Currency code -> display symbol, e.g. "GBP" -> "£". Falls back to "<CODE> " for anything unmapped. */
+export function currencySymbol(code: string): string {
+  return CURRENCY_SYMBOLS[code] ?? `${code} `;
+}
+
+export type CurrencyCode = "GBP" | "EGP";
+
+/** The only two currencies selectable in admin forms (matches backend SUPPORTED_CURRENCIES). */
+export const CURRENCY_OPTIONS: { value: CurrencyCode; label: string }[] = [
+  { value: "GBP", label: "GBP (£)" },
+  { value: "EGP", label: "EGP" },
+];
+
 /**
  * Canonical session status colours. Three sites (supervisor, teacher
  * dashboard, student sessions) already agreed on these bg/text pairs;

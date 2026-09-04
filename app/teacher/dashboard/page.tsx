@@ -6,13 +6,25 @@ import { CheckCircle2, XCircle, UserCheck, UserX, Calendar, List } from "lucide-
 import { formatSessionDate, formatTimeOnly, isSessionStillUpcoming, computeClockSkew, isToday, ATTENDANCE_EARLY_MS, ATTENDANCE_LATE_MS } from "@/lib/datetime";
 import { useAuthGuard } from "@/lib/useAuthGuard";
 import { useLogout } from "@/lib/useLogout";
-import { getAxiosError } from "@/lib/errors";
+import { getAxiosError, reportError } from "@/lib/errors";
 import SessionCalendar from "@/components/shared/SessionCalendar";
 import { subjectLabel, SESSION_STATUS_STYLE, SESSION_STATUS_LABEL } from "@/lib/labels";
 import PageLoading from "@/components/shared/PageLoading";
 import PageError from "@/components/shared/PageError";
 import JoinSessionButton from "@/components/shared/JoinSessionButton";
 import RescheduleRequestList from "@/components/shared/RescheduleRequestList";
+
+// Matches the backend's own deriveAttendanceStatus vocabulary
+// (backend/src/services/attendance.js) — named outcomes instead of a
+// (teacherAttended, studentAttended) boolean pair, which reads as
+// unreadable flag calls like onAttendance(false, false) at the call site.
+type AttendanceOutcome = "completed" | "no_show" | "cancelled_teacher";
+
+const ATTENDANCE_OUTCOME_BOOLEANS: Record<AttendanceOutcome, { teacherAttended: boolean; studentAttended: boolean }> = {
+  cancelled_teacher: { teacherAttended: false, studentAttended: false },
+  no_show: { teacherAttended: true, studentAttended: false },
+  completed: { teacherAttended: true, studentAttended: true },
+};
 
 interface Lesson {
   id: string;
@@ -63,22 +75,23 @@ export default function TeacherDashboard() {
       .finally(() => setLoading(false));
   }, [authChecked]);
 
-  const markAttendance = async (lessonId: string, teacherAttended: boolean, studentAttended: boolean) => {
+  const markAttendance = async (lessonId: string, outcome: AttendanceOutcome) => {
     setSaving(lessonId);
     try {
+      const { teacherAttended, studentAttended } = ATTENDANCE_OUTCOME_BOOLEANS[outcome];
       const res = await api.patch(
         `/sessions/${lessonId}/attendance`,
         { teacher_attended: teacherAttended, student_attended: studentAttended }
       );
       setLessons((prev) => prev.map((l) => l.id === lessonId ? { ...l, ...res.data.session } : l));
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string; code?: string } } };
-      if (e.response?.data?.code === "ATTENDANCE_TOO_EARLY") {
+      const { code, message } = getAxiosError(err);
+      if (code === "ATTENDANCE_TOO_EARLY") {
         alert("Attendance can only be marked from 15 minutes before the session.");
-      } else if (e.response?.data?.code === "ATTENDANCE_WINDOW_CLOSED") {
+      } else if (code === "ATTENDANCE_WINDOW_CLOSED") {
         alert("Attendance window has closed (24 hours after session). Contact admin.");
       } else {
-        alert(e.response?.data?.error || "Failed to mark attendance.");
+        alert(message);
       }
     } finally {
       setSaving(null);
@@ -94,7 +107,7 @@ export default function TeacherDashboard() {
       );
       setLessons((prev) => prev.map((l) => l.id === lessonId ? { ...l, ...res.data.session } : l));
     } catch (err) {
-      alert(getAxiosError(err).message);
+      reportError(err);
     } finally {
       setSaving(null);
     }
@@ -191,7 +204,7 @@ export default function TeacherDashboard() {
                   noteInput={noteInputs[l.id] ?? l.notes ?? ""}
                   saving={saving === l.id}
                   onNoteChange={(val) => setNoteInputs((p) => ({ ...p, [l.id]: val }))}
-                  onAttendance={(ta, sa) => markAttendance(l.id, ta, sa)}
+                  onAttendance={(outcome) => markAttendance(l.id, outcome)}
                   onCancel={() => cancelLesson(l.id)}
                 />
               ))}
@@ -252,7 +265,7 @@ function LessonCard({
   noteInput: string;
   saving: boolean;
   onNoteChange: (v: string) => void;
-  onAttendance: (teacherAttended: boolean, studentAttended: boolean) => void;
+  onAttendance: (outcome: AttendanceOutcome) => void;
   onCancel: () => void;
 }) {
   const [attendanceStep, setAttendanceStep] = useState<null | "teacher" | "student">(null);
@@ -357,7 +370,7 @@ function LessonCard({
                   <UserCheck size={14} /> Yes, I attended
                 </button>
                 <button
-                  onClick={() => { onAttendance(false, false); setAttendanceStep(null); }}
+                  onClick={() => { onAttendance("cancelled_teacher"); setAttendanceStep(null); }}
                   disabled={saving}
                   className="flex-1 flex items-center justify-center gap-2 py-2 rounded-full bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-60"
                 >
@@ -375,14 +388,14 @@ function LessonCard({
               <p className="text-sm font-medium text-charcoal">Did the student attend?</p>
               <div className="flex gap-2">
                 <button
-                  onClick={() => { onAttendance(true, true); setAttendanceStep(null); }}
+                  onClick={() => { onAttendance("completed"); setAttendanceStep(null); }}
                   disabled={saving}
                   className="flex-1 flex items-center justify-center gap-2 py-2 rounded-full bg-emerald-primary text-white text-sm font-semibold hover:bg-emerald-light transition-colors disabled:opacity-60"
                 >
                   <CheckCircle2 size={14} /> Yes
                 </button>
                 <button
-                  onClick={() => { onAttendance(true, false); setAttendanceStep(null); }}
+                  onClick={() => { onAttendance("no_show"); setAttendanceStep(null); }}
                   disabled={saving}
                   className="flex-1 flex items-center justify-center gap-2 py-2 rounded-full bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60"
                 >
