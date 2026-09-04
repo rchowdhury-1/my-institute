@@ -523,10 +523,7 @@ export default function AdminTeachersPage() {
                   const action = accountActionFor(teacher);
                   if (action) confirmAction(action.type, teacher);
                 }}
-                onActionCancel={() => {
-                  const action = accountActionFor(teacher);
-                  if (action) cancelAction(action.type);
-                }}
+                onActionCancel={() => cancelAction()}
                 inputClass={inputClass}
               />
             ))}

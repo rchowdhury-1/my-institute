@@ -28,6 +28,15 @@ interface PersonAdminOptions<T> {
   buildEditPayload?: (form: Partial<T>) => Record<string, unknown>;
 }
 
+type AccountActionType = "reset" | "deactivate" | "reactivate" | "delete";
+
+interface PendingAction {
+  type: AccountActionType;
+  personId: string;
+  loading: boolean;
+  error?: string;
+}
+
 export function usePersonAdmin<T extends BasePerson>(
   entityType: "teacher" | "student",
   options: PersonAdminOptions<T>
@@ -62,16 +71,11 @@ export function usePersonAdmin<T extends BasePerson>(
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
 
-  const [resetConfirmId, setResetConfirmId] = useState<string | null>(null);
-  const [resetLoading, setResetLoading] = useState(false);
-
-  const [deactivateConfirmId, setDeactivateConfirmId] = useState<string | null>(null);
-  const [deactivateLoading, setDeactivateLoading] = useState(false);
-  const [deactivateError, setDeactivateError] = useState<{ id: string; message: string } | null>(null);
-
-  const [reactivateConfirmId, setReactivateConfirmId] = useState<string | null>(null);
-  const [reactivateLoading, setReactivateLoading] = useState(false);
-  const [reactivateError, setReactivateError] = useState<{ id: string; message: string } | null>(null);
+  // Only one confirm/loading/error triple, shared by every account action
+  // (reset/deactivate/reactivate/delete) — a single pending action per hook
+  // instance guarantees mutual exclusion by construction, instead of every
+  // start* function having to remember to clear every sibling's state.
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   // ── Edit ──────────────────────────────────────────────────────────────
 
@@ -79,8 +83,7 @@ export function usePersonAdmin<T extends BasePerson>(
     setEditingId(person.id);
     setEditForm(buildEditForm(person));
     setEditError("");
-    setResetConfirmId(null);
-    setDeactivateConfirmId(null);
+    setPendingAction(null);
   }
 
   function updateEditForm(patch: Partial<T>) {
@@ -109,112 +112,76 @@ export function usePersonAdmin<T extends BasePerson>(
     }
   }
 
-  // ── Reset password ───────────────────────────────────────────────────
+  // ── Account actions (reset / deactivate / reactivate / delete) ────────
 
-  function startReset(id: string) {
-    setResetConfirmId(id);
-    setDeactivateConfirmId(null);
+  function startAction(type: AccountActionType, personId: string) {
+    setPendingAction({ type, personId, loading: false });
     setEditingId(null);
   }
 
-  function cancelReset() {
-    setResetConfirmId(null);
+  function cancelAction() {
+    setPendingAction(null);
   }
 
-  async function confirmReset(person: T) {
-    setResetLoading(true);
+  async function confirmAction(type: AccountActionType, person: T) {
+    setPendingAction({ type, personId: person.id, loading: true });
+
     try {
-      const res = await api.post(`${basePath}/${person.id}/reset-password`, {});
-      const tempPassword: string = res.data.temp_password ?? res.data.tempPassword;
-      setResetBanner({
-        personId: person.id,
-        name: person.display_name,
-        password: tempPassword,
-        email: person.email,
-        emailSent: res.data.email_sent ?? false,
-        emailError: res.data.email_error || undefined,
-      });
-      setResetConfirmId(null);
-      setItems((prev) =>
-        prev.map((p) => (p.id === person.id ? { ...p, must_change_password: true } : p))
-      );
-    } catch (err) {
-      console.error("Reset password error:", err);
-      alert(getAxiosError(err).message);
-    } finally {
-      setResetLoading(false);
-    }
-  }
+      if (type === "reset") {
+        const res = await api.post(`${basePath}/${person.id}/reset-password`, {});
+        const tempPassword: string = res.data.temp_password ?? res.data.tempPassword;
+        setResetBanner({
+          personId: person.id,
+          name: person.display_name,
+          password: tempPassword,
+          email: person.email,
+          emailSent: res.data.email_sent ?? false,
+          emailError: res.data.email_error || undefined,
+        });
+        setItems((prev) =>
+          prev.map((p) => (p.id === person.id ? { ...p, must_change_password: true } : p))
+        );
+        setPendingAction(null);
+        return;
+      }
 
-  // ── Deactivate ────────────────────────────────────────────────────────
+      if (type === "deactivate") {
+        await api.patch(`${basePath}/${person.id}`, { is_active: false });
+        setItems((prev) =>
+          prev.map((p) => (p.id === person.id ? { ...p, is_active: false } : p))
+        );
+        setPendingAction(null);
+        return;
+      }
 
-  function startDeactivate(id: string) {
-    setDeactivateConfirmId(id);
-    setDeactivateError(null);
-    setResetConfirmId(null);
-    setEditingId(null);
-  }
+      if (type === "reactivate") {
+        await api.patch(`${basePath}/${person.id}`, { is_active: true });
+        setItems((prev) =>
+          prev.map((p) => (p.id === person.id ? { ...p, is_active: true } : p))
+        );
+        setPendingAction(null);
+        return;
+      }
 
-  function cancelDeactivate() {
-    setDeactivateConfirmId(null);
-    setDeactivateError(null);
-  }
-
-  async function confirmDeactivate(person: T) {
-    setDeactivateLoading(true);
-    setDeactivateError(null);
-    try {
-      await api.patch(`${basePath}/${person.id}`, { is_active: false });
-      setItems((prev) =>
-        prev.map((p) => (p.id === person.id ? { ...p, is_active: false } : p))
-      );
-      setDeactivateConfirmId(null);
+      // delete
+      const res = await api.delete(`${basePath}/${person.id}`);
+      setItems((prev) => prev.filter((p) => p.id !== person.id));
+      setPendingAction(null);
+      const rescheduleRequestsRemoved: number = res.data?.rescheduleRequestsRemoved ?? 0;
+      if (rescheduleRequestsRemoved > 0) {
+        alert(
+          `${person.display_name}'s account was deleted. This also removed ${rescheduleRequestsRemoved} reschedule request${rescheduleRequestsRemoved === 1 ? "" : "s"} tied to their account.`
+        );
+      }
     } catch (err) {
       const { status, message } = getAxiosError(err);
-      setDeactivateError({
-        id: person.id,
-        message:
-          status === 409
-            ? `This ${entityType} has upcoming lessons and cannot be turned off.`
-            : message,
-      });
-    } finally {
-      setDeactivateLoading(false);
+      const errorMessage =
+        type === "deactivate" && status === 409
+          ? `This ${entityType} has upcoming lessons and cannot be turned off.`
+          : message;
+      setPendingAction({ type, personId: person.id, loading: false, error: errorMessage });
     }
   }
-
-  // ── Reactivate ────────────────────────────────────────────────────────
-
-  function startReactivate(id: string) {
-    setReactivateConfirmId(id);
-    setDeactivateConfirmId(null);
-    setResetConfirmId(null);
-    setEditingId(null);
-  }
-
-  function cancelReactivate() {
-    setReactivateConfirmId(null);
-    setReactivateError(null);
-  }
-
-  async function confirmReactivate(person: T) {
-    setReactivateLoading(true);
-    setReactivateError(null);
-    try {
-      await api.patch(`${basePath}/${person.id}`, { is_active: true });
-      setItems((prev) =>
-        prev.map((p) => (p.id === person.id ? { ...p, is_active: true } : p))
-      );
-      setReactivateConfirmId(null);
-    } catch (err) {
-      const { message } = getAxiosError(err);
-      setReactivateError({ id: person.id, message });
-    } finally {
-      setReactivateLoading(false);
-    }
-  }
-
-  type AccountActionType = "reset" | "deactivate" | "reactivate";
 
   function accountActionFor(person: T): {
     type: AccountActionType;
@@ -222,44 +189,13 @@ export function usePersonAdmin<T extends BasePerson>(
     loading: boolean;
     error?: string;
   } | null {
-    if (resetConfirmId === person.id) {
-      return { type: "reset", confirming: true, loading: resetLoading };
-    }
-    if (deactivateConfirmId === person.id) {
-      return {
-        type: "deactivate",
-        confirming: true,
-        loading: deactivateLoading,
-        error: deactivateError?.id === person.id ? deactivateError.message : undefined,
-      };
-    }
-    if (reactivateConfirmId === person.id) {
-      return {
-        type: "reactivate",
-        confirming: true,
-        loading: reactivateLoading,
-        error: reactivateError?.id === person.id ? reactivateError.message : undefined,
-      };
-    }
-    return null;
-  }
-
-  function startAction(type: AccountActionType, id: string) {
-    if (type === "reset") startReset(id);
-    else if (type === "deactivate") startDeactivate(id);
-    else startReactivate(id);
-  }
-
-  function confirmAction(type: AccountActionType, person: T) {
-    if (type === "reset") return confirmReset(person);
-    if (type === "deactivate") return confirmDeactivate(person);
-    return confirmReactivate(person);
-  }
-
-  function cancelAction(type: AccountActionType) {
-    if (type === "reset") cancelReset();
-    else if (type === "deactivate") cancelDeactivate();
-    else cancelReactivate();
+    if (!pendingAction || pendingAction.personId !== person.id) return null;
+    return {
+      type: pendingAction.type,
+      confirming: true,
+      loading: pendingAction.loading,
+      error: pendingAction.error,
+    };
   }
 
   return {
@@ -280,25 +216,6 @@ export function usePersonAdmin<T extends BasePerson>(
 
     resetBanner,
     setResetBanner,
-    resetConfirmId,
-    resetLoading,
-    startReset,
-    confirmReset,
-    cancelReset,
-
-    deactivateConfirmId,
-    deactivateLoading,
-    deactivateError,
-    startDeactivate,
-    confirmDeactivate,
-    cancelDeactivate,
-
-    reactivateConfirmId,
-    reactivateLoading,
-    reactivateError,
-    startReactivate,
-    confirmReactivate,
-    cancelReactivate,
 
     accountActionFor,
     startAction,

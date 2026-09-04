@@ -167,4 +167,60 @@ async function resetPassword(role, userId, { send_email = true } = {}) {
   return { status: 200, tempPassword, emailResult };
 }
 
-module.exports = { sendWelcomeAndReport, createUser, resetPassword };
+/**
+ * Shared delete-account skeleton for /admin/students/:id and
+ * /admin/teachers/:id. Two-step by design: the account must already be
+ * deactivated (is_active = false) before it can be permanently deleted.
+ * Related rows (sessions, packages, homework, etc.) cascade via FK,
+ * including reschedule_requests where this person is student_id/teacher_id
+ * (migration 022). Columns that reference users(id) without a cascade
+ * clause (decided_by, last_modified_by, attendance_marked_by, created_by,
+ * logged_by) are nulled out first since they're informational, not
+ * structural. Runs in a transaction so a mid-way failure can't leave the
+ * account half-deleted.
+ */
+async function deletePerson(role, userId) {
+  const client = await pool.connect();
+  let rescheduleRequestsRemoved = 0;
+  try {
+    await client.query('BEGIN');
+
+    // FOR UPDATE holds the row lock until COMMIT/ROLLBACK, so a concurrent
+    // reactivate can't slip in between this guard and the DELETE below.
+    const existing = await client.query(
+      'SELECT is_active FROM users WHERE id=$1 AND role=$2 FOR UPDATE', [userId, role]
+    );
+    if (existing.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { status: 404, error: `${role === 'teacher' ? 'Teacher' : 'Student'} not found` };
+    }
+    if (existing.rows[0].is_active) {
+      await client.query('ROLLBACK');
+      return { status: 409, error: `Turn off this ${role}'s access before deleting their account.` };
+    }
+
+    const rescheduleCount = await client.query(
+      'SELECT COUNT(*) FROM reschedule_requests WHERE student_id=$1 OR teacher_id=$1',
+      [userId]
+    );
+    rescheduleRequestsRemoved = parseInt(rescheduleCount.rows[0].count, 10);
+
+    await client.query('UPDATE reschedule_requests SET decided_by=NULL WHERE decided_by=$1', [userId]);
+    await client.query('UPDATE sessions SET last_modified_by=NULL WHERE last_modified_by=$1', [userId]);
+    await client.query('UPDATE sessions SET attendance_marked_by=NULL WHERE attendance_marked_by=$1', [userId]);
+    await client.query('UPDATE newsfeed_posts SET created_by=NULL WHERE created_by=$1', [userId]);
+    await client.query('UPDATE student_payments SET logged_by=NULL WHERE logged_by=$1', [userId]);
+    await client.query('DELETE FROM users WHERE id=$1', [userId]);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  return { status: 204, rescheduleRequestsRemoved };
+}
+
+module.exports = { sendWelcomeAndReport, createUser, resetPassword, deletePerson };

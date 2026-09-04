@@ -557,10 +557,7 @@ export default function AdminStudentsPage() {
                   const action = accountActionFor(student);
                   if (action) confirmAction(action.type, student);
                 }}
-                onActionCancel={() => {
-                  const action = accountActionFor(student);
-                  if (action) cancelAction(action.type);
-                }}
+                onActionCancel={() => cancelAction()}
                 inputClass={inputClass}
               />
             ))}

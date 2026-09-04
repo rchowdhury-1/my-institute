@@ -3,7 +3,7 @@ const { pool } = require('../../db');
 const { asyncHandler } = require('../../middleware/errors');
 const { isValidEmail } = require('../../lib/validators');
 const { assertTeacherExists } = require('../../lib/queries');
-const { createUser, resetPassword } = require('../../lib/users');
+const { createUser, resetPassword, deletePerson } = require('../../lib/users');
 const { SUPPORTED_CURRENCIES } = require('../../config');
 
 const router = express.Router();
@@ -117,6 +117,14 @@ router.post('/students/:id/reset-password', asyncHandler(async (req, res) => {
   const result = await resetPassword('student', req.params.id, req.body);
   if (result.error) return res.status(result.status).json({ error: result.error });
   res.json({ tempPassword: result.tempPassword, ...result.emailResult });
+}));
+
+// DELETE /admin/students/:id — permanently delete a student.
+// Requires the student to already be deactivated (two-step: turn off access, then delete).
+router.delete('/students/:id', asyncHandler(async (req, res) => {
+  const result = await deletePerson('student', req.params.id);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.json({ rescheduleRequestsRemoved: result.rescheduleRequestsRemoved });
 }));
 
 module.exports = router;

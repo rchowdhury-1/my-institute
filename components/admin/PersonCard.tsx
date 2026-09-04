@@ -1,8 +1,9 @@
-import { Pencil, KeyRound, UserX, UserCheck } from "lucide-react";
+import { Pencil, KeyRound, UserX, UserCheck, Trash2 } from "lucide-react";
 import PersonEditForm from "@/components/admin/PersonEditForm";
 import ResetPasswordPanel from "@/components/admin/ResetPasswordPanel";
 import DeactivatePanel from "@/components/admin/DeactivatePanel";
 import ReactivatePanel from "@/components/admin/ReactivatePanel";
+import DeletePanel from "@/components/admin/DeletePanel";
 
 export interface PersonCardTeacher {
   id: string;
@@ -39,7 +40,7 @@ export interface PersonCardTeacherOption {
 }
 
 export type AccountAction = {
-  type: "reset" | "deactivate" | "reactivate";
+  type: "reset" | "deactivate" | "reactivate" | "delete";
   confirming: boolean;
   loading: boolean;
   error?: string;
@@ -60,7 +61,7 @@ interface PersonCardBaseProps {
   onEditSave: () => void;
   onEditCancel: () => void;
   accountAction: AccountAction;
-  onActionStart: (type: "reset" | "deactivate" | "reactivate") => void;
+  onActionStart: (type: "reset" | "deactivate" | "reactivate" | "delete") => void;
   onActionConfirm: () => void;
   onActionCancel: () => void;
   inputClass: string;
@@ -217,10 +218,14 @@ export default function PersonCard(props: PersonCardProps) {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                 <button data-testid="btn-reactivate" onClick={() => onActionStart("reactivate")}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-200 text-emerald-600 text-xs hover:bg-emerald-50 transition-colors">
                   <UserCheck size={13} /> Turn on access
+                </button>
+                <button data-testid="btn-delete" onClick={() => onActionStart("delete")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 text-red-500 text-xs hover:bg-red-50 transition-colors">
+                  <Trash2 size={13} /> Delete
                 </button>
               </div>
             )}
@@ -247,6 +252,16 @@ export default function PersonCard(props: PersonCardProps) {
 
           {accountAction?.type === "reactivate" && accountAction.confirming && (
             <ReactivatePanel
+              displayName={person.display_name}
+              loading={accountAction.loading}
+              error={accountAction.error}
+              onConfirm={onActionConfirm}
+              onCancel={onActionCancel}
+            />
+          )}
+
+          {accountAction?.type === "delete" && accountAction.confirming && (
+            <DeletePanel
               displayName={person.display_name}
               loading={accountAction.loading}
               error={accountAction.error}
