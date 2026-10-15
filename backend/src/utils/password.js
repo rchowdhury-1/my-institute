@@ -1,5 +1,9 @@
 const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
+// Native bcrypt, not bcryptjs: hashing runs on libuv's thread pool instead of
+// blocking the main event loop. The pure-JS implementation cost ~2.5s of
+// main-thread CPU per login on Render's free tier, so concurrent logins
+// serialised into a multi-minute queue (2026-10-15 login outage).
+const bcrypt = require('bcrypt');
 
 const TEMP_PASSWORD_BYTES = 10; // ~13 URL-safe characters once base64url-encoded
 const BCRYPT_COST = 12;
