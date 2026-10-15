@@ -77,7 +77,7 @@ Go to **Vercel → Project → Settings → Environment Variables**.
 
 | Variable | Purpose | Example value |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | URL of the Render backend | `https://my-institute-backend.onrender.com` |
+| `NEXT_PUBLIC_API_URL` | URL of the Render backend | `https://my-institute-sxjs.onrender.com` |
 | `NEXT_PUBLIC_SITE_URL` | Your live domain | `https://my-institute-eight.vercel.app` |
 | `RESEND_API_KEY` | Email sending | `re_abc123…` |
 | `CONTACT_EMAIL` | Where form emails land | `myinstitute2026@gmail.com` |
