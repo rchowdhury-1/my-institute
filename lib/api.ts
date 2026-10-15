@@ -2,6 +2,11 @@ import axios from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
+// Long enough to ride out a Render free-tier cold start (~30-60s), but finite:
+// a refresh request that never settles would leave `isRefreshing` stuck true
+// below, silently wedging every subsequent request in the retry queue.
+const REFRESH_REQUEST_TIMEOUT_MS = 90_000;
+
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
@@ -65,7 +70,7 @@ api.interceptors.response.use(
       const res = await axios.post(
         `${API_URL}/auth/refresh`,
         {},
-        { withCredentials: true }
+        { withCredentials: true, timeout: REFRESH_REQUEST_TIMEOUT_MS }
       );
       const newToken: string = res.data.accessToken;
       localStorage.setItem("accessToken", newToken);

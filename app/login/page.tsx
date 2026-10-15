@@ -8,29 +8,52 @@ import { AUTH_INPUT_CLASS } from "@/lib/styles";
 import { dashboardPathForRole } from "@/lib/labels";
 import { getAxiosError } from "@/lib/errors";
 
+// Rides out a Render free-tier cold start (~30-60s) instead of hanging forever.
+const LOGIN_REQUEST_TIMEOUT_MS = 90_000;
+// After this long with no response, tell the user the wait is expected.
+const SLOW_SERVER_NOTICE_DELAY_MS = 4_000;
+
+type LoggedInUser = {
+  id: string;
+  display_name: string;
+  role: string;
+  must_change_password?: boolean;
+};
+
+function persistLogin(accessToken: string, user: LoggedInUser) {
+  localStorage.setItem("accessToken", accessToken);
+  localStorage.setItem("userRole", user.role);
+  localStorage.setItem("userId", user.id);
+  localStorage.setItem("displayName", user.display_name);
+  // Set a non-httpOnly cookie so middleware can read the role
+  document.cookie = `userRole=${user.role}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [isAwaitingSlowServer, setIsAwaitingSlowServer] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus("loading");
     setErrorMessage("");
+    const slowNoticeTimer = setTimeout(
+      () => setIsAwaitingSlowServer(true),
+      SLOW_SERVER_NOTICE_DELAY_MS
+    );
 
     try {
-      const res = await api.post("/auth/login", { email, password });
+      const res = await api.post(
+        "/auth/login",
+        { email, password },
+        { timeout: LOGIN_REQUEST_TIMEOUT_MS }
+      );
       const { accessToken, user } = res.data;
-
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("userRole", user.role);
-      localStorage.setItem("userId", user.id);
-      localStorage.setItem("displayName", user.display_name);
-
-      // Set a non-httpOnly cookie so middleware can read the role
-      document.cookie = `userRole=${user.role}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+      persistLogin(accessToken, user);
 
       // Admin-provisioned accounts must set a new password on first login
       if (user.must_change_password) {
@@ -42,6 +65,9 @@ export default function LoginPage() {
     } catch (err: unknown) {
       setStatus("error");
       setErrorMessage(getAxiosError(err).message);
+    } finally {
+      clearTimeout(slowNoticeTimer);
+      setIsAwaitingSlowServer(false);
     }
   };
 
@@ -89,6 +115,13 @@ export default function LoginPage() {
               <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
                 {errorMessage}
               </div>
+            )}
+
+            {status === "loading" && isAwaitingSlowServer && (
+              <p className="text-sm text-charcoal/60 text-center" role="status">
+                Still working — the server may be waking up. This can take up to
+                a minute.
+              </p>
             )}
 
             <Button
